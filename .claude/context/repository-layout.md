@@ -28,6 +28,7 @@ pkg/                      Shared Go library
   reconcile/              Disk reconcile: adopt recognised clones in place, re-link moved ones, list the rest (Unmatched clones)
   status/                 Clone status checking
   update/                 Auto-update: version check, signature + checksum verified download, self-replace (AppImage build is notify-only); release-signing-key.pub is the pinned release key
+  diag/                   Local support bundle schema, allowlist and bounded operation history
   doctor/                 External-tool detection (git, GCM, ssh, …): point-of-use precheck + the GUI's tool check; `LookupIn` is the Setenv-free resolver (extra dirs, ~/.local/bin, Windows shims) shared by harness detection
   harness/                Embedded AI-tool catalog (tools-directory.md: alternates + well-known locations) + pure `Sync` that flags uninstalled harnesses `missing` instead of deleting them
   identity/               Global `~/.gitconfig` user.name/user.email detection + removal

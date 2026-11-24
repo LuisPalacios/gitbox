@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
+	"github.com/LuisPalacios/gitbox/pkg/diag"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
@@ -95,7 +97,8 @@ func (a *App) safePull(ctx context.Context, cfg *config.Config, source, repo str
 	return result
 }
 
-func (a *App) pullUnderGate(ctx context.Context, cfg *config.Config, source, repo string, requested bool, result *pullDoneDTO) (string, error) {
+func (a *App) pullUnderGate(ctx context.Context, cfg *config.Config, source, repo string, requested bool, result *pullDoneDTO) (address string, err error) {
+	started := time.Now()
 	src, ok := cfg.Sources[source]
 	if !ok {
 		return "", fmt.Errorf("source %q not found", source)
@@ -105,6 +108,8 @@ func (a *App) pullUnderGate(ctx context.Context, cfg *config.Config, source, rep
 		return "", fmt.Errorf("repo %q not found in source %q", repo, source)
 	}
 	path := status.RepoPath(cfg, source, repo, r)
+	var queueDepth *int
+	defer func() { a.diagnostics.Record(diag.Pull, started, time.Now(), queueDepth, path, err) }()
 	account := cfg.Accounts[src.Account]
 	report, unlock, err := a.prepareClone(ctx, cfg, repoRef{source, repo}, path, nil)
 	if errors.Is(err, errCloneSettingsChanged) {
@@ -157,7 +162,8 @@ func (a *App) pullUnderGate(ctx context.Context, cfg *config.Config, source, rep
 	}
 	addr := serverAddr(account)
 	return addr, a.onServerCtx(ctx, addr, func(ctx context.Context) error {
-		release, err := a.fetches.acquire(ctx, fetchHostname(account.URL))
+		release, depth, err := a.fetches.acquire(ctx, fetchHostname(account.URL))
+		queueDepth = &depth
 		if err != nil {
 			return err
 		}

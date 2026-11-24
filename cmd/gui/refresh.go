@@ -16,6 +16,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/diag"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/heal"
 	"github.com/LuisPalacios/gitbox/pkg/pathkey"
@@ -245,6 +246,7 @@ func (a *App) requestStatusStream(publishFinal, dirty bool, stream uint64) *stat
 				}
 			}
 			var raw []status.RepoStatus
+			var err error
 			if a.refreshHooks != nil && a.refreshHooks.status != nil {
 				raw = a.refreshHooks.status(cfg)
 				if publish != nil {
@@ -253,8 +255,9 @@ func (a *App) requestStatusStream(publishFinal, dirty bool, stream uint64) *stat
 					}
 				}
 			} else {
-				raw, _ = status.CheckAllBatches(a.refreshContext(), cfg, statusTimeout, publish)
+				raw, err = status.CheckAllBatches(a.refreshContext(), cfg, statusTimeout, publish)
 			}
+			a.diagnostics.Record(diag.Status, sweepStarted, time.Now(), nil, "", err)
 			local := convert(raw)
 			current, currentRevision := a.refreshSnapshot()
 			a.refreshMu.Lock()
@@ -392,7 +395,9 @@ func (a *App) fetchOne(cfg *config.Config, revision uint64, source, repo string,
 		a.refreshMu.Unlock()
 		var err error
 		if lost != nil && fetchEndpointLost(lost, addr) {
+			started := time.Now()
 			err = skipUnreachable(op, source, repo, addr)
+			a.diagnostics.Record(diag.Fetch, started, time.Now(), nil, path, err)
 		} else {
 			err = a.performFetch(op, cfg, source, repo, path, lost)
 			if lost != nil && addr != "" && isConnectionFailure(err) {
@@ -437,7 +442,10 @@ func retryWithBackoff(ctx context.Context, started time.Time, again func() bool)
 	}
 }
 
-func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, path string, lost *sync.Map) error {
+func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, path string, lost *sync.Map) (err error) {
+	started := time.Now()
+	var queueDepth *int
+	defer func() { a.diagnostics.Record(diag.Fetch, started, time.Now(), queueDepth, path, err) }()
 	ctx := a.refreshContext()
 	report, unlock, err := a.prepareClone(ctx, cfg, repoRef{source, repo}, path, func() {
 		emit(op, "fetch:start", fetchEventDTO{Source: source, Repo: repo})
@@ -463,7 +471,8 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 			fetch = a.refreshHooks.fetch
 		}
 		err = a.onServer(addr, func(ctx context.Context) error {
-			release, err := a.fetches.acquire(ctx, fetchHostname(account.URL))
+			release, depth, err := a.fetches.acquire(ctx, fetchHostname(account.URL))
+			queueDepth = &depth
 			if err != nil {
 				return err
 			}
@@ -657,7 +666,9 @@ func (a *App) fetchAllReposContext(ctx context.Context) error {
 	}
 }
 
-func (a *App) fetchCycle() error {
+func (a *App) fetchCycle() (err error) {
+	started := time.Now()
+	defer func() { a.diagnostics.Record(diag.FetchAll, started, time.Now(), nil, "", err) }()
 	var errs []error
 	for range 2 {
 		cfg, revision := a.refreshSnapshot()

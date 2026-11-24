@@ -11,6 +11,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/diag"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
@@ -73,7 +74,7 @@ func (a *App) finishUpstreamProbe(flight *upstreamProbeFlight) {
 		}
 		return credential.ResolveAPITokenContext(ctx, acct, key)
 	}
-	results := runUpstreamProbe(ctx, cfg, resolve, probeRequestTimeout)
+	results := a.runUpstreamProbe(ctx, cfg, resolve, probeRequestTimeout)
 	flight.changed = a.applyUpstreamProbe(cfg, results, &revisions)
 	active := a.refreshContext().Err() == nil
 	// Credential edits clear the throttle. I retain that invalidation if an
@@ -130,6 +131,7 @@ func (a *App) probeUpstreamExistenceAsync() {
 type upstreamProbeJob struct {
 	accountKey string
 	repoKey    string
+	paths      []string
 	account    config.Account
 	token      string
 	creator    provider.RepoCreator
@@ -144,19 +146,20 @@ type upstreamProbeResult struct {
 
 type probeTokenResolver func(context.Context, config.Account, string) (string, string, error)
 
-func runUpstreamProbe(ctx context.Context, cfg *config.Config, resolveToken probeTokenResolver, requestTimeout time.Duration) []upstreamProbeResult {
+func (a *App) runUpstreamProbe(ctx context.Context, cfg *config.Config, resolveToken probeTokenResolver, requestTimeout time.Duration) []upstreamProbeResult {
 	if cfg == nil || ctx.Err() != nil {
 		return nil
 	}
 	// Multiple sources may share an account or the same upstream repository.
 	// I resolve credentials once per account and probe each upstream once.
-	accountRepos := make(map[string]map[string]bool)
-	for _, src := range cfg.Sources {
+	accountRepos := make(map[string]map[string][]string)
+	for sourceKey, src := range cfg.Sources {
 		if accountRepos[src.Account] == nil {
-			accountRepos[src.Account] = make(map[string]bool)
+			accountRepos[src.Account] = make(map[string][]string)
 		}
-		for repoKey := range src.Repos {
-			accountRepos[src.Account][repoKey] = true
+		for repoKey, repo := range src.Repos {
+			path := status.RepoPath(cfg, sourceKey, repoKey, repo)
+			accountRepos[src.Account][repoKey] = append(accountRepos[src.Account][repoKey], path)
 		}
 	}
 	var jobs []upstreamProbeJob
@@ -180,8 +183,8 @@ func runUpstreamProbe(ctx context.Context, cfg *config.Config, resolveToken prob
 		if err != nil {
 			continue
 		}
-		for repoKey := range repoKeys {
-			jobs = append(jobs, upstreamProbeJob{accountKey, repoKey, acct, token, creator})
+		for repoKey, paths := range repoKeys {
+			jobs = append(jobs, upstreamProbeJob{accountKey, repoKey, paths, acct, token, creator})
 		}
 	}
 	queue := make(chan upstreamProbeJob)
@@ -195,10 +198,19 @@ func runUpstreamProbe(ctx context.Context, cfg *config.Config, resolveToken prob
 				}
 				owner, name := splitRepoKeyForProbe(job.repoKey)
 				requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+				started := time.Now()
 				exists, err := job.creator.RepoExists(requestCtx, job.account.URL, job.token, job.account.Username, owner, name)
+				finished := time.Now()
 				// A response racing cancellation must not change gone state.
 				valid := err == nil && requestCtx.Err() == nil
 				cancel()
+				if err == nil {
+					a.diagnostics.Record(diag.RepoProbe, started, finished, nil, "", nil)
+				} else {
+					for _, path := range job.paths {
+						a.diagnostics.Record(diag.RepoProbe, started, finished, nil, path, err)
+					}
+				}
 				if valid {
 					resultCh <- upstreamProbeResult{job.accountKey, job.repoKey, exists, time.Now()}
 				}

@@ -14,7 +14,7 @@ func TestDispatchCancelWhileWaitingForHost(t *testing.T) {
 		host := "same.example"
 		var releases []func()
 		for range fetchPerHostConcurrency {
-			release, err := d.acquire(t.Context(), host)
+			release, _, err := d.acquire(t.Context(), host)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -23,7 +23,7 @@ func TestDispatchCancelWhileWaitingForHost(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() {
-			release, err := d.acquire(ctx, host)
+			release, _, err := d.acquire(ctx, host)
 			if release != nil {
 				release()
 			}
@@ -48,7 +48,7 @@ func TestDispatchCancelWhileWaitingForGlobalSlot(t *testing.T) {
 		var d fetchDispatcher
 		var releases []func()
 		for i := range fetchAllConcurrency {
-			release, err := d.acquire(t.Context(), fmt.Sprintf("host-%d.example", i))
+			release, _, err := d.acquire(t.Context(), fmt.Sprintf("host-%d.example", i))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -58,7 +58,7 @@ func TestDispatchCancelWhileWaitingForGlobalSlot(t *testing.T) {
 		host := "queued.example"
 		done := make(chan error, 1)
 		go func() {
-			release, err := d.acquire(ctx, host)
+			release, _, err := d.acquire(ctx, host)
 			if release != nil {
 				release()
 			}

@@ -517,6 +517,8 @@ Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
 
 En modo Avanzado, **Ajustes → Comprobación del sistema → Ejecutar** también muestra los milisegundos transcurridos desde que se abre la aplicación hasta cada etapa observada del arranque, incluidas la primera fila de repositorio, el primer estado, la pasada completa de estados y la primera tarea de red de la flota programada.
 
+En una ventana local, elige **Ajustes → Comprobación del sistema → Ejecutar → Exportar diagnóstico**. Revisa la vista previa del JSON y selecciona **Guardar JSON…** para elegir un archivo en este ordenador. Gitbox guarda exactamente el contenido de la vista previa. El archivo incluye versiones, recuentos de configuración, códigos y tiempos de operaciones recientes, la profundidad de la cola de fetch, el estado del planificador y los tiempos de arranque. Gitbox identifica los repositorios en los registros de error con hashes cortos de sus rutas locales. Puedes adjuntar el archivo guardado a un informe de error.
+
 Al arrancar, Gitbox comprueba los permisos de las credenciales sin leer el contenido de los tokens. Si detecta exposición, aparece un aviso sobre el panel, incluida la vista Compacta, que abre Comprobación del sistema. La auditoría informa de problemas y permisos que no puede verificar; nunca los repara automáticamente. Consulta [Permisos de los archivos de credenciales](credentials.md#permisos-de-los-archivos-de-credenciales).
 
 Los flujos de añadir cuenta y cambiar credencial ejecutan la misma comprobación de herramientas: si eliges el tipo de credencial `gcm` en una máquina sin Git Credential Manager, un banner amarillo muestra el comando de instalación en lugar de un fallo de autenticación críptico más tarde.

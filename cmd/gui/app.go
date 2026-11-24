@@ -20,6 +20,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/diag"
 	"github.com/LuisPalacios/gitbox/pkg/doctor"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/gitignore"
@@ -60,6 +61,10 @@ type App struct {
 	cfgBase        config.FileRevision
 	configRevision uint64
 	timing         startupTiming
+
+	diagnostics        diag.Activity
+	diagnosticsMu      sync.Mutex
+	diagnosticsPreview string // guarded by diagnosticsMu
 	// readOnly makes an App that changes nothing it reads: saveConfig
 	// refuses and fetch skips the repair of a clone's .git/config. No
 	// gitbox-server sets it since the mutations are served (#294, #295);
@@ -1878,7 +1883,11 @@ func (a *App) cloneRepoRun(ctx context.Context, sourceKey, repoKey, root string)
 
 func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root string, expected *config.Config, run string) {
 	op := a.newOperation()
+	started := time.Now()
 	var err error
+	var plan ops.ClonePlan
+	var queueDepth *int
+	defer func() { a.diagnostics.Record(diag.Clone, started, time.Now(), queueDepth, plan.Dest, err) }()
 	if root != "" {
 		_, err = hostPath(root)
 	}
@@ -1902,7 +1911,6 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 			err = a.saveConfig()
 		}
 	}
-	var plan ops.ClonePlan
 	var cfg *config.Config
 	if err == nil {
 		plan, err = ops.PlanClone(a.cfg, sourceKey, repoKey)
@@ -1921,6 +1929,7 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	// A clone does not start against a server that does not answer.
 	addr := serverAddr(account)
 	if !a.reachable(ctx, addr) {
+		err = errServerUnreachable
 		errorText, code, host := unreachableDetails(addr)
 		emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Error: errorText, Code: code, Host: host, Skipped: true})
 		return
@@ -1929,7 +1938,9 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	// The git transfer runs without the config lock.
 	var release func()
 	if run != "" {
-		release, err = a.fetches.acquire(ctx, fetchHostname(account.URL))
+		var depth int
+		release, depth, err = a.fetches.acquire(ctx, fetchHostname(account.URL))
+		queueDepth = &depth
 	}
 	if err == nil {
 		err = a.transferClone(ctx, cfg, sourceKey, repoKey, plan, func(p git.CloneProgress) {

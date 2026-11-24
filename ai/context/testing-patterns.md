@@ -20,6 +20,7 @@ After any code change, always run the relevant tests:
 | Path identity (`pkg/pathkey/`)              | `go test ./pkg/pathkey/ ./pkg/config/`             |
 | Config logic (`pkg/config/`)                | `go test ./pkg/config/ ./pkg/ops/ ./cmd/gui/`      |
 | Fleet recipes (`pkg/recipe/`)               | `go test ./pkg/recipe/ ./cmd/gui/`                 |
+| Diagnostics export (`pkg/diag/`)           | `go test -short ./pkg/diag/ ./cmd/gui/`            |
 | Disk reconcile (`pkg/reconcile/`)           | `go test ./pkg/reconcile/ ./pkg/adopt/ ./cmd/gui/` |
 | GUI bindings (`cmd/gui/`)                   | `go test ./cmd/gui/`                               |
 | Update logic (`pkg/update/`)                | `go test ./pkg/update/`                            |
