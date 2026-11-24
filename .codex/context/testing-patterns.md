@@ -60,6 +60,10 @@ I test the coordination registry with temporary Git repositories and separate pr
 
 I run `bash scripts/test-bootstrap.sh` or `./scripts/health.sh bootstrap` for installer changes. The fixtures sign local checksums with a throwaway SSH key, check parity with the updater's pinned public key, and reject wrong keys, modified archives/checksums, replayed tags, missing signatures and ambiguous checksum entries. They prove verification precedes extraction, exercise both download paths with local stubs, and check bundled desktop registration and quarantine policy without installing software or touching credentials. The local gate runs the same fixtures on macOS through its health check and directly in the Linux and Windows lanes.
 
+## Health check argument tests
+
+I run `bash scripts/test-health-args.sh` or `./scripts/health.sh selftest` after changing the argument handling or the check list of `health.sh`. It expects exit code 2 with the valid names for an unknown check or option and for `fuzz` without `HEALTH_FUZZ=1`, exit 0 for `-h`/`--help`, and no started check in any case. It also keeps `CHECKS`, the dispatched checks and the help text in step. When I add a check, I add its name to `CHECKS`, its `want` line and the header comment together. `HEALTH_SH=<copy>` runs the suite against another version of the script as a negative control.
+
 ## Test levels
 
 - **Unit tests** — always run, no credentials needed. Package-level tests in `pkg/`, isolated with `t.TempDir()` and `t.Setenv()`; `cmd/gui` tests call `App` methods directly, without the Wails runtime.
