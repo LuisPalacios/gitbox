@@ -143,22 +143,24 @@ func TestRemoteWindowPresenceAndFacts(t *testing.T) {
 	}
 }
 
-func TestListSSHAliases(t *testing.T) {
+func TestListSSHHosts(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	a, _ := remoteHostsApp(t, config.RemoteEntry{Alias: "my-server"})
-	if got := a.ListSSHAliases(); got == nil || len(got) != 0 {
+	if got := a.ListSSHHosts(); got == nil || len(got) != 0 {
 		t.Errorf("without an ssh configuration = %#v, want an empty list", got)
 	}
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte("Host my-server nas\nHost *\nHost build-box\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte("Host my-server my-server.example.org\nHost *\nHost nas nas.example.org 192.0.2.5\nHost build-box\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := a.ListSSHAliases(); !slices.Equal(got, []string{"nas", "build-box"}) {
-		t.Errorf("ListSSHAliases = %q, want the aliases not added yet", got)
+	want := []SSHHostDTO{{Alias: "nas", Names: []string{"nas", "nas.example.org", "192.0.2.5"}}, {Alias: "build-box", Names: []string{"build-box"}}}
+	got := a.ListSSHHosts()
+	if !slices.EqualFunc(got, want, func(x, y SSHHostDTO) bool { return x.Alias == y.Alias && slices.Equal(x.Names, y.Names) }) {
+		t.Errorf("ListSSHHosts = %+v, want one line per Host entry not added yet: %+v", got, want)
 	}
 }
 

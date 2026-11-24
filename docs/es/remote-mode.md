@@ -34,7 +34,7 @@ Cualquiera de las dos muestra el selector de equipo junto al título, y **Equipo
 
 ## Añadir un remoto
 
-En la ventana Equipos remotos, que también abre **Gestionar equipos remotos…** del selector de equipo, escribo el alias, o elijo uno de los alias que sugiere de mi configuración de SSH, y, si la necesito, una carpeta del servidor (`server_dir`), y luego **Añadir**. Las sugerencias vienen de `~/.ssh/config` y de los archivos que incluye, sin los patrones ni los equipos ya añadidos; GitboxApp solo lee esa configuración.
+En la ventana Equipos remotos, que también abre **Gestionar equipos remotos…** del selector de equipo, escribo el alias, o elijo una línea de mi configuración de SSH, y, si la necesito, una carpeta del servidor (`server_dir`), y luego **Añadir**. La ventana muestra una línea por cada entrada `Host` de `~/.ssh/config` y de los archivos que incluye, y una línea rellena su primer nombre, el que va tras `Host`; quedan fuera las entradas cuyo primer nombre es un patrón o un equipo ya añadido. Al escribir, las líneas se filtran y el alias se completa en el propio campo. GitboxApp solo lee esa configuración.
 
 GitboxApp comprueba el alias con `ssh -G <alias>`, que lee la configuración sin conectar. Eso detecta un `ssh_config` roto, no un host desconocido: `ssh` resuelve cualquier nombre. Un host equivocado solo se nota al conectar. El remoto se guarda en la lista `remotes` del `gitbox.json` de este ordenador.
 

@@ -34,7 +34,7 @@ Either one shows the host switcher next to the title, and **Remote hosts** in Se
 
 ## Adding a remote
 
-In the Remote hosts window, which the host switcher's **Manage remote hosts…** also opens, I type the alias, or pick one of the aliases it suggests from my SSH configuration, and, if I need one, a server folder (`server_dir`), then **Add**. The suggestions come from `~/.ssh/config` and the files it includes, leaving out patterns and the hosts already added; GitboxApp only reads that configuration.
+In the Remote hosts window, which the host switcher's **Manage remote hosts…** also opens, I type the alias, or pick a line of my SSH configuration, and, if I need one, a server folder (`server_dir`), then **Add**. The window shows one line per `Host` entry of `~/.ssh/config` and the files it includes, and a line fills its first name, the one after `Host`; entries whose first name is a pattern or a host already added stay out. Typing filters the lines and completes the alias inline. GitboxApp only reads that configuration.
 
 GitboxApp checks the alias with `ssh -G <alias>`, which reads the configuration without connecting. That catches a broken `ssh_config`, not an unknown host: `ssh` resolves any name. A wrong host only shows when I connect. The remote is saved in the `remotes` list of this computer's `gitbox.json`.
 

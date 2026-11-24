@@ -26,22 +26,41 @@ func sshHome(t *testing.T, files map[string]string) string {
 	return home
 }
 
-func TestConfigAliases(t *testing.T) {
+// aliases are the Alias of each entry, and hostLines its names joined by a space.
+func aliases(hosts []ConfigHost) (out []string) {
+	for _, h := range hosts {
+		out = append(out, h.Alias)
+	}
+	return out
+}
+
+func hostLines(hosts []ConfigHost) (out []string) {
+	for _, h := range hosts {
+		out = append(out, strings.Join(h.Names, " "))
+	}
+	return out
+}
+
+func TestConfigHosts(t *testing.T) {
 	cases := map[string]struct {
 		files map[string]string
-		want  []string
+		want  []string // the Alias of each entry
+		names []string // its names, joined by a space
 	}{
-		"hosts in file order without duplicates": {
-			files: map[string]string{"config": "Host build-box\n  HostName 10.0.0.2\nHost nas lab\nHost build-box\n"},
-			want:  []string{"build-box", "nas", "lab"},
+		"one entry per Host line, in file order, its first name as the alias": {
+			files: map[string]string{"config": "Host openai openai.example.org 192.0.2.50\n  HostName 192.0.2.50\nHost nas lab\nHost openai\n"},
+			want:  []string{"openai", "nas"},
+			names: []string{"openai openai.example.org 192.0.2.50", "nas lab"},
 		},
-		"patterns, negations and invalid names are left out": {
-			files: map[string]string{"config": "Host *\nHost *.example.com web?\nHost !bastion jump\nHost -opt ok_1 bad/name\n"},
-			want:  []string{"jump", "ok_1"},
+		"the first name is the alias; a line whose first name cannot be one is left out": {
+			files: map[string]string{"config": "Host *\nHost *.example.com web?\nHost !bastion jump\nHost -opt ok_1\nHost bad/name ok_2\nHost ok_3 *.example.com\n"},
+			want:  []string{"ok_3"},
+			names: []string{"ok_3 *.example.com"},
 		},
 		"keyword case, equals sign, quotes, comments and CRLF": {
 			files: map[string]string{"config": "# Host commented\r\nHOST=alpha\r\nhost = \"beta\" gamma # trailing\r\n  host\tdelta\r\n"},
-			want:  []string{"alpha", "beta", "gamma", "delta"},
+			want:  []string{"alpha", "beta", "delta"},
+			names: []string{"alpha", "beta gamma", "delta"},
 		},
 		"Include relative to .ssh, with globs, in order": {
 			files: map[string]string{
@@ -75,26 +94,29 @@ func TestConfigAliases(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			got := ConfigAliases(sshHome(t, tc.files))
-			if !slices.Equal(got, tc.want) {
-				t.Fatalf("ConfigAliases = %q, want %q", got, tc.want)
+			got := ConfigHosts(sshHome(t, tc.files))
+			if !slices.Equal(aliases(got), tc.want) {
+				t.Fatalf("aliases = %q, want %q", aliases(got), tc.want)
+			}
+			if tc.names != nil && !slices.Equal(hostLines(got), tc.names) {
+				t.Fatalf("names = %q, want %q", hostLines(got), tc.names)
 			}
 		})
 	}
 }
 
-func TestConfigAliasesAbsoluteInclude(t *testing.T) {
+func TestConfigHostsAbsoluteInclude(t *testing.T) {
 	other := filepath.Join(t.TempDir(), "hosts.conf")
 	if err := os.WriteFile(other, []byte("Host elsewhere\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	home := sshHome(t, map[string]string{"config": "Include \"" + other + "\"\n"})
-	if got := ConfigAliases(home); !slices.Equal(got, []string{"elsewhere"}) {
-		t.Fatalf("ConfigAliases = %q", got)
+	if got := aliases(ConfigHosts(home)); !slices.Equal(got, []string{"elsewhere"}) {
+		t.Fatalf("ConfigHosts = %q", got)
 	}
 }
 
-func TestConfigAliasesUnreadable(t *testing.T) {
+func TestConfigHostsUnreadable(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("file modes do not stop this user from reading")
 	}
@@ -104,20 +126,20 @@ func TestConfigAliasesUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o600) })
-	if got := ConfigAliases(home); !slices.Equal(got, []string{"open"}) {
-		t.Fatalf("ConfigAliases = %q", got)
+	if got := aliases(ConfigHosts(home)); !slices.Equal(got, []string{"open"}) {
+		t.Fatalf("ConfigHosts = %q", got)
 	}
-	if got := ConfigAliases(""); got != nil {
-		t.Fatalf("ConfigAliases(\"\") = %q", got)
+	if got := ConfigHosts(""); got != nil {
+		t.Fatalf("ConfigHosts(\"\") = %v", got)
 	}
 }
 
 // The reader never changes the configuration it reads.
-func TestConfigAliasesReadOnly(t *testing.T) {
+func TestConfigHostsReadOnly(t *testing.T) {
 	home := sshHome(t, map[string]string{"config": "Host one\n"})
 	path := filepath.Join(home, ".ssh", "config")
 	before, _ := os.Stat(path)
-	_ = ConfigAliases(home)
+	_ = ConfigHosts(home)
 	after, _ := os.Stat(path)
 	if !before.ModTime().Equal(after.ModTime()) || before.Size() != after.Size() {
 		t.Fatal("the ssh configuration changed")

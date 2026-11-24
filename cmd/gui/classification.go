@@ -129,7 +129,7 @@ var methodClass = map[string]methodInfo{
 	"ListConfigBackups":              {classRemote, "P4", false},
 	"ListRemoteRepos":                {classRemote, "P4", false},
 	"ListRemotes":                    {classLocal, "P3b", false},
-	"ListSSHAliases":                 {classLocal, "P3b", false},
+	"ListSSHHosts":                   {classLocal, "P3b", false},
 	"ListRoots":                      {classRemote, "P4", false},
 	"ListShells":                     {classLocal, "P1b", false},
 	"ListTerminalApps":               {classLocal, "P1b", false},

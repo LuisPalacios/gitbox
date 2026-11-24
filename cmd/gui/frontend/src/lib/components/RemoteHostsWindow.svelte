@@ -6,7 +6,7 @@
   // server and remove; it adds the host's facts and its connection log.
   import { onMount } from 'svelte';
   import { bridge } from '../bridge';
-  import type { RemoteResult, RemotesList } from '../bridge';
+  import type { RemoteResult, RemotesList, SSHHost } from '../bridge';
   import { configStore } from '../stores';
   import { languageStore, t } from '../i18n';
   import { errorText } from '../notices';
@@ -15,7 +15,11 @@
   import { tooltip } from '../tooltip';
 
   let remotes: RemotesList = { enabled: true, remotes: [] };
-  let suggestions: string[] = [];
+  let suggestions: SSHHost[] = [];
+  // query is what I typed in the alias field, without the completion the
+  // field proposes after it.
+  let query = '';
+  let aliasInput: HTMLInputElement;
   let selected = '';
   let newAlias = '';
   let newServerDir = '';
@@ -40,7 +44,7 @@
   export async function load() {
     try {
       remotes = await bridge.listRemotes();
-      suggestions = await bridge.listSSHAliases();
+      suggestions = await bridge.listSSHHosts();
     } catch (e) { say({ error: errorText(e) }, ''); }
     if (!remotes.remotes.some((r) => r.alias === selected)) selected = remotes.remotes[0]?.alias || '';
   }
@@ -73,6 +77,7 @@
     if (!say(await bridge.addRemote(alias, newServerDir), $t('settings.remotes.added', { alias }))) return false;
     newAlias = '';
     newServerDir = '';
+    query = '';
     selected = alias;
     return true;
   });
@@ -89,6 +94,43 @@
     uninstallAsk = null;
     return say(res, $t('settings.remotes.uninstalled', { alias }));
   });
+
+  // The ssh lines that contain what I typed, in any of their names.
+  $: shown = query.trim()
+    ? suggestions.filter((h) => h.names.some((n) => n.toLowerCase().includes(query.trim().toLowerCase())))
+    : suggestions;
+
+  // Inline completion: typing proposes the rest of the first alias that
+  // starts with what I typed, selected, so more typing replaces it and Tab
+  // or the right arrow accepts it. Deleting never completes.
+  function onAliasInput(e: Event) {
+    const el = e.currentTarget as HTMLInputElement;
+    query = el.value;
+    newAlias = el.value;
+    if (!(e as InputEvent).inputType?.startsWith('insert') || !query) return;
+    const typed = query.toLowerCase();
+    const match = suggestions.find((h) => h.alias.toLowerCase().startsWith(typed) && h.alias.length > query.length);
+    if (!match) return;
+    el.value = query + match.alias.slice(query.length);
+    el.setSelectionRange(query.length, el.value.length);
+    newAlias = el.value;
+  }
+
+  function onAliasKey(e: KeyboardEvent) {
+    const el = e.currentTarget as HTMLInputElement;
+    const proposing = el.selectionStart !== null && el.selectionEnd === el.value.length && el.selectionStart < el.value.length;
+    if (proposing && (e.key === 'Tab' || e.key === 'ArrowRight')) {
+      e.preventDefault();
+      el.setSelectionRange(el.value.length, el.value.length);
+      query = el.value;
+    }
+  }
+
+  function useSuggestion(h: SSHHost) {
+    newAlias = h.alias;
+    query = '';
+    aliasInput?.focus();
+  }
 
   function pick(alias: string) {
     selected = alias;
@@ -117,19 +159,26 @@
     <form class="rh-add" on:submit|preventDefault={add}>
       <span class="rh-label">{$t('remotesWindow.addHeading')}</span>
       <div class="rh-add-row">
-        <input class="rh-input mono" bind:value={newAlias} placeholder={$t('settings.remotes.aliasPlaceholder')} aria-label={$t('settings.remotes.alias')} spellcheck="false" autocapitalize="off" />
+        <input class="rh-input mono" bind:this={aliasInput} value={newAlias} on:input={onAliasInput} on:keydown={onAliasKey}
+          placeholder={$t('settings.remotes.aliasPlaceholder')} aria-label={$t('settings.remotes.alias')} spellcheck="false" autocapitalize="off" autocomplete="off" />
         <button class="btn btn-action" type="submit" disabled={busy !== '' || !newAlias.trim()}>
           {busy === 'add' ? $t('settings.remotes.checking') : $t('settings.remotes.add')}
         </button>
       </div>
       <input class="rh-input mono" bind:value={newServerDir} placeholder={$t('settings.remotes.serverDirPlaceholder')} aria-label={$t('settings.remotes.serverDir')} spellcheck="false" autocapitalize="off" />
       {#if suggestions.length}
-        <div class="rh-suggest">
-          <span>{$t('remotesWindow.suggestions')}</span>
-          {#each suggestions as s (s)}
-            <button type="button" class="chip mono" translate="no" on:click={() => (newAlias = s)}>{s}</button>
+        <span class="rh-label">{$t('remotesWindow.suggestions')}</span>
+        <ul class="rh-ssh" aria-label={$t('remotesWindow.suggestions')}>
+          {#each shown as h (h.alias)}
+            <li>
+              <button type="button" class="ssh-line mono" class:chosen={h.alias === newAlias} title={h.names.join(' ')} translate="no" on:click={() => useSuggestion(h)}>
+                {h.names.join(' ')}
+              </button>
+            </li>
+          {:else}
+            <li class="ssh-none">{$t('remotesWindow.noMatch')}</li>
           {/each}
-        </div>
+        </ul>
       {/if}
     </form>
   </aside>
@@ -207,7 +256,7 @@
   }
   .rh-host:hover { background: var(--bg-hover); }
   .rh-host.selected { background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--border-hover); }
-  .rh-host:focus-visible, .btn:focus-visible, .chip:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+  .rh-host:focus-visible, .btn:focus-visible, .ssh-line:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
   .glyph { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--text-workspace); stroke-width: 1.4; }
   .two { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.35; }
   .two small { font-size: 11px; color: var(--text-muted); }
@@ -226,12 +275,20 @@
     height: 30px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border-hover); border-radius: 6px;
     background: var(--bg-base); color: var(--text-primary); font-size: 12px;
   }
-  .rh-suggest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
-  .chip {
-    padding: 2px 8px; border: 1px solid var(--border-hover); border-radius: 11px; background: var(--bg-base);
-    color: var(--text-secondary); cursor: pointer;
+  /* One line per Host entry of the ssh configuration, cut with an ellipsis
+     so it never wraps; the full line is in the tooltip. */
+  .rh-ssh {
+    margin: 0; padding: 2px; list-style: none; display: flex; flex-direction: column; gap: 1px;
+    max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-base);
   }
-  .chip:hover { color: var(--text-primary); border-color: var(--text-dim); }
+  .ssh-line {
+    display: block; width: 100%; box-sizing: border-box; padding: 5px 8px; border: none; border-radius: 4px;
+    background: none; color: var(--text-secondary); text-align: left; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ssh-line:hover, .ssh-line:focus-visible { background: var(--bg-hover); color: var(--text-primary); }
+  .ssh-line.chosen { background: var(--bg-hover); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border-hover); }
+  .ssh-none { padding: 5px 8px; font-size: 11px; color: var(--text-muted); }
   .rh-main { flex: 1; min-width: 0; overflow-y: auto; padding: 26px 32px; display: flex; flex-direction: column; gap: 20px; }
   .rh-title { display: flex; align-items: center; gap: 12px; }
   .rh-title h2 { margin: 0; font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; }

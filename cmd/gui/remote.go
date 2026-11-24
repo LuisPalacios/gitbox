@@ -798,20 +798,27 @@ func (a *App) ListRemotes() RemotesDTO {
 	return out
 }
 
-// ListSSHAliases suggests the Host aliases of this computer's ssh
-// configuration that are not remotes yet, for the add form of the Remote
-// hosts window (#330). It never fails: no configuration means no
+// SSHHostDTO is one Host line of this computer's ssh configuration: the
+// alias that adding it uses, and every name on the line as written (#330).
+type SSHHostDTO struct {
+	Alias string   `json:"alias"`
+	Names []string `json:"names"`
+}
+
+// ListSSHHosts suggests the Host lines of this computer's ssh configuration
+// whose alias is not a remote yet, one per line, for the add form of the
+// Remote hosts window (#330). It never fails: no configuration means no
 // suggestions.
-func (a *App) ListSSHAliases() []string {
-	out := []string{}
+func (a *App) ListSSHHosts() []SSHHostDTO {
+	out := []SSHHostDTO{}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return out
 	}
 	added := a.freshPrefs().Remotes
-	for _, alias := range remote.ConfigAliases(home) {
-		if _, dup := findRemote(added, alias); !dup {
-			out = append(out, alias)
+	for _, h := range remote.ConfigHosts(home) {
+		if _, dup := findRemote(added, h.Alias); !dup {
+			out = append(out, SSHHostDTO{Alias: h.Alias, Names: h.Names})
 		}
 	}
 	return out

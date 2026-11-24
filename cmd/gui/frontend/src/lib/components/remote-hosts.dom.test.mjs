@@ -88,7 +88,10 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   const { RemoteHostsWindow, render, screen, fireEvent, waitFor, within } = ui
   let uninstalls = 0
   const native = bridge(ui, {
-    ListSSHAliases: async () => ['build-box'],
+    ListSSHHosts: async () => [
+      { alias: 'build-box', names: ['build-box', 'build-box.example.org', '192.0.2.10'] },
+      { alias: 'nas-backup', names: ['nas-backup'] },
+    ],
     ConnectRemote: ok, ShowRemoteLog: ok, SetRemoteEditor: ok, RemoveRemote: ok, AddRemote: ok,
     RemoteUninstall: async () => (++uninstalls === 1
       ? { needsConfirm: true, otherClients: 2, done: false, rootKept: false }
@@ -129,12 +132,34 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   await fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
   await waitFor(() => assert.deepEqual(called(native, 'RemoveRemote'), [['nas']]))
 
-  // A suggestion fills the alias; Add runs the usual check.
-  await fireEvent.click(screen.getByRole('button', { name: 'build-box' }))
+  // One line per Host entry, with every name on it; choosing it fills the
+  // first name. Add runs the usual check.
+  const sshList = within(screen.getByRole('list', { name: 'From your ssh configuration' }))
+  const line = sshList.getByRole('button', { name: 'build-box build-box.example.org 192.0.2.10' })
+  assert.equal(line.title, 'build-box build-box.example.org 192.0.2.10')
+  assert.equal(ui.window.getComputedStyle(line).whiteSpace, 'nowrap', 'a line never wraps')
+  await fireEvent.click(line)
   const alias = screen.getByRole('textbox', { name: 'ssh alias' })
   assert.equal(alias.value, 'build-box')
   await fireEvent.click(screen.getByRole('button', { name: 'Add' }))
   await waitFor(() => assert.deepEqual(called(native, 'AddRemote'), [['build-box', '']]))
+
+  // Typing completes inline and filters the lines; deleting never completes.
+  alias.value = 'na'
+  await fireEvent.input(alias, { inputType: 'insertText', data: 'a' })
+  assert.equal(alias.value, 'nas-backup')
+  assert.equal(alias.selectionStart, 2)
+  assert.equal(alias.selectionEnd, 'nas-backup'.length)
+  assert.deepEqual(sshList.getAllByRole('button').map((b) => b.textContent.trim()), ['nas-backup'])
+  await fireEvent.keyDown(alias, { key: 'Tab' })
+  assert.equal(alias.selectionStart, 'nas-backup'.length)
+  alias.value = 'nas-backu'
+  await fireEvent.input(alias, { inputType: 'deleteContentBackward' })
+  assert.equal(alias.value, 'nas-backu')
+  alias.value = 'zz'
+  await fireEvent.input(alias, { inputType: 'insertText', data: 'z' })
+  assert.equal(alias.value, 'zz')
+  assert.ok(sshList.getByText('No line of your ssh configuration matches.'))
   assert.deepEqual(native.unexpected, [])
 })
 

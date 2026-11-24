@@ -172,7 +172,7 @@ export function ListRemotes():Promise<main.RemotesDTO>;
 
 export function ListRoots():Promise<Array<main.RootDTO>>;
 
-export function ListSSHAliases():Promise<Array<string>>;
+export function ListSSHHosts():Promise<Array<main.SSHHostDTO>>;
 
 export function ListShells():Promise<Array<main.ShellInfo>>;
 

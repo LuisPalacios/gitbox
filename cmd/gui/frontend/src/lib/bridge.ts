@@ -6,7 +6,7 @@ import type { CredentialStepReport } from './types';
 import { ExportDiagnostics, GetScheduledTasks, PreviewDiagnostics, RunTask } from '../../wailsjs/go/main/App';
 import { ApplyRecipeImport, ExportRecipe, OpenRecipeImport, PreviewRecipeExport, PreviewRecipeImport } from '../../wailsjs/go/main/App';
 import { recipe } from '../../wailsjs/go/models';
-import { ListSSHAliases, OpenRemotesWindow, ShowLocalWindow, ShowRemoteLog } from '../../wailsjs/go/main/App';
+import { ListSSHHosts, OpenRemotesWindow, ShowLocalWindow, ShowRemoteLog } from '../../wailsjs/go/main/App';
 import { GetStartupSnapshot, GetConfig, GetCollapsed, SetCollapsed, GetConfigPath, GetAllStatus, RefreshStatus, CloneRepo, PreviewPullAll, PullAll, PullRepo, Discover, AddDiscoveredRepos, CredentialVerify, CredentialDelete, ReloadConfig, StopTrackingRepo, DeleteRepoFolder, AddAccount, SuggestAccountKey, DiscardAccount, UpdateAccount, RenameAccount, CredentialSetupGCM, CredentialStoreToken, CredentialSetupSSH, CredentialRegenerateSSH, CredentialSSHAgentReport, GetTokenGuide, AccountDeletionImpact, DeleteAccount, ChangeCredentialType, OpenAccountFolder, OpenAccountInApp, OpenAccountInAIHarness, OpenFileInEditor, OpenInExplorer, OpenInApp, OpenInAIHarness,  DetectEditors, RefreshAIHarnesses, IsFirstRun, GetConfigLoadError, AcknowledgeConfigError, RepairConfig, ListConfigBackups, RestoreFromBackup, PickFolder, InitRoot, ListRoots, AddRoot, RemoveRoot, SetDefaultRoot, GetAppVersion, GetOS, FetchRepo, FetchAllRepos, GetRepoDetail, GetIdentityProof, RepairRepoIdentity, OpenRepoConfigInEditor, GetLanguage, SetLanguage, GetPeriodicSync, SetPeriodicSync, GetViewMode, SetViewMode, GetUIMode, SetUIMode, SetShowPullPlan, SetTheme, ShowWindow, CheckGlobalIdentity, RemoveGlobalIdentity, IsGlobalGCMConfigNeeded, CheckGlobalGCMConfig, FixGlobalGCMConfig, CheckGlobalGitignore, InstallGlobalGitignore, RecommendedGlobalGitignoreBody, GetCheckGlobalGitignore, SetCheckGlobalGitignore, GetAutostart, SetAutostart, GetMirrorStatus, SetupMirrorRepo, AddMirrorGroup, DeleteMirrorGroup, AddMirrorRepo, DeleteMirrorRepo, CheckMirrorCredentials, ListRemoteRepos, DiscoverMirrors, ApplyDiscoveredMirrors, ListAccountOrgs, CreateNewRepo, IsPositionOnScreen, ApplyUpdate, PreviewSweep, ConfirmSweep, Reconcile, AdoptClones, IgnoreClone, GetPRSettings, SetPRBadgesEnabled, SetPRIncludeDrafts, GetPRsForRepo, RefreshAllPRs, SetRepoContainer, SetRepoWorkspace, RepoWorkspaceFiles, GetNestedScanDepth, SetNestedScanDepth, ScanFolderForClones, AddDiscoveredReposToFolder, RepoNesting, DoctorRun, DoctorPrecheck, ListTerminalApps, ListShells, ListTerminalProfiles, OpenProfile, OpenAccountProfile, SaveTerminalProfilesDTO, RedetectProfiles, MissingModernTerminal, GetWindowMode, OpenTerminalsManagerWindow, RemoteInfo, RemoteLog, RemoteDisconnect, RemoteReconnect, RemoteReinstall, RemoteUninstall, RemoteRunDoctor, ListRemotes, ValidateRemotePath, SetRemoteEditor, AddRemote, RemoveRemote, ConnectRemote } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { createEventRouter } from './events';
@@ -198,7 +198,7 @@ const calls = {
   openRemotesWindow: (): Promise<RemoteResult> => OpenRemotesWindow() as Promise<RemoteResult>,
   showLocalWindow: (): Promise<RemoteResult> => ShowLocalWindow() as Promise<RemoteResult>,
   showRemoteLog: (alias: string): Promise<RemoteResult> => ShowRemoteLog(alias) as Promise<RemoteResult>,
-  listSSHAliases: (): Promise<string[]> => ListSSHAliases() as Promise<string[]>,
+  listSSHHosts: (): Promise<SSHHost[]> => ListSSHHosts() as Promise<SSHHost[]>,
 };
 
 // remoteWindow is set once a remote window connects (#240): it refuses the
@@ -306,6 +306,13 @@ export interface RemotePathDTO {
   isDir: boolean;
   writable: boolean;
   error?: string;
+}
+
+// One Host line of this computer's ssh configuration (#330): the alias
+// adding it uses, and every name on the line as written.
+export interface SSHHost {
+  alias: string;
+  names: string[];
 }
 
 export interface RemotesList {

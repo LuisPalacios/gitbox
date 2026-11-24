@@ -1969,6 +1969,20 @@ export namespace main {
 	        this.identitiesOnly = source["identitiesOnly"];
 	    }
 	}
+	export class SSHHostDTO {
+	    alias: string;
+	    names: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SSHHostDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.alias = source["alias"];
+	        this.names = source["names"];
+	    }
+	}
 	export class ScheduledTaskDTO {
 	    name: string;
 	    nextAt: number;

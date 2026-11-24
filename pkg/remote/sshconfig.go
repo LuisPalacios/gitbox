@@ -9,20 +9,30 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 )
 
-// The limits of ConfigAliases. OpenSSH stops at the same Include depth.
+// The limits of ConfigHosts. OpenSSH stops at the same Include depth.
 const (
 	maxIncludeDepth = 16
 	maxConfigFiles  = 64
 	maxConfigBytes  = 256 << 10
 )
 
-// ConfigAliases returns the concrete Host aliases of the ssh configuration
-// under home (home/.ssh/config and the files it includes), in file order and
-// without duplicates, to suggest them when a remote is added (#330). It
-// leaves out patterns (*, ?, negations) and names a remote cannot use. It
-// only reads: a missing, unreadable or oversized file contributes nothing,
-// and no error reaches the caller. ssh itself still resolves the alias.
-func ConfigAliases(home string) []string {
+// ConfigHost is one Host line of the ssh configuration.
+type ConfigHost struct {
+	// Alias is the first name on the line, the one adding it uses.
+	Alias string
+	// Names is every name and pattern on the line, as written.
+	Names []string
+}
+
+// ConfigHosts returns the Host lines of the ssh configuration under home
+// (home/.ssh/config and the files it includes), one entry per line in file
+// order, to suggest them when a remote is added (#330). Its first name is
+// the alias: a line counts when that name is concrete (no *, ? or negation)
+// and a valid remote alias, and a later line with the same alias is left
+// out. It only reads: a missing, unreadable or oversized file
+// contributes nothing, and no error reaches the caller. ssh itself still
+// resolves the alias.
+func ConfigHosts(home string) []ConfigHost {
 	if home == "" {
 		return nil
 	}
@@ -34,7 +44,7 @@ func ConfigAliases(home string) []string {
 
 type aliasReader struct {
 	home, sshDir string
-	out          []string
+	out          []ConfigHost
 	seen, files  map[string]bool
 }
 
@@ -55,9 +65,7 @@ func (r *aliasReader) read(path string, depth int) {
 		key, args := configLine(line)
 		switch strings.ToLower(key) {
 		case "host":
-			for _, a := range args {
-				r.add(a)
-			}
+			r.add(args)
 		case "include":
 			for _, a := range args {
 				r.include(a, depth)
@@ -84,12 +92,16 @@ func (r *aliasReader) include(pattern string, depth int) {
 	}
 }
 
-func (r *aliasReader) add(alias string) {
+func (r *aliasReader) add(names []string) {
+	if len(names) == 0 {
+		return
+	}
+	alias := names[0]
 	if strings.ContainsAny(alias, "*?!") || !config.ValidRemoteAlias(alias) || r.seen[alias] {
 		return
 	}
 	r.seen[alias] = true
-	r.out = append(r.out, alias)
+	r.out = append(r.out, ConfigHost{Alias: alias, Names: names})
 }
 
 // readConfigFile returns the text of a regular file of at most

@@ -330,8 +330,8 @@ export function ListRoots() {
   return window['go']['main']['App']['ListRoots']();
 }
 
-export function ListSSHAliases() {
-  return window['go']['main']['App']['ListSSHAliases']();
+export function ListSSHHosts() {
+  return window['go']['main']['App']['ListSSHHosts']();
 }
 
 export function ListShells() {
