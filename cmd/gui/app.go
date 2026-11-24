@@ -2248,6 +2248,11 @@ func (a *App) updateAccountLocal(req UpdateAccountRequest) error {
 		return fmt.Errorf("account %q not found", req.Key)
 	}
 
+	if acct.CredentialTransition != nil {
+		a.mu.Unlock()
+		return ops.ErrCredentialTransitionPending
+	}
+
 	if req.Provider != "" {
 		acct.Provider = req.Provider
 	}
@@ -2271,40 +2276,9 @@ func (a *App) updateAccountLocal(req UpdateAccountRequest) error {
 	return nil
 }
 
-// RenameAccount renames an account key and migrates all related artifacts:
-// config references, source key + folder, stored tokens, SSH keys/config.
-// Existing clones are then reconfigured for the new key.
-func (a *App) RenameAccount(oldKey, newKey string) error { return a.be().RenameAccount(oldKey, newKey) }
-
-// renameAccountLocal is the local backend's RenameAccount.
-func (a *App) renameAccountLocal(oldKey, newKey string) error {
-	a.maintenanceMu.Lock()
-	defer a.maintenanceMu.Unlock()
-	a.invalidateCredential(oldKey)
-	a.invalidateCredential(newKey)
-	defer a.invalidateCredential(oldKey)
-	defer a.invalidateCredential(newKey)
-	a.mu.Lock()
-
-	if err := ops.RenameAccount(a.cfg, oldKey, newKey); err != nil {
-		a.mu.Unlock()
-		return err
-	}
-	if oldKey == newKey {
-		a.mu.Unlock()
-		return nil
-	}
-	if entry, ok := a.prs.cache[oldKey]; ok {
-		a.prs.cache[newKey] = entry
-		delete(a.prs.cache, oldKey)
-	}
-	if err := a.saveConfig(); err != nil {
-		a.mu.Unlock()
-		return err
-	}
-	a.mu.Unlock()
-	a.reconfigureClones(newKey)
-	return nil
+// RenameAccount changes an account's key and preserves its clone paths.
+func (a *App) RenameAccount(oldKey, newKey string) (ops.StepReport, error) {
+	return a.be().RenameAccount(oldKey, newKey)
 }
 
 // ─── Identity ────────────────────────────────────────────────
@@ -2537,6 +2511,9 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	if !ok {
 		return CredentialSetupResult{OK: false, Message: "Account not found"}
 	}
+	if acct.CredentialTransition != nil {
+		return CredentialSetupResult{OK: false, Message: userMsg(ops.ErrCredentialTransitionPending)}
+	}
 
 	// Ensure global git config has the GCM credential sections BEFORE
 	// any fill/approve — git needs to know the credential helper to store it.
@@ -2550,12 +2527,36 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 		return CredentialSetupResult{OK: false, Message: userText(fmt.Sprintf("Failed to repair global gitconfig: %v", fixErr))}
 	}
 
-	host := ops.HostnameFromURL(acct.URL)
+	realUsername, err := signInGCM(acct)
+	if err != nil {
+		return CredentialSetupResult{OK: false, Message: userMsg(err)}
+	}
+	if realUsername != acct.Username {
+		_, err := a.commitConfig(func(cfg *config.Config) error {
+			cur := cfg.Accounts[accountKey]
+			cur.Username = realUsername
+			return cfg.UpdateAccount(accountKey, cur)
+		})
+		if err != nil {
+			return CredentialSetupResult{OK: false, Message: userMsg(err)}
+		}
+	}
+	// Reconfigure existing clones to use the current credential type.
+	n := a.reconfigureClones(accountKey)
+	msg := fmt.Sprintf("GCM credential stored for %s@%s", realUsername, ops.HostnameFromURL(acct.URL))
+	if n > 0 {
+		msg += fmt.Sprintf("\n%d clone(s) reconfigured", n)
+	}
+	return CredentialSetupResult{OK: true, Message: msg}
+}
 
+// signInGCM prepares GCM's helper entry without changing the account.
+func signInGCM(acct config.Account) (string, error) {
+	host := ops.HostnameFromURL(acct.URL)
 	// Check if GCM already has a stored credential.
 	_, _, err := credential.ResolveGCMToken(acct.URL, acct.Username)
 	if err == nil {
-		return CredentialSetupResult{OK: true, Message: fmt.Sprintf("GCM credential already stored for %s@%s", acct.Username, host)}
+		return acct.Username, nil
 	}
 
 	// Trigger interactive git credential fill — GCM opens its sign-in window
@@ -2575,14 +2576,14 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	out := fill.Stdout
 	if err != nil {
 		if fillCtx.Err() != nil {
-			return CredentialSetupResult{OK: false, Message: gcmSignInTimeoutMessage(acct.Username, host)}
+			return "", errors.New(gcmSignInTimeoutMessage(acct.Username, host))
 		}
 		// What the helper printed is external text: scrub it like any error.
 		detail := userText(string(fill.Stderr))
 		if detail == "" {
 			detail = userMsg(err)
 		}
-		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("GCM authentication failed for %s@%s: %s", acct.Username, host, detail)}
+		return "", fmt.Errorf("GCM authentication failed for %s@%s: %s", acct.Username, host, detail)
 	}
 
 	// Parse the fill output — extract password and the actual username GCM used.
@@ -2598,17 +2599,7 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 		}
 	}
 	if !gotPassword {
-		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("GCM returned no credential for %s@%s", acct.Username, host)}
-	}
-
-	// If GCM returned a different username casing (e.g. "Jacopalas" vs "jacopalas"),
-	// update the account config so future lookups match.
-	if realUsername != acct.Username {
-		a.mu.Lock()
-		acct.Username = realUsername
-		_ = a.cfg.UpdateAccount(accountKey, acct)
-		_ = a.saveConfig()
-		a.mu.Unlock()
+		return "", fmt.Errorf("GCM returned no credential for %s@%s", acct.Username, host)
 	}
 
 	// Approve so git stores it persistently. Best-effort — modern GCM may
@@ -2620,16 +2611,10 @@ func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 
 	// Verify the credential was actually stored.
 	if _, _, err := credential.ResolveGCMToken(acct.URL, realUsername); err != nil {
-		return CredentialSetupResult{OK: false, Message: fmt.Sprintf("GCM authentication completed but credential was not stored for %s@%s. Try running: git credential approve manually.", realUsername, host)}
+		return "", fmt.Errorf("GCM authentication completed but credential was not stored for %s@%s. Try running: git credential approve manually", realUsername, host)
 	}
 
-	// Reconfigure existing clones to use the current credential type.
-	n := a.reconfigureClones(accountKey)
-	msg := fmt.Sprintf("GCM credential stored for %s@%s", realUsername, host)
-	if n > 0 {
-		msg += fmt.Sprintf("\n%d clone(s) reconfigured", n)
-	}
-	return CredentialSetupResult{OK: true, Message: msg}
+	return realUsername, nil
 }
 
 // CredentialStoreToken stores a PAT in the credential file for an account.
@@ -2650,6 +2635,10 @@ func (a *App) credentialStoreTokenLocal(accountKey, token string) CredentialSetu
 	if !ok {
 		return CredentialSetupResult{OK: false, Message: "Account not found"}
 	}
+	if acct.CredentialTransition != nil {
+		return CredentialSetupResult{OK: false, Message: userMsg(ops.ErrCredentialTransitionPending)}
+	}
+
 	if strings.TrimSpace(token) == "" {
 		return CredentialSetupResult{OK: false, Message: "Token cannot be empty"}
 	}
@@ -2723,6 +2712,9 @@ func (a *App) runSSHSetup(accountKey string, setup func(context.Context, *config
 
 	if !ok {
 		return CredentialSetupResult{OK: false, Message: "Account not found"}
+	}
+	if acct.CredentialTransition != nil {
+		return CredentialSetupResult{OK: false, Message: userMsg(ops.ErrCredentialTransitionPending)}
 	}
 
 	s, err := setup(context.Background(), cfg, accountKey)
@@ -2971,31 +2963,9 @@ func (a *App) deleteAccountLocal(accountKey string, removeFolders bool) ([]strin
 	return []string{}, nil
 }
 
-// ChangeCredentialType removes the account's current credential artifacts,
-// switches it to newType, and reconfigures existing clones.
-func (a *App) ChangeCredentialType(accountKey, newType string) error {
-	return a.be().ChangeCredentialType(accountKey, newType)
-}
-
-// changeCredentialTypeLocal is the local backend's ChangeCredentialType.
-func (a *App) changeCredentialTypeLocal(accountKey, newType string) error {
-	a.maintenanceMu.Lock()
-	defer a.maintenanceMu.Unlock()
-	a.invalidateCredential(accountKey)
-	defer a.invalidateCredential(accountKey)
-	a.mu.Lock()
-
-	if err := ops.ChangeCredentialType(a.cfg, accountKey, newType); err != nil {
-		a.mu.Unlock()
-		return err
-	}
-	if err := a.saveConfig(); err != nil {
-		a.mu.Unlock()
-		return err
-	}
-	a.mu.Unlock()
-	a.reconfigureClones(accountKey)
-	return nil
+// ChangeCredentialType verifies a replacement before switching the account.
+func (a *App) ChangeCredentialType(accountKey, newType, token string) (ops.StepReport, error) {
+	return a.be().ChangeCredentialType(accountKey, newType, token)
 }
 
 // CredentialDelete removes the credential artifacts for an account and clears

@@ -73,7 +73,7 @@ func mutationRows(root, firstRoot string) []mutationRow {
 		{name: "UpdateAccount", call: func(b Backend, _ mutationSide) (any, error) {
 			return none(b.UpdateAccount(UpdateAccountRequest{Key: "third", Provider: "gitea", URL: "https://third.example.invalid", Username: "third", Name: "Third T", Email: "third@e"}))
 		}},
-		{name: "RenameAccount", call: func(b Backend, _ mutationSide) (any, error) { return none(b.RenameAccount("third", "fourth")) }},
+		{name: "RenameAccount", call: func(b Backend, _ mutationSide) (any, error) { return b.RenameAccount("third", "fourth") }},
 		{name: "AddMirrorGroup", call: func(b Backend, _ mutationSide) (any, error) { return none(b.AddMirrorGroup("m2", "acct", "fourth")) }},
 		{name: "AddMirrorRepo", call: func(b Backend, _ mutationSide) (any, error) {
 			return none(b.AddMirrorRepo("m2", "org/repo", "push", "src"))
@@ -139,7 +139,7 @@ func mutationRows(root, firstRoot string) []mutationRow {
 		{name: "CredentialStoreToken missing account", call: func(b Backend, _ mutationSide) (any, error) {
 			return b.CredentialStoreToken("nobody", "contract-store-token"), nil
 		}},
-		{name: "ChangeCredentialType", call: func(b Backend, _ mutationSide) (any, error) { return none(b.ChangeCredentialType("acct", "token")) }},
+		{name: "ChangeCredentialType", call: func(b Backend, _ mutationSide) (any, error) { return b.ChangeCredentialType("other", "token", "") }},
 		{name: "CredentialDelete", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialDelete("acct"), nil }},
 		{name: "CredentialDelete again", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialDelete("acct"), nil }},
 		// The SSH keys (#244), on an account whose host does not resolve, so

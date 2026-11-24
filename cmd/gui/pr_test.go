@@ -37,7 +37,7 @@ func prTestApp(t *testing.T, count int, lister prListerFunc) (*App, *recordingSi
 	}
 	for i := range count {
 		key := fmt.Sprintf("account-%d", i)
-		a.cfg.Accounts[key] = config.Account{Provider: "github", URL: "https://example.invalid", Username: key, DefaultCredentialType: "token"}
+		a.cfg.Accounts[key] = config.Account{Provider: "github", URL: "https://example.invalid", Username: key, Name: key, Email: key + "@example.invalid", DefaultCredentialType: "token"}
 		a.cfg.Sources[key] = config.Source{Account: key, Repos: map[string]config.Repo{"org/repo": {}}}
 	}
 	return a, events
@@ -162,8 +162,8 @@ func TestPRRefreshRenameTransfersCacheAndDropsOldFlight(t *testing.T) {
 		if len(started) != 2 {
 			t.Fatal("second request is not in flight")
 		}
-		if err := a.RenameAccount("account-0", "account-new"); err != nil {
-			t.Fatal(err)
+		if report, err := a.RenameAccount("account-0", "account-new"); err != nil || !report.OK {
+			t.Fatalf("rename: %+v (%v)", report, err)
 		}
 		close(release)
 		synctest.Wait()

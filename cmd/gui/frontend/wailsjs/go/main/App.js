@@ -62,8 +62,8 @@ export function BeginStatus(arg1) {
   return window['go']['main']['App']['BeginStatus'](arg1);
 }
 
-export function ChangeCredentialType(arg1, arg2) {
-  return window['go']['main']['App']['ChangeCredentialType'](arg1, arg2);
+export function ChangeCredentialType(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ChangeCredentialType'](arg1, arg2, arg3);
 }
 
 export function CheckGlobalGCMConfig() {

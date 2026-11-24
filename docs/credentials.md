@@ -170,15 +170,13 @@ Gitbox suggests changing token scopes when the provider signals a missing permis
 
 ## Changing credentials
 
-You can switch an account's credential type at any time. When you change the type:
+I use **Change credential…** to select the replacement. Gitbox prepares and verifies it with the provider before saving the new method, updates the existing clones, and then removes unused local artifacts from the old method. If I switch to SSH, I add the displayed public key at the provider and click **Retry** to verify it and complete the switch.
 
-- Gitbox removes the old credential and its artifacts (tokens, keys, config entries).
-- It sets up the new credential type.
-- It reconfigures every existing clone to use the new credential.
+If preparation, verification or the account save fails, Gitbox keeps the previous method active. Both credentials can be usable from verification until cleanup. If Gitbox cannot update a clone or remove an old artifact, the dialog names the failed step. I resolve the problem and click **Retry**. I can reopen the account dialog after restarting Gitbox to resume a saved change. Any clone configured to use the old method keeps the credential it still needs.
 
-You don't need to re-clone anything.
+Changing an account key in **Edit account** preserves the clone folders. Gitbox prepares copies of the account's managed credentials and changes the account key before updating clones and retiring the old copies. Custom SSH identities stay in place. If the rename stops partway through, I reopen **Edit account** and retry the pending rename.
 
-Gitbox also repairs a clone's identity, remote and credential settings before each fetch. If a git include keeps overriding them, it warns and skips that clone's fetch.
+Gitbox also repairs the identity, remote and credential settings of a clone before each fetch. If a Git include still overrides them, Gitbox warns and skips the fetch for that clone.
 
 ## Fetch remotes
 
@@ -233,7 +231,7 @@ Gitbox compares SHA-256 fingerprints only: those `ssh-add -l` lists on the host 
 
 ### Switching a GCM account to a token
 
-An account that the host's `gitbox.json` already sets to GCM shows **Not supported on remote hosts** in the Change Credential modal, with the reason for the host's system and a **Switch to token** button. The button changes the account to a token and shows the token steps; you paste the token and click **Store token**. A new account on a remote host starts with a token, and onboarding connects with one.
+An account that the host's `gitbox.json` already sets to GCM shows **Not supported on remote hosts** in the Change Credential modal, with the reason for the host's system and a **Switch to token** button. The button opens the token steps. Paste the token and click **Store token** to verify it and change the account. A new account on a remote host starts with a token, and onboarding connects with one.
 
 ## Troubleshooting
 

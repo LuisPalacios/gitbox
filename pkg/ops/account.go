@@ -73,6 +73,9 @@ func SuggestAccountKey(cfg *config.Config, provider, username string) string {
 // be added right away. An empty DefaultCredentialType becomes "gcm", and the
 // credential sub-object for that type is filled in.
 func AddAccount(cfg *config.Config, key string, acct config.Account) error {
+	if reservedCredentialKey(cfg, key) {
+		return ErrCredentialTransitionPending
+	}
 	if acct.DefaultCredentialType == "" {
 		acct.DefaultCredentialType = "gcm"
 	}
@@ -95,8 +98,10 @@ func AddAccount(cfg *config.Config, key string, acct config.Account) error {
 // source folder may predate the account and hold the user's files. It
 // refuses once any of the account's sources has repos.
 func DiscardAccount(cfg *config.Config, accountKey string) error {
-	if _, ok := cfg.Accounts[accountKey]; !ok {
+	if acct, ok := cfg.Accounts[accountKey]; !ok {
 		return fmt.Errorf("account %q %w", accountKey, config.ErrNotFound)
+	} else if acct.CredentialTransition != nil {
+		return ErrCredentialTransitionPending
 	}
 	for sourceKey, src := range cfg.Sources {
 		if src.Account == accountKey && len(src.Repos) > 0 {
@@ -105,86 +110,6 @@ func DiscardAccount(cfg *config.Config, accountKey string) error {
 	}
 	_, err := cfg.CascadeDeleteAccount(accountKey)
 	return err
-}
-
-// RenameAccount renames an account key and migrates everything tied to it:
-// stored tokens, SSH key files and ~/.ssh/config entry, the source of the
-// same key and its default on-disk folder, and every config reference.
-// Run ReconfigureClones(cfg, newKey) after saving so existing clones pick up
-// the new SSH alias and credential-store path.
-func RenameAccount(cfg *config.Config, oldKey, newKey string) error {
-	if oldKey == newKey {
-		return nil
-	}
-	if err := ValidateAccountKey(newKey); err != nil {
-		return err
-	}
-	acct, ok := cfg.Accounts[oldKey]
-	if !ok {
-		return fmt.Errorf("account %q not found", oldKey)
-	}
-	if _, exists := cfg.Accounts[newKey]; exists {
-		return fmt.Errorf("account %q already exists", newKey)
-	}
-
-	// Move the folder first: it is the step most likely to fail (on Windows
-	// any process working inside it blocks the rename), and nothing else
-	// has changed yet, so a failure leaves config, credentials and disk
-	// consistent.
-	renameSource := false
-	if src, srcExists := cfg.Sources[oldKey]; srcExists {
-		if _, conflict := cfg.Sources[newKey]; !conflict {
-			renameSource = true
-			if src.Folder == "" {
-				if err := moveSourceFolder(cfg, oldKey, newKey); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	// Any credential type may carry a stored token (token accounts as the
-	// primary credential, SSH/GCM accounts as the companion API PAT).
-	migrateStoredToken(oldKey, newKey, acct)
-
-	if acct.DefaultCredentialType == "ssh" {
-		sshFolder := credential.SSHFolder(cfg)
-		newAlias := credential.SSHHostAlias(newKey)
-		oldKeyPath := credential.SSHKeyPath(sshFolder, oldKey)
-		newKeyPath := credential.SSHKeyPath(sshFolder, newKey)
-
-		// Missing key files are fine: the account may not be set up yet.
-		_ = os.Rename(oldKeyPath, newKeyPath)
-		_ = os.Rename(oldKeyPath+".pub", newKeyPath+".pub")
-
-		_ = credential.RemoveSSHConfigEntry(sshFolder, credential.SSHHostAlias(oldKey))
-		hostname := HostnameFromURL(acct.URL)
-		if acct.SSH != nil && acct.SSH.Hostname != "" {
-			hostname = acct.SSH.Hostname
-		}
-		_ = credential.WriteSSHConfigEntry(sshFolder, credential.SSHConfigEntryOpts{
-			Host:     newAlias,
-			Hostname: hostname,
-			KeyFile:  newKeyPath,
-			Username: acct.Username,
-			Name:     acct.Name,
-			Email:    acct.Email,
-			URL:      acct.URL,
-		})
-
-		if acct.SSH != nil {
-			// A new value, not a write through the shared pointer (#173).
-			ssh := *acct.SSH
-			ssh.Host = newAlias
-			acct.SSH = &ssh
-			cfg.Accounts[oldKey] = acct
-		}
-	}
-
-	if renameSource {
-		_ = cfg.RenameSource(oldKey, newKey)
-	}
-	return cfg.RenameAccount(oldKey, newKey)
 }
 
 // sourceRoots returns every root a source uses, tilde-expanded and deduped:
@@ -200,39 +125,6 @@ func sourceRoots(cfg *config.Config, sourceKey string) []string {
 	return roots
 }
 
-// moveSourceFolder renames <root>/<oldKey> to <root>/<newKey>, the default
-// on-disk folder of a source, in every root the source uses. A missing old
-// folder (nothing cloned there yet) is fine. Every target is checked before
-// anything moves, and a failed rename puts back the ones already done.
-func moveSourceFolder(cfg *config.Config, oldKey, newKey string) error {
-	type move struct{ from, to string }
-	var moves []move
-	for _, root := range sourceRoots(cfg, oldKey) {
-		oldPath := filepath.Join(root, oldKey)
-		newPath := filepath.Join(root, newKey)
-		if _, err := os.Stat(oldPath); os.IsNotExist(err) {
-			continue
-		}
-		// Windows and default macOS filesystems are case-insensitive: a
-		// case-only rename makes newPath "exist" as the old folder itself.
-		if !strings.EqualFold(oldPath, newPath) {
-			if _, err := os.Stat(newPath); err == nil {
-				return fmt.Errorf("cannot rename folder %s: %s already exists", oldPath, newPath)
-			}
-		}
-		moves = append(moves, move{oldPath, newPath})
-	}
-	for i, m := range moves {
-		if err := os.Rename(m.from, m.to); err != nil {
-			for _, done := range moves[:i] {
-				_ = os.Rename(done.to, done.from)
-			}
-			return fmt.Errorf("cannot rename folder %s to %s: %w (close any terminal, editor or program working inside it and try again)", m.from, m.to, err)
-		}
-	}
-	return nil
-}
-
 // DeleteAccount removes the account, its credentials and the config entries
 // that depend on it. It leaves clones in place unless removeFolders is set.
 // When a folder cannot be deleted, the account and its credentials stay so
@@ -241,6 +133,9 @@ func DeleteAccount(cfg *config.Config, accountKey string, removeFolders bool) (r
 	if _, ok := cfg.Accounts[accountKey]; !ok {
 		_, err := cfg.CascadeDeleteAccount(accountKey)
 		return nil, []error{err}
+	}
+	if cfg.Accounts[accountKey].CredentialTransition != nil {
+		return nil, []error{ErrCredentialTransitionPending}
 	}
 	impact := cfg.AccountDeletionImpact(accountKey)
 	if removeFolders {
@@ -535,18 +430,6 @@ func ReconfigureClonesWith(cfg *config.Config, accountKey string, repair func(*c
 		}
 	}
 	return reports
-}
-
-// migrateStoredToken moves a stored token from oldKey to newKey.
-func migrateStoredToken(oldKey, newKey string, acct config.Account) {
-	tok, err := credential.GetToken(oldKey)
-	if err != nil || tok == "" {
-		return
-	}
-	if err := credential.StoreTokenWithAccount(newKey, tok, acct); err != nil {
-		return
-	}
-	_ = credential.DeleteToken(oldKey)
 }
 
 // HostnameFromURL extracts the hostname from a provider URL. A value without

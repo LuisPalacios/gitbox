@@ -21,6 +21,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/ops"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
@@ -323,7 +324,7 @@ func requestBoundHandlers(a *App) map[string]rpc.Handler {
 // secretParams marks the one parameter that carries a secret: the token of
 // CredentialStoreToken (#242). It travels from the window to the host once,
 // in that request, and neither end logs it or lets it back into an answer.
-var secretParams = rpc.SecretParams{"CredentialStoreToken": {1}}
+var secretParams = rpc.SecretParams{"CredentialStoreToken": {1}, "ChangeCredentialType": {2}}
 
 // hostCredentialHandlers keep GCM off a host (#242). Its sign-in runs git
 // credential fill with a browser or a window on the machine that runs it,
@@ -337,11 +338,11 @@ func hostCredentialHandlers(a *App) map[string]rpc.Handler {
 		"CredentialSetupGCM": rpc.Func(func(accountKey string) (CredentialSetupResult, error) {
 			return CredentialSetupResult{}, gcmOnHost()
 		}),
-		"ChangeCredentialType": rpc.Func(func(accountKey, newType string) error {
+		"ChangeCredentialType": rpc.Func(func(accountKey, newType, token string) (ops.StepReport, error) {
 			if strings.EqualFold(strings.TrimSpace(newType), "gcm") {
-				return gcmOnHost()
+				return ops.StepReport{}, gcmOnHost()
 			}
-			return b.ChangeCredentialType(accountKey, newType)
+			return b.ChangeCredentialType(accountKey, newType, token)
 		}),
 	}
 }

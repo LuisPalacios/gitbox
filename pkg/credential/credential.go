@@ -121,24 +121,32 @@ func EnvVarName(accountKey string) string {
 //
 // Returns the token string and the source description, or an error.
 func ResolveToken(acct config.Account, accountKey string) (token, source string, err error) {
-	// 1. Account-specific env var.
-	envName := EnvVarName(accountKey)
-	if val := os.Getenv(envName); val != "" {
-		return val, fmt.Sprintf("environment variable %s", envName), nil
+	if token, source, ok := EnvironmentToken(accountKey); ok {
+		return token, source, nil
 	}
-
-	// 2. Generic fallback env var.
-	if val := os.Getenv("GIT_TOKEN"); val != "" {
-		return val, "environment variable GIT_TOKEN", nil
-	}
-
 	// 3. Credential file.
 	tok, err := GetToken(accountKey)
 	if err != nil {
 		return "", "", fmt.Errorf("token not found for account %q: checked env var %s, GIT_TOKEN, and credential file",
-			accountKey, envName)
+			accountKey, EnvVarName(accountKey))
 	}
 	return tok, "credential file", nil
+}
+
+// EnvironmentToken returns the account's effective environment override.
+func EnvironmentToken(accountKey string) (token, source string, ok bool) {
+	// 1. Account-specific env var.
+	envName := EnvVarName(accountKey)
+	if val := os.Getenv(envName); val != "" {
+		return val, fmt.Sprintf("environment variable %s", envName), true
+	}
+
+	// 2. Generic fallback env var.
+	if val := os.Getenv("GIT_TOKEN"); val != "" {
+		return val, "environment variable GIT_TOKEN", true
+	}
+
+	return "", "", false
 }
 
 // ResolveGCMToken extracts a stored credential from Git Credential Manager

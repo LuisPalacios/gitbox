@@ -36,6 +36,7 @@ export interface GCMConfig {
 }
 
 export interface Account {
+  credential_transition?: { previous_key?: string; rename_to?: string };
   provider: string;
   url: string;
   username: string;
@@ -502,4 +503,12 @@ export interface StartupSnapshot {
   serverOS: string;
   serverVersion?: string;
   remoteAlias?: string;
+}
+
+export interface CredentialStepReport {
+  ok: boolean;
+  steps: { name: string; ok: boolean; err?: string; repo?: string }[];
+  sshPublicKey?: string;
+  sshAddURL?: string;
+  sshVerified?: boolean;
 }

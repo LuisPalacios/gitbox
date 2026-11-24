@@ -301,16 +301,27 @@ type GCMGlobal struct {
 // The map key in Config.Accounts is the human-friendly account ID,
 // also used as the default first-level clone folder name.
 type Account struct {
-	Provider              string     `json:"provider"`
-	URL                   string     `json:"url"`
-	Username              string     `json:"username"`
-	Name                  string     `json:"name"`
-	Email                 string     `json:"email"`
-	DefaultCredentialType string     `json:"default_credential_type,omitempty"`
-	SSH                   *SSHConfig `json:"ssh,omitempty"`
-	GCM                   *GCMConfig `json:"gcm,omitempty"`
+	Provider              string                `json:"provider"`
+	URL                   string                `json:"url"`
+	Username              string                `json:"username"`
+	Name                  string                `json:"name"`
+	Email                 string                `json:"email"`
+	DefaultCredentialType string                `json:"default_credential_type,omitempty"`
+	SSH                   *SSHConfig            `json:"ssh,omitempty"`
+	GCM                   *GCMConfig            `json:"gcm,omitempty"`
+	CredentialTransition  *CredentialTransition `json:"credential_transition,omitempty"`
 
 	extra extraJSON
+}
+
+// CredentialTransition keeps the cleanup intent after the desired account
+// state is saved. It contains only artifact identifiers, never credentials.
+type CredentialTransition struct {
+	RenameTo     string `json:"rename_to,omitempty"`
+	PreviousKey  string `json:"previous_key,omitempty"`
+	PreviousType string `json:"previous_type,omitempty"`
+	StagedID     string `json:"staged_id,omitempty"`
+	ManagedSSH   bool   `json:"managed_ssh,omitempty"`
 }
 
 // SSHConfig holds SSH authentication settings for an account.

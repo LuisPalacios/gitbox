@@ -452,6 +452,18 @@
                         "enum": ["gcm", "ssh", "token"],
                         "description": "Default authentication method for repos in this account. Repos inherit this unless they override it. 'gcm' = Git Credential Manager (HTTPS), 'ssh' = SSH key pair, 'token' = Personal Access Token."
                     },
+                    "credential_transition": {
+                        "type": "object",
+                        "description": "Pending credential repair and retirement. Contains artifact identifiers only.",
+                        "additionalProperties": false,
+                        "properties": {
+                            "previous_key": {"type": "string"},
+                            "rename_to": {"type": "string"},
+                            "previous_type": {"type": "string", "enum": ["gcm", "ssh", "token"]},
+                            "staged_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+                            "managed_ssh": {"type": "boolean"}
+                        }
+                    },
                     "ssh": {
                         "type": "object",
                         "description": "SSH authentication configuration for this account.",

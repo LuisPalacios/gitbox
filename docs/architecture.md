@@ -48,7 +48,7 @@ Each credential type is **self-sufficient** for the account. Per-repo credential
 - **GCM** uses `helper = manager` with per-host `username` and `provider` scoped per repo, plus `credential.credentialStore`. GCM keeps its secrets in the OS credential store.
 - **SSH** only cancels helpers (auth goes through `~/.ssh/config`). Discovery needs an optional PAT, kept in the same credential file as a token account's.
 
-**Credential lifecycle:** switching type removes the old type's artifacts before configuring the new one, then reconfigures existing clones (remote URL and credential config). Renaming an account key migrates every artifact: config keys, the source folder, the credential file, SSH keys, and the SSH config alias.
+**Credential lifecycle.** Gitbox verifies the replacement before saving a credential-type change, reconfigures clones, and then retires unused artifacts. Account renames preserve clone paths and stage managed credential copies before changing references. The saved account records enough information to retry interrupted repair and cleanup.
 
 ### Config as local database
 

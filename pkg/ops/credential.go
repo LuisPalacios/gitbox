@@ -92,25 +92,6 @@ func rejectGCMCredential(host, username string) error {
 	return err
 }
 
-// ChangeCredentialType removes the account's current credential artifacts
-// and switches it to newType with default settings. Run ReconfigureClones
-// after saving so existing clones follow the new credential type.
-func ChangeCredentialType(cfg *config.Config, accountKey, newType string) error {
-	acct, ok := cfg.Accounts[accountKey]
-	if !ok {
-		return fmt.Errorf("account %q not found", accountKey)
-	}
-	switch newType {
-	case "gcm", "ssh", "token":
-	default:
-		return fmt.Errorf("unknown credential type %q", newType)
-	}
-
-	RemoveCredentialArtifacts(cfg, accountKey)
-	applyCredentialType(&acct, accountKey, newType)
-	return cfg.UpdateAccount(accountKey, acct)
-}
-
 // DeleteCredential removes the account's credential artifacts and clears its
 // credential configuration so it can be set up from scratch. Returns
 // messages describing what was removed and what the user still has to do.
@@ -118,6 +99,9 @@ func DeleteCredential(cfg *config.Config, accountKey string) ([]string, error) {
 	acct, ok := cfg.Accounts[accountKey]
 	if !ok {
 		return nil, fmt.Errorf("account %q not found", accountKey)
+	}
+	if acct.CredentialTransition != nil {
+		return nil, ErrCredentialTransitionPending
 	}
 	if acct.DefaultCredentialType == "" {
 		return []string{"No credential configured"}, nil

@@ -4,7 +4,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { bridge, events } from './bridge';
   import type { DoctorPrecheckDTO } from './bridge';
-  import type { DiscoverResult } from './types';
+  import type { CredentialStepReport, DiscoverResult } from './types';
   import { providerLabel, providerURLs } from './theme';
   import Logo from './Logo.svelte';
   import { remoteTextHost, t } from './i18n';
@@ -14,6 +14,7 @@
   import ErrorExplanation from './components/ErrorExplanation.svelte';
   import { accountIssue, caughtIssue, errorInfo } from './explain';
   import type { ErrorInfo } from './explain';
+  import CredentialSteps from './CredentialSteps.svelte';
   import FirstProject from './FirstProject.svelte';
 
   export let simple: boolean;
@@ -88,6 +89,9 @@
 
   let gcm: DoctorPrecheckDTO | null = null; // null while checking
   let useToken = false;
+  let switchingToToken = false;
+  let switchReport: CredentialStepReport | null = null;
+  let switchSaved = false;
   // 'form' → editing details; 'signing-in' → GCM browser flow running;
   // 'failed' → sign-in failed; 'token' → paste a token.
   let phase: 'form' | 'signing-in' | 'failed' | 'token' = 'form';
@@ -168,6 +172,9 @@
     }
     busy = true;
     try {
+      switchingToToken = false;
+      switchReport = null;
+      switchSaved = false;
       await createAccount(useToken ? 'token' : 'gcm');
     } catch (err) {
       connectProblem = caughtIssue(err);
@@ -209,7 +216,7 @@
   async function switchToToken() {
     busy = true;
     try {
-      await bridge.changeCredentialType(accountKey, 'token');
+      switchingToToken = true;
       useToken = true;
       await showTokenStep();
     } catch (err) {
@@ -238,7 +245,16 @@
     connectProblem = undefined;
     busy = true;
     try {
-      const res = await bridge.credentialStoreToken(accountKey, token.trim());
+      const res = switchingToToken
+        ? await bridge.changeCredentialType(accountKey, 'token', token.trim()).then(report => {
+          switchReport = report;
+          if (report.steps.some(step => step.name === 'save' && step.ok)) {
+            switchSaved = true;
+            token = '';
+          }
+          return { ok: report.ok, message: report.ok ? '' : $t('cred.transitionFailed') };
+        })
+        : await bridge.credentialStoreToken(accountKey, token.trim());
       if (res?.ok) {
         // Stored: the token leaves the window's memory (#163, #242).
         token = '';
@@ -514,8 +530,11 @@
           <p><a href={tokenURL} on:click|preventDefault={() => openExternal(tokenURL)}>{$t('onboard.tokenLink')}</a></p>
         {/if}
         {#if tokenScopes && connectProblem?.code !== 'provider.scope_denied'}<p class="ob-small">{$t('onboard.tokenScopes', { scopes: tokenScopes })}</p>{/if}
-        <label class="ob-label" for="ob-token">{$t('onboard.token')}</label>
-        <input class="ob-input ob-full" id="ob-token" type="password" bind:this={tokenInput} bind:value={token} />
+        {#if !switchSaved}
+          <label class="ob-label" for="ob-token">{$t('onboard.token')}</label>
+          <input class="ob-input ob-full" id="ob-token" type="password" bind:this={tokenInput} bind:value={token} />
+        {/if}
+        {#if switchReport}<CredentialSteps report={switchReport} />{/if}
         {#if connectError}<p class="ob-error">{connectError}</p>{/if}
         {#if connectProblem}
           <ErrorExplanation info={connectProblem} {simple} {busy} {accountKey} scopes={tokenScopes} actions={{
@@ -524,9 +543,9 @@
             token: tokenURL ? () => void openExternal(tokenURL) : undefined,
           }} />
         {/if}
-        <button class="ob-btn ob-primary ob-wide" on:click={saveToken} disabled={busy || !token.trim()}>{$t('onboard.tokenSave')}</button>
+        <button class="ob-btn ob-primary ob-wide" on:click={saveToken} disabled={busy || (!switchSaved && !token.trim())}>{$t(switchSaved ? 'cred.transitionRetry' : 'onboard.tokenSave')}</button>
         <div class="ob-links">
-          <button class="ob-link" on:click={changeDetails} disabled={busy}>{$t('onboard.changeDetails')}</button>
+          <button class="ob-link" on:click={changeDetails} disabled={busy || switchSaved}>{$t('onboard.changeDetails')}</button>
         </div>
       {/if}
 

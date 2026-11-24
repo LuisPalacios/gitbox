@@ -3,6 +3,7 @@ package credential
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -125,7 +126,7 @@ func FindSSHConfigEntry(sshFolder, host string) (bool, error) {
 			return true, nil
 		}
 	}
-	return false, nil
+	return false, scanner.Err()
 }
 
 // RemoveSSHConfigEntry removes a Host block (including preceding comment lines)
@@ -205,14 +206,21 @@ func containsWord(s, word string) bool {
 // ensuring full isolation from the user's ~/.ssh/config, and returns the
 // greeting message (e.g., "Hi MyUser!") or an error.
 func TestSSHConnectionContext(ctx context.Context, sshFolder, host string) (string, error) {
+	return testSSHConnection(ctx, sshFolder, host, nil)
+}
+
+// TestSSHIdentity checks a prepared identity without offering other agent keys.
+func TestSSHIdentity(ctx context.Context, sshFolder, host, keyFile string) (string, error) {
+	return testSSHConnection(ctx, sshFolder, host, []string{"-i", keyFile, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes"})
+}
+
+func testSSHConnection(ctx context.Context, sshFolder, host string, options []string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	configFile := filepath.Join(sshFolder, "config")
-	cmd := exec.CommandContext(ctx, "ssh", "-T",
-		"-F", configFile,
-		"-o", "ConnectTimeout=5",
-		"-o", "StrictHostKeyChecking=accept-new",
-		host)
+	args := []string{"-T", "-F", configFile, "-o", "ConnectTimeout=5", "-o", "StrictHostKeyChecking=accept-new"}
+	args = append(args, options...)
+	cmd := exec.CommandContext(ctx, "ssh", append(args, "--", host)...)
 	cmd.WaitDelay = time.Second
 	git.HideWindow(cmd)
 	out, err := cmd.CombinedOutput()
@@ -220,6 +228,15 @@ func TestSSHConnectionContext(ctx context.Context, sshFolder, host string) (stri
 		return "", fmt.Errorf("SSH connection failed: %w", ctx.Err())
 	}
 	output := strings.TrimSpace(string(out))
+
+	// A candidate must authenticate. SSH exits with 255 for transport,
+	// host-key, and authentication failures, sometimes with a long banner.
+	if len(options) > 0 && err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() == 255 || output == "" {
+			return "", fmt.Errorf("SSH credential could not authenticate")
+		}
+	}
 
 	// Many providers return exit code 1 with a greeting (e.g., GitHub: "Hi user!").
 	// We consider it a success if there's output and no connection error.

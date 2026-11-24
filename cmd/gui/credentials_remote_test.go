@@ -26,7 +26,7 @@ func TestHostRefusesGCM(t *testing.T) {
 	if res.Message == "" || !strings.Contains(res.Message, gcmStores[runtime.GOOS]) {
 		t.Errorf("the window's message %q does not name the store %q", res.Message, gcmStores[runtime.GOOS])
 	}
-	if err := link.Remote.ChangeCredentialType("acct", "gcm"); toUserError(err).Code != "gcm_unsupported_remote" {
+	if _, err := link.Remote.ChangeCredentialType("acct", "gcm", ""); toUserError(err).Code != "gcm_unsupported_remote" {
 		t.Errorf("ChangeCredentialType(gcm) = %v, want gcm_unsupported_remote", err)
 	}
 	if after := loadConfig(t, path).Accounts["acct"]; !reflect.DeepEqual(after, before) {

@@ -12,6 +12,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
 // isolate points every file gitbox and git might touch at a temp dir:
@@ -199,7 +200,7 @@ func TestRenameAccount_MigratesEverything(t *testing.T) {
 	}
 	clone := makeClone(t, cfg, "old", "alice/repo", "git@gitbox-old:alice/repo.git")
 
-	if err := RenameAccount(cfg, "old", "new"); err != nil {
+	if err := renameAccountInMemory(t, cfg, "old", "new"); err != nil {
 		t.Fatalf("RenameAccount: %v", err)
 	}
 
@@ -226,16 +227,10 @@ func TestRenameAccount_MigratesEverything(t *testing.T) {
 		t.Error("old token still present")
 	}
 
-	// The default source folder moved with the key.
-	movedClone := strings.Replace(clone, string(os.PathSeparator)+"old"+string(os.PathSeparator),
-		string(os.PathSeparator)+"new"+string(os.PathSeparator), 1)
-	if !git.IsRepo(movedClone) {
-		t.Fatalf("clone not found at %s", movedClone)
+	if !git.IsRepo(clone) {
+		t.Fatalf("clone not found at its original path: %s", clone)
 	}
-
-	// Reconfiguring after the rename points origin at the new SSH alias.
-	ReconfigureClones(cfg, "new")
-	if got := gitRun(t, movedClone, "remote", "get-url", "origin"); got != "git@gitbox-new:alice/repo.git" {
+	if got := gitRun(t, clone, "remote", "get-url", "origin"); got != "git@gitbox-new:alice/repo.git" {
 		t.Errorf("origin after reconfigure = %q", got)
 	}
 }
@@ -258,13 +253,10 @@ func TestRenameAccount_ReconfiguresClonesOfALoadedConfig(t *testing.T) {
 	clone := makeClone(t, cfg, "old", "alice/repo", "https://alice@github.com/alice/repo.git")
 	ReconfigureClones(cfg, "old")
 
-	if err := RenameAccount(cfg, "old", "new"); err != nil {
+	if err := renameAccountInMemory(t, cfg, "old", "new"); err != nil {
 		t.Fatalf("RenameAccount: %v", err)
 	}
-	ReconfigureClones(cfg, "new")
-	moved := strings.Replace(clone, string(os.PathSeparator)+"old"+string(os.PathSeparator),
-		string(os.PathSeparator)+"new"+string(os.PathSeparator), 1)
-	helpers := gitRun(t, moved, "config", "--local", "--get-all", "credential.helper")
+	helpers := gitRun(t, clone, "config", "--local", "--get-all", "credential.helper")
 	if want := credential.StoreHelper(credential.CredentialFilePath("new")); !strings.Contains(helpers, want) {
 		t.Errorf("credential.helper = %q, want it to contain %q", helpers, want)
 	}
@@ -278,41 +270,17 @@ func TestRenameAccount_Rejects(t *testing.T) {
 	if err := AddAccount(cfg, "b", testAccount("gcm")); err != nil {
 		t.Fatal(err)
 	}
-	if err := RenameAccount(cfg, "a", "b"); err == nil {
+	if err := renameAccountInMemory(t, cfg, "a", "b"); err == nil {
 		t.Error("expected error renaming onto an existing key")
 	}
-	if err := RenameAccount(cfg, "a", "bad key"); err == nil {
+	if err := renameAccountInMemory(t, cfg, "a", "bad key"); err == nil {
 		t.Error("expected error for an invalid key")
 	}
-	if err := RenameAccount(cfg, "missing", "c"); err == nil {
+	if err := renameAccountInMemory(t, cfg, "missing", "c"); err == nil {
 		t.Error("expected error for a missing account")
 	}
-	if err := RenameAccount(cfg, "a", "a"); err != nil {
+	if err := renameAccountInMemory(t, cfg, "a", "a"); err != nil {
 		t.Errorf("same-key rename should be a no-op, got %v", err)
-	}
-}
-
-func TestChangeCredentialType_TokenToSSH(t *testing.T) {
-	_, cfg := isolate(t)
-	if err := AddAccount(cfg, "gh", testAccount("token")); err != nil {
-		t.Fatal(err)
-	}
-	if err := credential.StoreToken("gh", "pat-xyz"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := ChangeCredentialType(cfg, "gh", "ssh"); err != nil {
-		t.Fatalf("ChangeCredentialType: %v", err)
-	}
-	acct := cfg.Accounts["gh"]
-	if acct.DefaultCredentialType != "ssh" || acct.SSH == nil || acct.GCM != nil {
-		t.Errorf("account after switch = %+v", acct)
-	}
-	if _, err := credential.GetToken("gh"); err == nil {
-		t.Error("token artifact survived the switch")
-	}
-	if err := ChangeCredentialType(cfg, "gh", "carrier-pigeon"); err == nil {
-		t.Error("expected error for an unknown credential type")
 	}
 }
 
@@ -599,62 +567,27 @@ func TestGCMProviderFor(t *testing.T) {
 
 // A failed folder move must abort the rename before anything else changes,
 // so config, credentials and disk stay consistent.
-func TestRenameAccount_FolderMoveFailureChangesNothing(t *testing.T) {
-	setup := func(t *testing.T) *config.Config {
-		t.Helper()
-		_, cfg := isolate(t)
-		if err := AddAccount(cfg, "old", testAccount("token")); err != nil {
-			t.Fatal(err)
-		}
-		if err := cfg.AddRepo("old", "alice/repo", config.Repo{}); err != nil {
-			t.Fatal(err)
-		}
-		if err := credential.StoreToken("old", "pat-123"); err != nil {
-			t.Fatal(err)
-		}
-		makeClone(t, cfg, "old", "alice/repo", "https://alice@github.com/alice/repo.git")
-		return cfg
+func TestRenameAccount_ExistingTargetFolderDoesNotMoveClones(t *testing.T) {
+	_, cfg := isolate(t)
+	if err := AddAccount(cfg, "old", testAccount("token")); err != nil {
+		t.Fatal(err)
 	}
-	assertUnchanged := func(t *testing.T, cfg *config.Config) {
-		t.Helper()
-		if _, ok := cfg.Accounts["old"]; !ok {
-			t.Error("account was renamed despite the failed folder move")
-		}
-		if _, ok := cfg.Sources["old"]; !ok {
-			t.Error("source was renamed despite the failed folder move")
-		}
-		if tok, err := credential.GetToken("old"); err != nil || tok != "pat-123" {
-			t.Errorf("token moved despite the failed folder move: %q, %v", tok, err)
-		}
+	if err := cfg.AddRepo("old", "alice/repo", config.Repo{}); err != nil {
+		t.Fatal(err)
 	}
-
-	t.Run("destination exists", func(t *testing.T) {
-		cfg := setup(t)
-		if err := os.MkdirAll(filepath.Join(cfg.Global.Roots[0], "new"), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		err := RenameAccount(cfg, "old", "new")
-		if err == nil || !strings.Contains(err.Error(), "already exists") {
-			t.Fatalf("err = %v, want an 'already exists' error", err)
-		}
-		assertUnchanged(t, cfg)
-	})
-
-	t.Run("folder in use", func(t *testing.T) {
-		if runtime.GOOS != "windows" {
-			t.Skip("only Windows blocks renaming a folder with open handles inside")
-		}
-		cfg := setup(t)
-		f, err := os.Open(filepath.Join(cfg.Global.Roots[0], "old", "alice", "repo", ".git", "HEAD"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer f.Close()
-		if err := RenameAccount(cfg, "old", "new"); err == nil {
-			t.Fatal("expected an error while a file inside the folder is open")
-		}
-		assertUnchanged(t, cfg)
-	})
+	if err := credential.StoreToken("old", "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	clone := makeClone(t, cfg, "old", "alice/repo", "https://alice@github.com/alice/repo.git")
+	if err := os.MkdirAll(filepath.Join(cfg.Global.Roots[0], "new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := renameAccountInMemory(t, cfg, "old", "new"); err != nil {
+		t.Fatal(err)
+	}
+	if got := status.RepoPath(cfg, "new", "alice/repo", cfg.Sources["new"].Repos["alice/repo"]); got != clone || !git.IsRepo(got) {
+		t.Fatalf("renamed account clone resolves to %q, want %q", got, clone)
+	}
 }
 
 func TestRenameAccount_NoFolderYet(t *testing.T) {
@@ -662,7 +595,7 @@ func TestRenameAccount_NoFolderYet(t *testing.T) {
 	if err := AddAccount(cfg, "old", testAccount("gcm")); err != nil {
 		t.Fatal(err)
 	}
-	if err := RenameAccount(cfg, "old", "new"); err != nil {
+	if err := renameAccountInMemory(t, cfg, "old", "new"); err != nil {
 		t.Fatalf("rename without a folder on disk: %v", err)
 	}
 	if _, ok := cfg.Sources["new"]; !ok {
@@ -670,8 +603,7 @@ func TestRenameAccount_NoFolderYet(t *testing.T) {
 	}
 }
 
-// A source with clones in two roots renames and deletes its folder in
-// both (#149).
+// An account rename keeps the clone paths in both roots (#149).
 func TestRenameAndDeleteAccount_AcrossRoots(t *testing.T) {
 	root, cfg := isolate(t)
 	second := filepath.Join(root, "git2")
@@ -690,14 +622,14 @@ func TestRenameAndDeleteAccount_AcrossRoots(t *testing.T) {
 		t.Fatalf("clone in the second root landed at %s", two)
 	}
 
-	if err := RenameAccount(cfg, "old", "new"); err != nil {
+	if err := renameAccountInMemory(t, cfg, "old", "new"); err != nil {
 		t.Fatal(err)
 	}
-	moved := []string{
-		filepath.Join(cfg.Global.Roots[0], "new", "alice", "one"),
-		filepath.Join(second, "new", "alice", "two"),
+	clones := []string{
+		filepath.Join(cfg.Global.Roots[0], "old", "alice", "one"),
+		filepath.Join(second, "old", "alice", "two"),
 	}
-	for _, p := range moved {
+	for _, p := range clones {
 		if !git.IsRepo(p) {
 			t.Errorf("%s is not a clone after the rename", p)
 		}
@@ -706,7 +638,7 @@ func TestRenameAndDeleteAccount_AcrossRoots(t *testing.T) {
 	if _, errs := DeleteAccount(cfg, "new", true); len(errs) != 0 {
 		t.Fatal(errs)
 	}
-	for _, clone := range moved {
+	for _, clone := range clones {
 		if _, err := os.Stat(clone); !os.IsNotExist(err) {
 			t.Errorf("%s survived the delete", clone)
 		}
@@ -769,7 +701,7 @@ func TestRenameAccount_PreservesStoreFormatWithoutClones(t *testing.T) {
 	if err := credential.StoreToken("old", "legacy-token"); err != nil {
 		t.Fatal(err)
 	}
-	if err := RenameAccount(cfg, "old", "new"); err != nil {
+	if err := renameAccountInMemory(t, cfg, "old", "new"); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(credential.CredentialFilePath("new"))

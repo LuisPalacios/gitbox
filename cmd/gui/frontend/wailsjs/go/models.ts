@@ -20,6 +20,26 @@ export namespace config {
 	        this.missing = source["missing"];
 	    }
 	}
+	export class CredentialTransition {
+	    rename_to?: string;
+	    previous_key?: string;
+	    previous_type?: string;
+	    staged_id?: string;
+	    managed_ssh?: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new CredentialTransition(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.rename_to = source["rename_to"];
+	        this.previous_key = source["previous_key"];
+	        this.previous_type = source["previous_type"];
+	        this.staged_id = source["staged_id"];
+	        this.managed_ssh = source["managed_ssh"];
+	    }
+	}
 	export class GCMConfig {
 	    provider?: string;
 	    useHttpPath: boolean;
@@ -59,6 +79,7 @@ export namespace config {
 	    default_credential_type?: string;
 	    ssh?: SSHConfig;
 	    gcm?: GCMConfig;
+	    credential_transition?: CredentialTransition;
 	
 	    static createFrom(source: any = {}) {
 	        return new Account(source);
@@ -74,6 +95,7 @@ export namespace config {
 	        this.default_credential_type = source["default_credential_type"];
 	        this.ssh = this.convertValues(source["ssh"], SSHConfig);
 	        this.gcm = this.convertValues(source["gcm"], GCMConfig);
+	        this.credential_transition = this.convertValues(source["credential_transition"], CredentialTransition);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -112,6 +134,7 @@ export namespace config {
 	        this.view = source["view"];
 	    }
 	}
+
 	export class EditorEntry {
 	    name: string;
 	    command: string;
@@ -2307,6 +2330,67 @@ export namespace main {
 	
 	
 
+
+}
+
+export namespace ops {
+
+	export class Step {
+	    name: string;
+	    ok: boolean;
+	    err?: string;
+	    repo?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new Step(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.ok = source["ok"];
+	        this.err = source["err"];
+	        this.repo = source["repo"];
+	    }
+	}
+	export class StepReport {
+	    ok: boolean;
+	    steps: Step[];
+	    sshPublicKey?: string;
+	    sshAddURL?: string;
+	    sshVerified?: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new StepReport(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.steps = this.convertValues(source["steps"], Step);
+	        this.sshPublicKey = source["sshPublicKey"];
+	        this.sshAddURL = source["sshAddURL"];
+	        this.sshVerified = source["sshVerified"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

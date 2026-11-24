@@ -10,6 +10,8 @@
   import { gcmOffered, gcmRemoteReasonKey } from '../gcmRemote';
   import { dismiss } from '../dismiss';
   import { openExternal } from '../external';
+  import CredentialSteps from '../CredentialSteps.svelte';
+  import type { CredentialStepReport } from '../types';
   import CredentialResult from '../CredentialResult.svelte';
   import SSHAgentNote from '../SSHAgentNote.svelte';
   import PrecheckBanner from '../PrecheckBanner.svelte';
@@ -45,6 +47,7 @@
 
   let credChangeModal: string | null = null; // account key
   let credChangeType = '';
+  let report: CredentialStepReport | null = null;
   let credDeleteBusy = false;
   let credSetupStarted = false;
   let credForceToken = false; // force PAT input (for mirror fix)
@@ -63,6 +66,7 @@
     focusDialog();
     credChangeModal = accountKey;
     credChangeType = currentType;
+    report = null;
     credForceToken = false;
     resetCredState();
     credDeleteBusy = false;
@@ -73,6 +77,7 @@
     focusDialog();
     credChangeModal = accountKey;
     credChangeType = 'token';
+    report = null;
     credForceToken = true;
     resetCredState();
     credDeleteBusy = false;
@@ -185,36 +190,49 @@
   }
 
   async function applyCredChange() {
-    if (!credChangeModal) return;
-    // Precheck: ensure the tools for the selected credential type are
-    // installed before we remove the old credential. Bails out early with
-    // the banner visible when something is missing, so the user can install
-    // first without losing their existing setup.
-    await runCredentialPrecheck(credChangeType);
-    if (credPrecheck && !credPrecheck.ok) {
-      return;
+    const key = credChangeModal;
+    if (!key) return;
+    const current = $accounts[key];
+    const pending = current?.credential_transition;
+    const switching = !!pending || credChangeType !== (current?.default_credential_type || '');
+    if (!pending) {
+      await runCredentialPrecheck(credChangeType);
+      if (credPrecheck && !credPrecheck.ok) return;
     }
     credSetupStarted = true;
+    if (credChangeType === 'token' && !pending && !credTokenGuide) {
+      await fetchTokenGuide(key);
+      return;
+    }
     credBusy = true;
     credResult = null;
+    report = null;
     try {
-      if (credChangeType === 'gcm' && !gcmOffered($remoteWindow)) throw new Error($t(gcmRemoteReasonKey(serverOS)));
-      await bridge.changeCredentialType(credChangeModal, credChangeType);
-      await reloadFromDisk();
-      if (credChangeType === 'gcm') {
-        credResult = await bridge.credentialSetupGCM(credChangeModal);
+      if (pending?.previous_key) {
+        report = await bridge.renameAccount(pending.previous_key, key);
+      } else if (pending?.rename_to) {
+        report = await bridge.renameAccount(key, pending.rename_to);
+      } else if (switching) {
+        if (credChangeType === 'gcm' && !gcmOffered($remoteWindow)) throw new Error($t(gcmRemoteReasonKey(serverOS)));
+        report = await bridge.changeCredentialType(key, credChangeType, credTokenInput.trim());
+        if (report.ok || report.steps.some(step => step.name === 'save' && step.ok)) credTokenInput = '';
+      } else if (credChangeType === 'gcm') {
+        credResult = await bridge.credentialSetupGCM(key);
       } else if (credChangeType === 'ssh') {
-        credResult = await bridge.credentialSetupSSH(credChangeModal);
+        credResult = await bridge.credentialSetupSSH(key);
       } else if (credChangeType === 'token') {
-        await fetchTokenGuide(credChangeModal);
-        credBusy = false;
-        return; // Wait for user to paste token.
+        await storeCredToken(key);
+      }
+      if (report) {
+        credResult = { ...report, message: $t(report.ok ? 'cred.transitionDone' : 'cred.transitionFailed') };
+        await reloadFromDisk();
       }
     } catch (err: any) {
       credResult = { ok: false, message: err?.message || String(err) };
+    } finally {
+      credBusy = false;
     }
-    credBusy = false;
-    await credPostSetup(credChangeModal);
+    if (credResult?.ok) await credPostSetup(key);
   }
 
   // switchToToken is the way out of a GCM account on a remote host (#242):
@@ -302,7 +320,7 @@
         <p class="cred-doc-link"><a href="https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md" on:click|preventDefault={() => openExternal('https://github.com/LuisPalacios/gitbox/blob/main/docs/credentials.md')}>{$t('cred.learnTypes')}</a></p>
         <div class="form-row">
           <label class="form-label" for="cc-type">{$t('cred.type')}</label>
-          <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credBusy}>
+          <select class="form-input" id="cc-type" bind:value={credChangeType} disabled={credBusy || !!currentAcct?.credential_transition}>
             <option value="gcm" translate="no" disabled={!gcmOffered($remoteWindow)}>{gcmOffered($remoteWindow) ? 'Git Credential Manager (GCM)' : $t('cred.gcmOptionRemote')}</option>
             <option value="ssh">SSH</option>
             <option value="token">{$t('onboard.token')}</option>
@@ -310,7 +328,7 @@
         </div>
 
         {#if !credResult && credChangeType !== (currentAcct?.default_credential_type || '') && currentAcct?.default_credential_type}
-          <p class="cred-change-warning">{$t(currentAcct?.default_credential_type === 'ssh' ? 'cred.changeWarnSsh' : currentAcct?.default_credential_type === 'token' ? 'cred.changeWarnToken' : currentAcct?.default_credential_type === 'gcm' ? 'cred.changeWarnGcm' : 'cred.changeWarn', { new: credChangeType.toUpperCase(), old: (currentAcct?.default_credential_type || '').toUpperCase() })}</p>
+          <p class="cred-change-warning">{$t('cred.changeWarn', { new: credChangeType.toUpperCase(), old: (currentAcct?.default_credential_type || '').toUpperCase() })}</p>
         {/if}
 
         {#if credPrecheck && !credPrecheck.ok}
@@ -319,7 +337,7 @@
         {/if}
         {/if}
 
-        {#if (credForceToken || credChangeType === 'token') && credTokenGuide && !credResult?.ok}
+        {#if (credForceToken || credChangeType === 'token') && credTokenGuide && !credResult?.ok && !currentAcct?.credential_transition}
           <p class="cred-step-desc">{$t('cred.tokenSteps')}</p>
           {#if credTokenScopes}
             <p class="cred-step-desc"><Rich key="cred.scopes" vars={{ scopes: credTokenScopes }} /></p>
@@ -335,24 +353,31 @@
           <div class="loading"><div class="spinner"></div><span>{$t('cred.settingUpCred')}</span></div>
         {/if}
 
+        {#if report}
+          <CredentialSteps {report} />
+        {/if}
+
         {#if credResult}
           <CredentialResult {credResult} {credBusy} {sshKeyCopied} {copySSHKey} accountKey={credChangeModal || ''} {simple}
-            verifySSHConnection={() => credChangeModal && verifySSHConnection(credChangeModal)}
-            regenerateSSHKey={() => credChangeModal && regenerateSSHKey(credChangeModal)} />
+            verifySSHConnection={() => report ? applyCredChange() : credChangeModal && verifySSHConnection(credChangeModal)}
+            regenerateSSHKey={() => credChangeModal && regenerateSSHKey(credChangeModal)} allowRegenerate={!report} />
         {/if}
 
       </div>
       <div class="modal-foot">
-        {#if currentAcct?.default_credential_type && !credResult && !credSetupStarted && credChangeType === (currentAcct?.default_credential_type || '')}
+        {#if currentAcct?.default_credential_type && !credResult && !credSetupStarted && !currentAcct.credential_transition && credChangeType === (currentAcct?.default_credential_type || '')}
           <button use:ro={'credentialDelete'} class="btn-delete cred-delete-btn" on:click={deleteCredential} disabled={credDeleteBusy || credBusy}>
             {credDeleteBusy ? $t('cred.deleting') : $t('cred.deleteCurrent', { type: (currentAcct?.default_credential_type || '').toUpperCase() })}
           </button>
         {/if}
-        {#if credResult && (credResult.ok || credChangeType !== 'token' || !credTokenGuide)}
+        {#if currentAcct?.credential_transition || (report && !report.ok && credChangeType !== 'token')}
+          <button class="btn-cancel" on:click={closeCredChange}>{$t('common.close')}</button>
+          <button use:ro={['renameAccount', 'changeCredentialType']} class="btn-add" on:click={applyCredChange} disabled={credBusy}>{$t('cred.transitionRetry')}</button>
+        {:else if credResult && (credResult.ok || credChangeType !== 'token' || !credTokenGuide)}
           <button class="btn-cancel" on:click={closeCredChange}>{credResult.ok ? $t('onboard.done') : $t('common.close')}</button>
         {:else if credChangeType === 'token' && credTokenGuide}
           {#if credTokenInput.trim()}
-            <button use:ro={'credentialStoreToken'} class="btn-add" on:click={() => credChangeModal && storeCredToken(credChangeModal)} disabled={credBusy}>
+            <button use:ro={['credentialStoreToken', 'changeCredentialType']} class="btn-add" on:click={() => credChangeModal && (credForceToken || currentAcct?.default_credential_type === 'token' ? storeCredToken(credChangeModal) : applyCredChange())} disabled={credBusy}>
               {credBusy ? $t('cred.storing') : $t('cred.storeToken')}
             </button>
           {:else}

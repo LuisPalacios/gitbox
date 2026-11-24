@@ -170,15 +170,13 @@ Gitbox sugiere cambiar los scopes del token cuando el proveedor indica que falta
 
 ## Cambiar credenciales
 
-Puedes cambiar el tipo de credencial de una cuenta en cualquier momento. Cuando cambias el tipo:
+Uso **Cambiar credencial…** para seleccionar el reemplazo. Gitbox lo prepara y lo verifica con el proveedor antes de guardar el nuevo método, actualiza los clones existentes y luego elimina los artefactos locales sin uso del método anterior. Si cambio a SSH, añado la clave pública que aparece en el proveedor y hago clic en **Reintentar** para verificarla y completar el cambio.
 
-- Gitbox elimina la credencial antigua y sus artefactos (tokens, claves, entradas de config).
-- Configura el nuevo tipo de credencial.
-- Reconfigura todos los clones existentes para que usen la nueva credencial.
+Si falla la preparación, la verificación o el guardado de la cuenta, Gitbox mantiene activo el método anterior. Las dos credenciales pueden funcionar desde la verificación hasta la limpieza. Si Gitbox no puede actualizar un clon o eliminar un artefacto antiguo, el diálogo indica qué paso falló. Resuelvo el problema y hago clic en **Reintentar**. Después de reiniciar Gitbox, puedo volver a abrir el diálogo de la cuenta para reanudar un cambio guardado. Cada clon configurado para usar el método anterior conserva la credencial que aún necesita.
 
-No hace falta volver a clonar nada.
+Cambiar la clave de una cuenta en **Editar cuenta** conserva las carpetas de los clones. Gitbox prepara copias de las credenciales que administra para la cuenta y cambia la clave de la cuenta antes de actualizar los clones y retirar las copias antiguas. Las identidades SSH personalizadas se quedan donde están. Si el cambio de clave se interrumpe, vuelvo a abrir **Editar cuenta** y reintento el cambio pendiente.
 
-Gitbox también repara la identidad, el remote y los ajustes de credencial de un clone antes de cada fetch. Si un include de git sigue sobrescribiéndolos, avisa y omite el fetch de ese clone.
+Gitbox también repara la identidad, el remoto y los ajustes de credencial de un clon antes de cada fetch. Si un include de Git sigue sobrescribiéndolos, Gitbox avisa y omite el fetch de ese clon.
 
 ## Fetch de remotos
 
@@ -233,7 +231,7 @@ Gitbox solo compara huellas SHA-256: las que lista `ssh-add -l` en el host y la 
 
 ### Cambiar una cuenta GCM a token
 
-Una cuenta que el `gitbox.json` del host ya tiene en GCM muestra **No disponible en hosts remotos** en el modal Cambiar credencial, con el motivo para el sistema del host y un botón **Cambiar a token**. El botón cambia la cuenta a token y muestra los pasos del token; pegas el token y haces clic en **Guardar token**. Una cuenta nueva en un host remoto empieza con token, y el onboarding se conecta con uno.
+Una cuenta que el `gitbox.json` del host ya tiene en GCM muestra **No disponible en hosts remotos** en el modal Cambiar credencial, con el motivo para el sistema del host y un botón **Cambiar a token**. El botón abre los pasos del token. Pega el token y haz clic en **Guardar token** para verificarlo y cambiar la cuenta. Una cuenta nueva en un host remoto empieza con token, y el onboarding se conecta con uno.
 
 ## Resolución de problemas
 
