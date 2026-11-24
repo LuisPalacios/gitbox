@@ -3,7 +3,7 @@
 // as a proxy and reports in one word what happened.
 //
 //	denied    the socket cannot be reached by this user
-//	refused   nothing listens there
+//	refused   nothing listens there, or another error, which follows
 //	closed    the daemon closed the connection without a word
 //	answered  the daemon spoke
 //	silent    the daemon said nothing and kept the connection
@@ -24,7 +24,7 @@ func main() {
 		if errors.Is(err, fs.ErrPermission) {
 			fmt.Println("denied")
 		} else {
-			fmt.Println("refused")
+			fmt.Println("refused", err)
 		}
 		return
 	}

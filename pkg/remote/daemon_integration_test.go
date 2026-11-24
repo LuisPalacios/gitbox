@@ -418,9 +418,14 @@ func TestSocketPermissions(t *testing.T) {
 	}
 	c.install(probe, "/tmp/sockprobe")
 	docker(t, "exec", c.id, "chmod", "755", "/tmp/sockprobe")
-	asGit := func() string { return docker(t, "exec", "-u", "git", c.id, "/tmp/sockprobe", sock) }
-	if got := asGit(); got != "denied" {
-		t.Errorf("another user reached the socket: %s", got)
+	probeAs := func() (word, said string) {
+		said = docker(t, "exec", "-u", "git", c.id, "/tmp/sockprobe", sock)
+		word, _, _ = strings.Cut(said, " ")
+		return word, said
+	}
+	if word, said := probeAs(); word != "denied" {
+		t.Logf("state folder %s, socket %s", c.sh("ls -ld "+q(state)), c.sh("ls -l "+q(sock)+" 2>&1 || true"))
+		t.Errorf("another user reached the socket: %s", said)
 	}
 
 	// Open every folder on the way and the socket itself: only the peer
@@ -431,13 +436,13 @@ func TestSocketPermissions(t *testing.T) {
 		saved[i] = c.mode(f)
 	}
 	c.sh("chmod 711 " + q(testHome) + " " + q(s.root) + " " + q(s.root+"/"+s.build) + " && chmod 755 " + q(state) + " && chmod 666 " + q(sock))
-	got := asGit()
+	got, said := probeAs()
 	for i, f := range folders {
 		c.sh("chmod " + saved[i] + " " + q(f))
 	}
 	c.sh("chmod 600 " + q(sock))
 	if got != "closed" {
-		t.Errorf("with the modes open, another user's connection was %s, want closed", got)
+		t.Errorf("with the modes open, another user's connection was %s, want closed", said)
 	}
 	logFile := s.root + "/logs/" + s.build + ".log"
 	eventually(t, "the refusal in the server log", func() bool {

@@ -310,7 +310,8 @@ func TestJournal_File(t *testing.T) {
 		srv.Emit("fetch:done", map[string]int{"n": i})
 		srv.Emit("fetch:start", i)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+	// Windows has no POSIX modes, and a Windows host runs no daemon.
+	if info, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Fatalf("events.log: %v, %v; want mode 0600", info, err)
 	}
 	f, err := os.Open(path)
