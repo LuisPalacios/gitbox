@@ -91,7 +91,7 @@ test('I show pending review text in Simple and both PR counts in Advanced', asyn
     }).body;
     assert.match(deletionFailed, /folder-delete-failure/);
     assert.match(deletionFailed, /Fixture folder could not be removed/);
-    assert.match(deletionFailed, /Stop tracking/);
+    assert.match(deletionFailed, /Stop showing owner\/project/);
     assert.doesNotMatch(deletionFailed, /Fix credential/);
   } finally {
     await server.close();

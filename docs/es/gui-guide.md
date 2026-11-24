@@ -214,7 +214,7 @@ La vista Requiere atención (Simple: **Te necesitan**), los detalles del clon, l
 | Servidor ocupado, inténtalo más tarde | Espero. Gitbox ofrece **Reintentar** cuando termina la espera indicada por el servidor. |
 | Cambios en el clon | Uso **Abrir en el editor** para revisar los cambios por los que Gitbox omitió la actualización. |
 | Las ramas necesitan una fusión | Uso **Abrir terminal** para revisar los historiales con mi herramienta Git. |
-| No se encuentra la copia en línea | Primero compruebo el acceso. Si el proveedor y la cuenta lo permiten, **Volver a añadir el repositorio en línea** abre un formulario para crear un repositorio en línea vacío. El clon se queda en el disco. Publico su historial por separado con mi herramienta Git. También puedo usar **Dejar de seguir** en el menú del clon para conservar la carpeta y quitar su entrada. |
+| No se encuentra la copia en línea | Primero compruebo el acceso. Si el proveedor y la cuenta lo permiten, **Volver a añadir el repositorio en línea** abre un formulario para crear un repositorio en línea vacío. El clon se queda en el disco. Publico su historial por separado con mi herramienta Git. También puedo usar **Dejar de mostrar este proyecto** en el menú del clon para conservar la carpeta y quitar su entrada. |
 | Unidad desconectada | Vuelvo a conectar la unidad o monto la carpeta. |
 | Algo ha fallado | En Avanzado puedo usar **Mostrar detalles** si hay un diagnóstico disponible. |
 
