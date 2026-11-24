@@ -220,7 +220,7 @@ type contractRow struct {
 	name       string
 	call       func(Backend) (any, error)
 	until      []string
-	terminal   func(recordedEvent) bool
+	terminal   func([]recordedEvent) bool
 	empty      string
 	concurrent []string
 	project    func(t *testing.T, events []contractEvent) any
@@ -233,12 +233,14 @@ func startupStatusContract(revision uint64) contractRow {
 	return contractRow{
 		name: "BeginStatus",
 		call: func(b Backend) (any, error) { return nil, b.BeginStatus(passID) },
-		terminal: func(e recordedEvent) bool {
-			if e.name != "status:batch" || len(e.args) != 1 {
-				return false
-			}
-			b, ok := e.args[0].(StatusBatch)
-			return ok && b.Done && b.PassID == passID && b.Revision == revision
+		terminal: func(events []recordedEvent) bool {
+			return slices.ContainsFunc(events, func(e recordedEvent) bool {
+				if e.name != "status:batch" || len(e.args) != 1 {
+					return false
+				}
+				b, ok := e.args[0].(StatusBatch)
+				return ok && b.Done && b.PassID == passID && b.Revision == revision
+			})
 		},
 		project: func(t *testing.T, events []contractEvent) any {
 			t.Helper()
@@ -637,7 +639,7 @@ func runContractCall(t *testing.T, row contractRow, b Backend, sink *recordingSi
 		deadline := time.After(20 * time.Second)
 		for {
 			sink.mu.Lock()
-			done := slices.ContainsFunc(sink.events[start:], row.terminal)
+			done := row.terminal(sink.events[start:])
 			if !done && sink.changed == nil {
 				sink.changed = make(chan struct{})
 			}
