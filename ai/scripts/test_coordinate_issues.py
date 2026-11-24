@@ -95,6 +95,221 @@ class CoordinationTest(unittest.TestCase):
                 self.apply("start", issues=[42], **fields)
         self.assertEqual(coordinate.status(self.db)["claims"], [])
 
+    def simulate_worker_queue(self, slots):
+        # The supervisor lists every authorized child as eligible so only the
+        # journal's dependency and slot checks can hold back the dependent.
+        prerequisite, dependent = 301, 300
+        independent = list(range(prerequisite, 317))
+        roster = [dependent, *independent]
+        self.apply("start", work_unit=214, issues=roster, concurrency=15,
+                   dependencies={str(dependent): [prerequisite]})
+        live, launched = {}, []
+
+        def select(capacity):
+            return self.apply("next", eligible=roster, capacity=capacity)
+
+        def launch(lease):
+            issue = lease["issue"]
+            self.assertIsNotNone(issue)
+            self.assertNotIn(issue, launched)
+            self.assertLess(len(live), slots)
+            self.apply("launched", issue=issue, attempt=lease["attempt"], worker=f"agent-{issue}")
+            live[issue] = lease["attempt"]
+            launched.append(issue)
+            return issue
+
+        def stop(issue):
+            self.apply("stopped", issue=issue, attempt=live.pop(issue), confirmed_stopped=True)
+
+        for _ in range(slots):
+            launch(select(15))
+        self.assertEqual(set(live), set(independent[:slots]))
+        if slots < 15:
+            # The harness first discloses saturation by refusing this spawn.
+            refused = select(15)
+            self.assertEqual(refused["issue"], independent[slots])
+            self.apply("unlaunched", issue=refused["issue"], attempt=refused["attempt"],
+                       confirmed_not_started=True)
+        self.assertIsNone(select(slots)["issue"])
+        stop(prerequisite)
+        self.apply("update", issue=prerequisite, state="pr-open", detail={"pr": 501})
+        remaining_workers = live.copy()
+        replacement = launch(select(slots))
+        self.assertEqual(replacement, independent[slots])
+        self.assertEqual(len(live), slots)
+        self.assertEqual({issue: live[issue] for issue in remaining_workers}, remaining_workers)
+
+        # Each apply/status reopens the database. Recover solely from the
+        # journal and the fake harness's still-live handles before refilling.
+        saved = coordinate.status(self.db)
+        recovered = {r["issue"]: r["attempt"] for r in saved["queue"] if r["phase"] == "running"}
+        self.assertEqual(recovered, live)
+        self.assertEqual(len(saved["claims"]), len(roster))
+        self.assertIsNone(select(slots)["issue"])
+        while live:
+            stop(next(iter(live)))
+            lease = select(slots)
+            if lease["issue"] is not None:
+                self.assertNotEqual(lease["issue"], dependent)
+                launch(lease)
+        self.assertEqual(set(launched), set(independent))
+        self.assertIsNone(select(slots)["issue"])
+        claim = next(c for c in coordinate.status(self.db)["claims"] if c["issue"] == prerequisite)
+        self.assertEqual(claim["state"], "pr-open")
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("requeue", issue=prerequisite, attempt=1, confirmed_stopped=True)
+        self.apply("release", issue=prerequisite, reason="merged", confirmed_stopped=True)
+        self.assertEqual(launch(select(slots)), dependent)
+        stop(dependent)
+        self.assertIsNone(select(slots)["issue"])
+        self.assertCountEqual(launched, roster)
+
+    def test_continuous_dispatch_with_fifteen_worker_slots(self):
+        self.simulate_worker_queue(15)
+
+    def test_continuous_dispatch_when_harness_accepts_only_four_workers(self):
+        self.simulate_worker_queue(4)
+
+    def test_reviewed_revisions_reuse_the_same_open_pr_and_claim(self):
+        self.start()
+        select = {"eligible": [42], "capacity": 1}
+        first = self.apply("next", **select)
+        self.apply("launched", **first, worker="w1")
+        self.apply("stopped", **first, confirmed_stopped=True)
+        self.apply("update", issue=42, state="pr-open", detail={"pr": 501, "branch": "fix/42-example",
+                                                               "worktree": "/fixture"})
+        self.assertIsNone(self.apply("next", **select)["issue"])
+        before = coordinate.status(self.db)
+        for fields in ({}, {"confirmed_rework_pr": 502}, {"confirmed_rework_pr": None},
+                       {"confirmed_rework_pr": 501, "confirmed_no_open_pr": True}):
+            with self.subTest(fields=fields), self.assertRaises(coordinate.Conflict):
+                self.apply("requeue", **first, confirmed_stopped=True, **fields)
+            self.assertEqual(coordinate.status(self.db), before)
+        confirm = {"confirmed_stopped": True, "confirmed_rework_pr": 501}
+        self.apply("requeue", **first, **confirm)
+        after = coordinate.status(self.db)["claims"]
+        self.assertEqual(after, [{**before["claims"][0], "state": "reserved"}])
+        second = self.apply("next", **select)
+        self.apply("launched", **second, worker="w2")
+        self.apply("stopped", **second, confirmed_stopped=True)
+        self.apply("update", issue=42, state="pr-open")
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("requeue", **first, **confirm)
+        self.assertIsNone(self.apply("next", **select)["issue"])
+
+    def test_setup_before_refused_spawn_and_retry_after_review(self):
+        self.start()
+        select = {"eligible": [42], "capacity": 1}
+        first = self.apply("next", **select)
+        self.apply("update", issue=42, state="reserved",
+                   detail={"base": "a" * 40, "worktree": "/fixture", "branch": "fix/42-example"})
+        self.apply("unlaunched", **first, confirmed_not_started=True)
+        second = self.apply("next", **select)
+        self.assertEqual(second, {"issue": 42, "attempt": 2})
+        self.apply("launched", **second, worker="w2")
+        self.apply("stopped", **second, confirmed_stopped=True)
+        consent = {"confirmed_stopped": True, "confirmed_no_open_pr": True}
+        self.apply("requeue", **second, **consent)
+        third = self.apply("next", **select)
+        self.apply("launched", **third, worker="w3")
+        self.apply("stopped", **third, confirmed_stopped=True)
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("requeue", **second, **consent)
+        self.assertIsNone(self.apply("next", **select)["issue"])
+
+    def test_inflight_launch_survives_lost_response_and_cannot_run_twice(self):
+        self.start(issues=[41, 42])
+        request = {"op": "next", "owner": "one", "generation": 1, "eligible": [41, 42], "capacity": 1}
+        process = self.child(request, "after")
+        try:
+            lease = json.loads(process.stdout.readline())
+        finally:
+            process.terminate()
+            process.communicate(timeout=10)
+        self.assertEqual(lease["issue"], 41)
+        self.assertIsNone(coordinate.apply(self.db, request)["issue"])
+        pending = next(r for r in coordinate.status(self.db)["queue"] if r["issue"] == 41)
+        self.assertEqual(pending["phase"], "launching")
+        self.assertEqual(pending["attempt"], lease["attempt"])
+        self.apply("launched", issue=41, attempt=lease["attempt"], worker="discovered-worker")
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("unlaunched", issue=41, attempt=lease["attempt"], confirmed_not_started=True)
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("release", issue=41, reason="merged", confirmed_stopped=True)
+        self.apply("stopped", issue=41, attempt=lease["attempt"], confirmed_stopped=True)
+        self.assertEqual(coordinate.apply(self.db, request)["issue"], 42)
+
+    def test_legacy_three_task_batch_stays_finite(self):
+        # The old --count 3 invocation supplies three selected children, with
+        # no concurrency field. New eligible work never enlarges this roster.
+        authorized = [41, 42, 43]
+        self.start(issues=authorized)
+        launched = []
+        for _ in authorized:
+            lease = self.apply("next", eligible=authorized, capacity=25)
+            issue = lease["issue"]
+            self.apply("launched", issue=issue, attempt=lease["attempt"], worker=f"agent-{issue}")
+            self.apply("stopped", issue=issue, attempt=lease["attempt"], confirmed_stopped=True)
+            self.apply("release", issue=issue, reason="merged", confirmed_stopped=True)
+            launched.append(issue)
+        self.assertIsNone(self.apply("next", eligible=authorized, capacity=25)["issue"])
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("next", eligible=[44], capacity=25)
+        self.assertEqual(launched, authorized)
+        self.assertEqual([r["issue"] for r in coordinate.status(self.db)["queue"]], authorized)
+
+    def test_large_roster_and_requested_concurrency_bounds(self):
+        issues = list(range(300, 330))
+        for concurrency in (True, 0, 26):
+            with self.subTest(concurrency=concurrency), self.assertRaises(coordinate.Conflict):
+                self.apply("start", work_unit=214, issues=issues, concurrency=concurrency)
+        self.apply("start", work_unit=214, issues=issues, concurrency=25)
+        self.assertIsNone(self.apply("next", eligible=issues, capacity=0)["issue"])
+        for issue in issues[:25]:
+            lease = self.apply("next", eligible=issues, capacity=40)
+            self.assertEqual(lease["issue"], issue)
+            self.apply("launched", issue=issue, attempt=lease["attempt"], worker=f"agent-{issue}")
+        self.assertIsNone(self.apply("next", eligible=issues, capacity=40)["issue"])
+
+    def test_abandoned_prerequisite_cannot_unlock_its_dependent(self):
+        self.apply("start", work_unit=214, issues=[42, 43], dependencies={"43": [42]})
+        self.apply("release", issue=42, reason="abandoned", confirmed_stopped=True)
+        self.assertIsNone(self.apply("next", eligible=[43], capacity=1)["issue"])
+
+    def test_invalid_dependency_graphs_leave_no_claims(self):
+        for graph in ({"42": [42]}, {"42": [43], "43": [42]}, {"43": [99]}):
+            with self.subTest(graph=graph), self.assertRaises(coordinate.Conflict):
+                self.apply("start", work_unit=214, issues=[42, 43], dependencies=graph)
+            self.assertEqual(coordinate.status(self.db)["claims"], [])
+
+    def test_atomic_admission_respects_last_slot_and_live_exclusions(self):
+        self.start(issues=[41, 42, 43])
+        # Omit 41 to model a contract conflict reported by the supervisor.
+        request = {"op": "next", "owner": "one", "generation": 1, "eligible": [42, 43], "capacity": 1}
+        processes = [self.child(request) for _ in range(2)]
+        outputs = [p.communicate(timeout=20) for p in processes]
+        self.assertEqual([p.returncode for p in processes], [0, 0], outputs)
+        self.assertCountEqual([json.loads(stdout)["issue"] for stdout, _ in outputs], [42, None])
+
+    def test_recovery_retains_uncertain_attempts_and_fences_previous_supervisor(self):
+        self.apply("start", work_unit=214, issues=[42, 43], concurrency=1)
+        lease = self.apply("next", eligible=[42, 43], capacity=1)
+        self.apply("takeover", new_owner="two", confirmed_stopped=True, work_unit=214)
+        resumed = {"owner": "two", "generation": 2}
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("unlaunched", **lease, confirmed_not_started=True)
+        self.apply("update", **resumed, issue=43, state="reserved")
+        self.assertIsNone(self.apply("next", **resumed, eligible=[42, 43], capacity=1)["issue"])
+        self.apply("unlaunched", **resumed, issue=42, attempt=lease["attempt"], confirmed_not_started=True)
+        self.apply("update", **resumed, issue=42, state="reserved")
+        retry = self.apply("next", **resumed, eligible=[42, 43], capacity=1)
+        self.assertEqual(retry["issue"], 42)
+        self.assertNotEqual(retry["attempt"], lease["attempt"])
+        with self.assertRaises(coordinate.Conflict):
+            self.apply("launched", **resumed, issue=42, attempt=lease["attempt"], worker="obsolete")
+        self.apply("launched", **resumed, issue=42, attempt=retry["attempt"], worker="only-worker")
+        self.assertIsNone(self.apply("next", **resumed, eligible=[42, 43], capacity=1)["issue"])
+
     def test_same_work_unit_excludes_disjoint_batches_until_all_claims_release(self):
         first = self.start(issues=[41, 42])
         self.assertEqual(first, self.start(issues=[41, 42]))
@@ -150,9 +365,19 @@ class CoordinationTest(unittest.TestCase):
 
     def test_legacy_v1_data_is_read_without_migration_and_unscoped_work_needs_review(self):
         with closing(sqlite3.connect(self.db)) as db, db:
-            for name, columns in coordinate.TABLES.items():
-                db.execute(f"CREATE TABLE {name} ({columns})")
-            db.execute("PRAGMA user_version=1")
+            # Keep the fixture independent of the schema used by new batches.
+            db.executescript("""
+                CREATE TABLE sessions(owner TEXT PRIMARY KEY, generation INTEGER, heartbeat REAL,
+                                      active INTEGER, roadmap INTEGER);
+                CREATE TABLE claims(issue INTEGER PRIMARY KEY, owner TEXT, generation INTEGER,
+                                    state TEXT, detail TEXT);
+                CREATE TABLE resources(name TEXT PRIMARY KEY, owner TEXT, generation INTEGER);
+                CREATE TABLE evidence(issue INTEGER, criterion TEXT, head TEXT, base TEXT, result TEXT,
+                                      detail TEXT, PRIMARY KEY(issue, criterion));
+                CREATE TABLE actions(id TEXT PRIMARY KEY, owner TEXT, generation INTEGER, issue INTEGER,
+                                     kind TEXT, state TEXT, request TEXT, result TEXT);
+                PRAGMA user_version=1;
+            """)
             db.execute("INSERT INTO sessions VALUES ('legacy',1,123,1,40)")
             db.execute("INSERT INTO sessions VALUES ('unscoped',1,123,1,NULL)")
             db.execute("INSERT INTO claims VALUES (42,'legacy',1,'working',?)", (json.dumps({"note": "old work"}),))
@@ -171,6 +396,11 @@ class CoordinationTest(unittest.TestCase):
         state = coordinate.status(self.db)
         self.assertEqual(state["claims"][0]["detail"], {"note": "old work"})
         self.assertEqual(state["actions"][0]["id"], "old-action")
+        resumed = {"owner": "new", "generation": 2}
+        self.apply("adopt", **resumed, work_unit=40, issues=[42], confirmed_stopped=True)
+        self.assertIsNone(self.apply("next", **resumed, eligible=[42], capacity=1)["issue"])
+        self.apply("requeue", **resumed, issue=42, attempt=0, confirmed_stopped=True, confirmed_no_open_pr=True)
+        self.assertEqual(self.apply("next", **resumed, eligible=[42], capacity=1)["issue"], 42)
         self.apply("release", owner="unscoped", issue=43, reason="abandoned", confirmed_stopped=True)
 
     def test_concurrent_overlapping_batches_have_one_winner_and_no_partial_claim(self):

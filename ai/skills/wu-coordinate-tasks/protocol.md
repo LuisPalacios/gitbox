@@ -4,17 +4,17 @@ Read this with [SKILL.md](SKILL.md). I use the helper as a local journal and exc
 
 ## Registry requests
 
-Run `uv run {{SKILLS}}/wu-coordinate-tasks/scripts/coordinate.py --repo <checkout> status` before mutations. It returns sessions, claims, resources, evidence and actions. A missing registry returns empty lists without creating it. Use `apply --request-file <file>` with one JSON request, or `apply --request-file -` with JSON on stdin. Write request files through a file-writing capability; do not interpolate arbitrary JSON into shell commands.
+Run `uv run {{SKILLS}}/wu-coordinate-tasks/scripts/coordinate.py --repo <checkout> status` before mutations. It returns sessions, claims, queue entries, resources, evidence and actions. A missing registry returns empty lists without creating it. Use `apply --request-file <file>` with one JSON request, or `apply --request-file -` with JSON on stdin. Write request files through a file-writing capability; do not interpolate arbitrary JSON into shell commands.
 
 Start a batch with a unique owner identifier:
 
 ```json
-{"op":"start","owner":"batch-example","issues":[42,43,44],"work_unit":40}
+{"op":"start","owner":"batch-example","issues":[42,43,44],"work_unit":40,"concurrency":2,"dependencies":{"44":[42]}}
 ```
 
-`work_unit` is mandatory for execution batches. The supervisor first verifies every selected issue is a pending native direct task of that work unit; this offline helper cannot authenticate GitHub relationships. It rejects the container as its own task and another active batch with unreleased claims for the same work unit. Different work units may run concurrently, subject to shared issue/resource exclusions. The helper returns the generation. A transaction reserves all issues or none; repeating the same start is idempotent while the same issue set remains active. An existing reservation is a conflict regardless of heartbeat age. For declared external work, use `{"op":"start","owner":"external-example","issues":[50],"external":true}` without `work_unit`. These unscoped claims only exclude work; never launch workers from them. Use a separate owner identifier and mark its claims blocked with a note; do not impersonate or replace an existing owner.
+`work_unit` is mandatory for execution batches. Pass the frozen roster in dispatch preference order (at most the requested count), the requested worker concurrency and all outstanding edges within that roster. Here 42 and 43 can run together and 44 waits for 42. Report cycles, unresolved references and external prerequisites from the complete graph before selection. Keep the external edges and evidence in the private batch record and recheck them before every affected launch. The supervisor first verifies every selected issue is a pending native direct task of that work unit; this offline helper cannot authenticate GitHub relationships. It rejects the container as its own task and another active batch with unreleased claims for the same work unit. Different work units may run concurrently, subject to shared issue/resource exclusions. The helper returns the generation. A transaction reserves all issues or none; repeating the same start is idempotent while the same roster, order, dependencies and concurrency remain active. An existing reservation is a conflict regardless of heartbeat age. For declared external work, use `{"op":"start","owner":"external-example","issues":[50],"external":true}` without `work_unit`. These unscoped claims only exclude work; never launch workers from them. Use a separate owner identifier and mark its claims blocked with a note; do not impersonate or replace an existing owner.
 
-Every later request includes `owner` and `generation`. Issue operations also include `issue`. These illustrative SHAs must be replaced by actual full object IDs:
+Every later request includes `owner` and `generation`. Operations on a specific issue also include `issue`. These illustrative SHAs must be replaced by actual full object IDs:
 
 ```json
 {
@@ -30,7 +30,7 @@ Every later request includes `owner` and `generation`. Issue operations also inc
 }
 ```
 
-Allowed states are `reserved`, `working`, `blocked`, `verifying`, `publication-pending`, `pr-open` and `ready`; `release` sets `released`. `detail` accepts `branch`, `worktree`, `worker`, `head`, `base`, `criteria`, `note`, `pr`, `roadmap` (legacy metadata only; session scope is immutable). Changing head, base or criteria deletes prior evidence and sets `verifying`. Store platform-specific criteria separately when several platforms must pass. Before publication, `base` must match the current target-branch head after synchronization.
+Allowed states are `reserved`, `working`, `blocked`, `verifying`, `publication-pending`, `pr-open` and `ready`; `release` sets `released`. `detail` accepts `branch`, `worktree`, `worker`, `head`, `base`, `criteria`, `note`, `pr`, `roadmap` (legacy metadata only; session scope is immutable). Changing head, base or criteria deletes prior evidence and normally sets `verifying`. During worktree setup pass `state: reserved` explicitly when recording these fields for a reserved queued or launching task. This keeps it dispatchable if the harness refuses the launch. Store platform-specific criteria separately when several platforms must pass. Before publication, `base` must match the current target-branch head after synchronization.
 
 ```json
 {
@@ -44,6 +44,28 @@ Allowed states are `reserved`, `working`, `blocked`, `verifying`, `publication-p
 ```
 
 `result` is `PASS`, `FAIL` or `PENDING`. `{"op":"check","owner":"batch-example","generation":1,"issue":42}` rejects absent, failed, pending or stale required evidence. It cannot detect fabricated results, uncommitted changes or an unrecorded remote-base change; the supervisor must inspect those before recording/publishing. State `ready` also checks the recorded evidence, but the local gate on the published SHA remains the supervisor's responsibility.
+
+## Dispatch and refill
+
+The supervisor refreshes `eligible` from live issue/PR state, declared external work, file/contract ownership, and dependencies before each call. Include only roster members. Check across work units too. For external prerequisites and changes to the graph since reservation, hold affected tasks out of this list until the supervisor verifies their integration and resolution. The helper additionally checks the recorded intra-batch edges.
+
+```json
+{"op":"next","owner":"batch-example","generation":1,"eligible":[42,43],"capacity":2}
+```
+
+`capacity` is the total worker budget usable **by this batch**, including its occupied slots. For example, if this batch already has three active workers and the harness has one free slot, pass 4. When capacity is unknown, permit one additional launch per attempt and observe the harness response. The helper checks the lower of this budget and the recorded concurrency. In one transaction it selects the first ready task and marks it `launching`. A null issue means nothing can launch on this pass. Each `next` is a **new** allocation. If its reply is lost, inspect `status.queue` before making another request.
+
+Use the returned issue and attempt number for that launch. For example:
+
+```json
+{"op":"launched","owner":"batch-example","generation":1,"issue":42,"attempt":1,"worker":"<returned-agent-id>"}
+```
+
+- A confirmed refusal (including saturation) or cancelled setup **before** spawn takes `unlaunched` with the same issue, attempt and `confirmed_not_started: true`. Hold the claim. Recheck capacity on a worker completion, another capacity signal or explicit resume. A timeout with unknown outcome keeps the attempt occupied until reconciled.
+- Both `launching` and `running` occupy slots. A plan or question from a worker still assigned to its task keeps that slot. After confirmed termination and handoff, record `stopped` with the issue, attempt and `confirmed_stopped: true`. Refill immediately. A stopped worker frees a slot even when its claim remains in review or `pr-open`.
+- To resume partial work, inspect the existing worktree, branch, worker and PR. For a stopped issue needing further implementation without an open PR, send `requeue` with the observed `attempt` (0 for an adopted claim), `confirmed_stopped: true` and `confirmed_no_open_pr: true`. For requested revisions on the batch’s own open PR, pass `confirmed_rework_pr` matching the live PR and recorded `detail.pr` in place of `confirmed_no_open_pr`. An open PR awaiting ordinary review stays parked. Reuse the existing branch, worktree and claim. The next allocation gets a new attempt.
+- Only a supervisor-confirmed `release` with `reason: merged` records the prerequisite as satisfied. Follow the resolution checks below. An abandoned issue leaves its dependents blocked.
+- On resume, match every occupied attempt to actual handles and worktrees before allocating. For a `launching` attempt with a matching worker, bind that handle with `launched`, even if the worker has since finished, then record its observed outcome. If a launch could still be running, keep the slot occupied. Recheck pending PRs and hold ownership throughout review.
 
 ## Resources and recovery
 
@@ -63,7 +85,9 @@ Send `heartbeat` with owner/generation at milestones. A paused or dead superviso
 
 A scoped takeover requires the explicit matching `work_unit` and fresh validation of native task membership. Unscoped external or legacy records do not authorize execution; account for their work before creating a new scoped batch.
 
-Takeover increments the generation, transfers claims/resources/journal, blocks unfinished claims and invalidates evidence. Old owner requests fail. This does not stop old processes or fence external publication; confirmation must reflect actual stopped workers. Resume from observed state, restore required checks and reconfirm publication authority for the new session. For an unavailable/corrupt/incompatible registry, preserve it and stop mutations; never rebuild an empty registry over existing claims.
+Takeover increments the generation, transfers claims/resources/journal, blocks unfinished claims and invalidates evidence. The queue, attempt numbers and worker handles transfer to the new generation. Reconcile outstanding attempts first, then return only verified unstarted queued claims to `reserved` with `update`. Old owner requests fail. This does not stop old processes or fence external publication; confirmation must reflect actual stopped workers. Resume from observed state, restore required checks and reconfirm publication authority for the new session. For an unavailable/corrupt/incompatible registry, preserve it and stop mutations; never rebuild an empty registry over existing claims.
+
+A v1 registry stays readable. The first successful write upgrades its schema transactionally. Use the current helper in all cooperating sessions after upgrade. Legacy claims have no launch history. To continue a scoped legacy batch, validate the live parent and original tasks, inspect their work and confirm all prior workers have stopped. Send `adopt` with owner, generation, matching `work_unit`, the exact unreleased `issues`, reviewed `dependencies`, requested `concurrency` and `confirmed_stopped: true`. This initializes all entries as stopped. Requeue only tasks that still need a worker.
 
 After confirmed resolution or deliberate abandonment, release each claim with `op: release`, `reason: merged` or `abandoned`, and `confirmed_stopped: true`. These are attestations by the supervisor, not automatic Git/GitHub checks. Preserve unfinished/dirty work and report it. Claims and action journals remain readable after release; pending action results can still be recorded by the owning generation.
 

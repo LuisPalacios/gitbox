@@ -14,17 +14,19 @@ I then use `wu-tasks <N>` to decompose a work unit. The skill reads the entire c
 
 ## One supervisor for a batch
 
-I use `wu-coordinate-tasks` when I want one conversation to select and supervise up to three compatible pending tasks from one work unit. The supervisor checks live issues, comments, dependencies, open PRs and affected files before choosing a finite batch. It selects only open direct sub-issues and excludes unresolved prerequisites. It may choose fewer tasks when overlap or available agent capacity makes three unsafe. It keeps one agent slot for itself and delegates each task to a worker in its own worktree.
+I use `--count` to choose how many direct tasks of one work unit the supervisor may process. The default is three issues for the entire batch. I use `--concurrency` to request 1–25 simultaneous workers. It defaults to the smaller of the issue count and 25. For example, I can queue 30 issues and request 20 workers. The supervisor reports the session limit when known and the actual number launched.
+
+The supervisor checks dependencies, active sessions, open PRs and affected files before each launch. If four worker slots are available, it launches up to four independent tasks. As soon as one finishes, the next ready task can start. The finished issue stays reserved during review or while its PR is open. Its dependents wait until the supervisor verifies the merge and complete issue resolution. A cycle or missing prerequisite appears in the batch report.
 
 In Codex I pass the work unit's issue number and declare work already underway elsewhere:
 
 ```text
 $wu-coordinate-tasks <N> --count 3 --active none
-$wu-coordinate-tasks <N> --count 3 --active <issue-numbers>
+$wu-coordinate-tasks <N> --count 30 --concurrency 20 --active <issue-numbers>
 $wu-coordinate-tasks <N> --resume <owner>
 ```
 
-In Claude Code I replace `$wu-coordinate-tasks` with `/wu-coordinate-tasks`. There the supervisor asks me once to run `/add-dir` for each new worktree before it launches workers, because sibling worktrees sit outside the session's working directory. The work unit number is mandatory, including on resume: if I omit it, the supervisor asks and never infers a container or falls back to the global backlog. If I omit the active-session information, it asks once before reserving the batch. Checkboxes provide context; native relationships and live issue and PR state determine which work belongs to this unit and remains pending. I do not need to open a conversation for each worker.
+In Claude Code I replace `$wu-coordinate-tasks` with `/wu-coordinate-tasks`. There the supervisor asks me to run `/add-dir` for each new worktree before launching its worker, including later arrivals, because sibling worktrees sit outside the session's working directory. The work unit number is mandatory, including on resume: if I omit it, the supervisor asks and never infers a container or falls back to the global backlog. If I omit the active-session information, it asks once before reserving the batch. Checkboxes provide context; native relationships and live issue and PR state determine which work belongs to this unit and remains pending. I do not need to open a conversation for each worker.
 
 The invocation authorizes local selection, planning, implementation, verification and commits. I can explicitly authorize publication for the selected batch with `--publish`, which covers its branch pushes and PR creation or updates after checks pass. `--update-work-unit` authorizes minimal completion-checkbox updates to that container after verified resolution. I create additional tasks through `wu-tasks`; the coordinator does not create them. These options do not authorize a merge, a force push, real credential changes or remote staging. The supervisor keeps publication and questions in the main conversation; workers do not publish. Asking how the skill works does not start a batch.
 

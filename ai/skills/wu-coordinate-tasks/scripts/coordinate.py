@@ -15,6 +15,7 @@ This offline helper does not verify GitHub parent/child relationships.
 from __future__ import annotations
 
 import argparse
+import graphlib
 import json
 import re
 import sqlite3
@@ -23,14 +24,22 @@ import sys
 import time
 from pathlib import Path
 
-VERSION = 1
-TABLES = {
+VERSION = 2
+MAX_CONCURRENCY = 25
+V1_TABLES = {
     "sessions": "owner TEXT PRIMARY KEY, generation INTEGER, heartbeat REAL, active INTEGER, roadmap INTEGER",
     "claims": "issue INTEGER PRIMARY KEY, owner TEXT, generation INTEGER, state TEXT, detail TEXT",
     "resources": "name TEXT PRIMARY KEY, owner TEXT, generation INTEGER",
     "evidence": "issue INTEGER, criterion TEXT, head TEXT, base TEXT, result TEXT, detail TEXT, PRIMARY KEY(issue, criterion)",
     "actions": "id TEXT PRIMARY KEY, owner TEXT, generation INTEGER, issue INTEGER, kind TEXT, state TEXT, request TEXT, result TEXT",
 }
+TABLES = {
+    **V1_TABLES,
+    "sessions": V1_TABLES["sessions"] + ", concurrency INTEGER",
+    "queue": "owner TEXT, issue INTEGER, position INTEGER, dependencies TEXT, phase TEXT, "
+             "attempt INTEGER, worker TEXT, PRIMARY KEY(owner, issue)",
+}
+OCCUPIED = {"launching", "running"}
 STATES = {"reserved", "working", "blocked", "verifying", "publication-pending", "pr-open", "ready"}
 DETAIL_FIELDS = {"branch", "worktree", "worker", "head", "base", "criteria", "note", "pr", "roadmap"}
 
@@ -73,6 +82,13 @@ def open_registry(path: Path, *, write: bool) -> sqlite3.Connection:
                 for name, columns in TABLES.items():
                     db.execute(f"CREATE TABLE {name} ({columns})")
                 db.execute(f"PRAGMA user_version={VERSION}")
+        elif version == 1 and names == set(V1_TABLES):
+            if write:
+                # Existing claims might already have workers. Never infer a
+                # launchable queue from them during the schema upgrade.
+                db.execute("ALTER TABLE sessions ADD COLUMN concurrency INTEGER")
+                db.execute(f"CREATE TABLE queue ({TABLES['queue']})")
+                db.execute(f"PRAGMA user_version={VERSION}")
         elif version != VERSION or names != set(TABLES):
             raise Conflict("unknown or incompatible coordination registry; preserve it for investigation")
         return db
@@ -82,15 +98,23 @@ def open_registry(path: Path, *, write: bool) -> sqlite3.Connection:
 
 
 def snapshot(db: sqlite3.Connection) -> dict:
-    if db.execute("PRAGMA user_version").fetchone()[0] == 0:
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version == 0:
         return {table: [] for table in TABLES}
     result = {}
     for table in TABLES:
-        rows = [dict(r) for r in db.execute(f"SELECT * FROM {table} ORDER BY 1")]
+        if table == "queue" and version == 1:
+            result[table] = []
+            continue
+        order = "owner, position" if table == "queue" else "1"
+        rows = [dict(r) for r in db.execute(f"SELECT * FROM {table} ORDER BY {order}")]
         for row in rows:
             if table == "sessions":
                 # Old roadmap values need live validation before resuming a WU.
                 row["work_unit"] = row["roadmap"]
+                row.setdefault("concurrency", None)
+            if table == "queue":
+                row["dependencies"] = json.loads(row["dependencies"])
             for field in ("detail", "request", "result") if table == "actions" else ("detail",):
                 if field in row and row[field] is not None:
                     row[field] = json.loads(row[field])
@@ -150,29 +174,73 @@ def check_publication(db: sqlite3.Connection, row: sqlite3.Row, payload: object)
         raise Conflict("publication intent head and base must match the verified full Git object IDs")
 
 
-def start(db: sqlite3.Connection, request: dict) -> dict:
-    owner = identifier(request.get("owner"), "owner")
+def roster(request: dict) -> list[int]:
     issues = request.get("issues")
     if not isinstance(issues, list) or not issues:
         raise Conflict("issues must be a nonempty list")
-    issues = sorted({positive(n, "issue") for n in issues})
+    return list(dict.fromkeys(positive(n, "issue") for n in issues))
+
+
+def queue_plan(issues: list[int], request: dict) -> tuple[int, dict[int, list[int]]]:
+    concurrency = positive(request.get("concurrency", min(len(issues), MAX_CONCURRENCY)), "concurrency")
+    if concurrency > MAX_CONCURRENCY:
+        raise Conflict(f"concurrency cannot exceed {MAX_CONCURRENCY}")
+    edges = request.get("dependencies", {})
+    if not isinstance(edges, dict):
+        raise Conflict("dependencies must map issue numbers to lists of prerequisite issues")
+    known = set(issues)
+    unknown = set(edges) - {str(issue) for issue in issues}
+    if unknown:
+        raise Conflict(f"dependencies name unknown tasks: {unknown}")
+    dependencies = {}
+    for issue in issues:
+        entries = edges.get(str(issue), [])
+        if not isinstance(entries, list):
+            raise Conflict(f"dependencies for {issue} must be a list")
+        required = {positive(n, "prerequisite") for n in entries}
+        if missing := required - known:
+            raise Conflict(f"unresolved prerequisites outside roster for {issue}: {sorted(missing)}")
+        dependencies[issue] = sorted(required)
+    try:
+        graphlib.TopologicalSorter(dependencies).prepare()
+    except graphlib.CycleError as exc:
+        raise Conflict(f"dependency cycle: {exc.args[1]}") from exc
+    return concurrency, dependencies
+
+
+def insert_queue(db: sqlite3.Connection, owner: str, dependencies: dict[int, list[int]], phase: str) -> None:
+    db.executemany(
+        "INSERT INTO queue(owner, issue, position, dependencies, phase, attempt) VALUES (?,?,?,?,?,0)",
+        [(owner, issue, position, json.dumps(required), phase)
+         for position, (issue, required) in enumerate(dependencies.items())],
+    )
+
+
+def start(db: sqlite3.Connection, request: dict) -> dict:
+    owner = identifier(request.get("owner"), "owner")
+    issues = roster(request)
     if "roadmap" in request:
         raise Conflict("use work_unit for a validated container; roadmap selection is no longer supported")
     external = request.get("external", False)
     if type(external) is not bool:
         raise Conflict("external must be a boolean")
     work_unit = request.get("work_unit")
+    concurrency, dependencies = None, {}
     if external:
-        if "work_unit" in request:
-            raise Conflict("external reservations cannot select a work unit")
+        if {"work_unit", "dependencies", "concurrency"} & request.keys():
+            raise Conflict("external reservations cannot select a work unit or worker queue")
     else:
         positive(work_unit, "work_unit")
         if work_unit in issues:
             raise Conflict("reserve child tasks, not the work-unit container")
+        concurrency, dependencies = queue_plan(issues, request)
     previous = db.execute("SELECT * FROM sessions WHERE owner=?", (owner,)).fetchone()
     if previous:
         owned = [r[0] for r in db.execute("SELECT issue FROM claims WHERE owner=? AND state!='released' ORDER BY issue", (owner,))]
-        if previous["active"] and owned == issues and previous["roadmap"] == work_unit:
+        queue = db.execute("SELECT issue, dependencies FROM queue WHERE owner=? ORDER BY position", (owner,))
+        recorded = [(r["issue"], json.loads(r["dependencies"])) for r in queue]
+        if (previous["active"] and owned == sorted(issues) and previous["roadmap"] == work_unit
+                and previous["concurrency"] == concurrency and recorded == list(dependencies.items())):
             return {"owner": owner, "generation": previous["generation"], "issues": issues}
         raise Conflict("owner already exists with different or inactive work; use a new owner ID")
     if work_unit is not None:
@@ -186,10 +254,11 @@ def start(db: sqlite3.Connection, request: dict) -> dict:
         row = db.execute("SELECT owner, state FROM claims WHERE issue=?", (issue,)).fetchone()
         if row and row["state"] != "released":
             raise Conflict(f"issue {issue} is reserved by {row['owner']}")
-    db.execute("INSERT INTO sessions VALUES (?,1,?,1,?)", (owner, time.time(), work_unit))
+    db.execute("INSERT INTO sessions VALUES (?,1,?,1,?,?)", (owner, time.time(), work_unit, concurrency))
     for issue in issues:
         db.execute("INSERT OR REPLACE INTO claims VALUES (?,?,1,'reserved','{}')", (issue, owner))
         db.execute("DELETE FROM evidence WHERE issue=?", (issue,))
+    insert_queue(db, owner, dependencies, "queued")
     return {"owner": owner, "generation": 1, "issues": issues}
 
 
@@ -206,12 +275,108 @@ def takeover(db: sqlite3.Connection, request: dict) -> dict:
     if db.execute("SELECT 1 FROM sessions WHERE owner=?", (owner,)).fetchone():
         raise Conflict("new_owner has already been used")
     db.execute("UPDATE sessions SET active=0 WHERE owner=?", (old["owner"],))
-    db.execute("INSERT INTO sessions VALUES (?,?,?,1,?)", (owner, generation, time.time(), old["roadmap"]))
+    db.execute("INSERT INTO sessions VALUES (?,?,?,1,?,?)", (owner, generation, time.time(), old["roadmap"], old["concurrency"]))
+    db.execute("UPDATE queue SET owner=? WHERE owner=?", (owner, old["owner"]))
     db.execute("DELETE FROM evidence WHERE issue IN (SELECT issue FROM claims WHERE owner=? AND state!='released')", (old["owner"],))
     for table in ("claims", "resources", "actions"):
         db.execute(f"UPDATE {table} SET owner=?, generation=? WHERE owner=?", (owner, generation, old["owner"]))
     db.execute("UPDATE claims SET state='blocked' WHERE owner=? AND state!='released'", (owner,))
     return {"owner": owner, "generation": generation}
+
+
+def adopt_queue(db: sqlite3.Connection, request: dict, current: sqlite3.Row) -> dict:
+    if current["concurrency"] is not None:
+        raise Conflict("batch already has a queue; reconcile its recorded attempts")
+    if positive(request.get("work_unit"), "work_unit") != current["roadmap"]:
+        raise Conflict("adoption needs the matching, validated work unit")
+    if request.get("confirmed_stopped") is not True:
+        raise Conflict("confirm all legacy workers are stopped before adopting their claims")
+    owner = current["owner"]
+    issues = roster(request)
+    claims = db.execute("SELECT issue FROM claims WHERE owner=? AND state!='released'", (owner,))
+    if set(issues) != {r["issue"] for r in claims}:
+        raise Conflict("adopt exactly the owner's unreleased claims")
+    concurrency, dependencies = queue_plan(issues, request)
+    db.execute("UPDATE sessions SET concurrency=? WHERE owner=?", (concurrency, owner))
+    insert_queue(db, owner, dependencies, "stopped")
+    return {"issues": issues, "phase": "stopped"}
+
+
+def next_issue(db: sqlite3.Connection, request: dict, current: sqlite3.Row) -> dict:
+    if current["concurrency"] is None:
+        raise Conflict("no worker queue for this session")
+    capacity = request.get("capacity")
+    if type(capacity) is not int or capacity < 0:
+        raise Conflict("capacity must be the current nonnegative worker budget")
+    if not isinstance(request.get("eligible"), list):
+        raise Conflict("supply live-reviewed eligible issue IDs")
+    eligible = {positive(issue, "eligible issue") for issue in request["eligible"]}
+    rows = db.execute(
+        "SELECT q.*, c.state FROM queue q LEFT JOIN claims c ON c.issue=q.issue AND c.owner=q.owner "
+        "WHERE q.owner=? ORDER BY q.position", (current["owner"],),
+    ).fetchall()
+    if eligible - {r["issue"] for r in rows}:
+        raise Conflict("eligible issue outside the authorized roster")
+    occupied = sum(r["phase"] in OCCUPIED for r in rows)
+    if occupied < min(capacity, current["concurrency"]):
+        merged = {r["issue"] for r in rows if r["phase"] == "merged"}
+        for row in rows:
+            if row["phase"] != "queued" or row["state"] != "reserved" or row["issue"] not in eligible:
+                continue
+            if not merged.issuperset(json.loads(row["dependencies"])):
+                continue
+            attempt = row["attempt"] + 1
+            db.execute("UPDATE queue SET phase='launching', attempt=?, worker=NULL WHERE owner=? AND issue=?",
+                       (attempt, current["owner"], row["issue"]))
+            return {"issue": row["issue"], "attempt": attempt}
+    return {"issue": None}
+
+
+def worker_event(db: sqlite3.Connection, request: dict, row: sqlite3.Row) -> dict:
+    key = (row["owner"], row["issue"])
+    task = db.execute("SELECT * FROM queue WHERE owner=? AND issue=?", key).fetchone()
+    if task is None:
+        raise Conflict("claim has no worker queue entry")
+    op = request["op"]
+    phase, worker = task["phase"], task["worker"]
+    attempt = request.get("attempt")
+    if type(attempt) is not int or attempt != task["attempt"] or (attempt == 0 and op != "requeue"):
+        raise Conflict("stale or missing launch attempt")
+    if op == "requeue":
+        if phase != "stopped" or request.get("confirmed_stopped") is not True:
+            raise Conflict("confirm the task's worker stopped before requeue")
+        if "confirmed_rework_pr" in request:
+            pr = request["confirmed_rework_pr"]
+            recorded = json.loads(row["detail"]).get("pr")
+            valid = (type(pr) is int and pr > 0) or (isinstance(pr, str) and bool(pr.strip()))
+            if (not valid or type(recorded) is not type(pr) or pr != recorded
+                    or "confirmed_no_open_pr" in request):
+                raise Conflict("confirm requested rework on the claim's recorded open PR")
+        elif request.get("confirmed_no_open_pr") is not True:
+            raise Conflict("confirm no open PR or identify the verified PR requiring rework")
+        phase = "queued"
+        db.execute("UPDATE claims SET state='reserved' WHERE owner=? AND issue=?", key)
+    elif op == "launched":
+        handle = request.get("worker")
+        if not isinstance(handle, str) or not handle.strip():
+            raise Conflict("launched needs the actual worker handle")
+        if phase != "launching" and (phase, worker) != ("running", handle):
+            raise Conflict("launch attempt is no longer awaiting this worker")
+        phase, worker = "running", handle
+        detail = json.loads(row["detail"])
+        detail["worker"] = handle
+        db.execute("UPDATE claims SET detail=?, state=CASE WHEN state='reserved' THEN 'working' ELSE state END "
+                   "WHERE owner=? AND issue=?", (json.dumps(detail), *key))
+    elif op == "unlaunched":
+        if phase not in {"launching", "queued"} or request.get("confirmed_not_started") is not True:
+            raise Conflict("confirm the launch did not create a worker before returning it to the queue")
+        phase = "queued"
+    elif op == "stopped":
+        if phase not in {"running", "stopped"} or request.get("confirmed_stopped") is not True:
+            raise Conflict("confirm the bound worker stopped before freeing its slot")
+        phase = "stopped"
+    db.execute("UPDATE queue SET phase=?, worker=? WHERE owner=? AND issue=?", (phase, worker, *key))
+    return {"issue": row["issue"], "phase": phase, "attempt": task["attempt"], "worker": worker}
 
 
 def update(db: sqlite3.Connection, request: dict, row: sqlite3.Row) -> dict:
@@ -237,6 +402,11 @@ def update(db: sqlite3.Connection, request: dict, row: sqlite3.Row) -> dict:
         if request.get("state") == "ready":
             raise Conflict("changed revision or criteria needs fresh evidence")
         state = "verifying"
+        if request.get("state") == "reserved" and row["state"] == "reserved":
+            prepared = db.execute("SELECT phase FROM queue WHERE owner=? AND issue=?",
+                                  (row["owner"], row["issue"])).fetchone()
+            if prepared and prepared["phase"] in {"queued", "launching"}:
+                state = "reserved"
     db.execute("UPDATE claims SET state=?, detail=? WHERE issue=?", (state, json.dumps(detail), row["issue"]))
     if state == "ready":
         check(db, claim(db, request))
@@ -266,6 +436,10 @@ def dispatch(db: sqlite3.Connection, request: dict) -> dict:
         return takeover(db, request)
     current = session(db, request)
     owner, generation = current["owner"], current["generation"]
+    if op == "next":
+        return next_issue(db, request, current)
+    if op == "adopt":
+        return adopt_queue(db, request, current)
     if op == "heartbeat":
         return {"owner": owner, "generation": generation}
     if op in {"acquire", "release-resource"}:
@@ -292,6 +466,8 @@ def dispatch(db: sqlite3.Connection, request: dict) -> dict:
         db.execute("UPDATE actions SET state='done', result=? WHERE id=?", (payload, action_id))
         return dict(db.execute("SELECT * FROM actions WHERE id=?", (action_id,)).fetchone())
     row = claim(db, request)
+    if op in {"launched", "unlaunched", "stopped", "requeue"}:
+        return worker_event(db, request, row)
     if op == "update":
         return update(db, request, row)
     if op == "check":
@@ -317,6 +493,10 @@ def dispatch(db: sqlite3.Connection, request: dict) -> dict:
     if op == "release":
         if request.get("confirmed_stopped") is not True or request.get("reason") not in ("merged", "abandoned"):
             raise Conflict("release needs stopped workers and a merged or abandoned reason")
+        task = db.execute("SELECT phase FROM queue WHERE owner=? AND issue=?", (owner, row["issue"])).fetchone()
+        if task and task["phase"] in OCCUPIED:
+            raise Conflict("reconcile the launch or stop the bound worker before releasing the claim")
+        db.execute("UPDATE queue SET phase=? WHERE owner=? AND issue=?", (request["reason"], owner, row["issue"]))
         db.execute("UPDATE claims SET state='released' WHERE issue=?", (row["issue"],))
         return {"issue": row["issue"], "state": "released"}
     if op == "intent":

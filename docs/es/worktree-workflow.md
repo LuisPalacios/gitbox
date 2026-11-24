@@ -14,17 +14,19 @@ Después uso `wu-tasks <N>` para descomponer una work unit. El skill lee el cont
 
 ## Un supervisor para un lote
 
-Uso `wu-coordinate-tasks` cuando quiero que una conversación seleccione y supervise hasta tres tareas pendientes compatibles de una work unit. El supervisor comprueba issues actuales, comentarios, dependencias, PR abiertas y archivos afectados antes de elegir un lote finito. Selecciona solo sub-issues directas abiertas y excluye requisitos previos sin resolver. Puede elegir menos tareas si los solapamientos o la capacidad disponible de agentes impiden trabajar con tres de forma segura. Reserva una plaza de agente para sí mismo y delega cada tarea a un agente en su propio worktree.
+Uso `--count` para elegir cuántas tareas directas de una work unit puede procesar el supervisor. El valor predeterminado es de tres issues para todo el lote. Uso `--concurrency` para solicitar entre 1 y 25 workers simultáneos. Por defecto toma el menor valor entre el número de issues y 25. Por ejemplo, puedo poner 30 issues en cola y solicitar 20 workers. El supervisor informa del límite de la sesión cuando lo conoce y del número de workers que ha lanzado.
+
+El supervisor comprueba las dependencias, las sesiones activas, las PR abiertas y los archivos afectados antes de cada lanzamiento. Si dispone de cuatro plazas para workers, lanza hasta cuatro tareas independientes. En cuanto termina una, puede empezar la siguiente tarea lista. La issue terminada sigue reservada durante la revisión o mientras tenga una PR abierta. Sus dependientes esperan hasta que el supervisor verifica el merge y la resolución completa de la issue. Los ciclos y los requisitos previos sin resolver aparecen en el informe del lote.
 
 En Codex paso el número de issue de la work unit y declaro trabajo que ya está en marcha en otra sesión:
 
 ```text
 $wu-coordinate-tasks <N> --count 3 --active none
-$wu-coordinate-tasks <N> --count 3 --active <issue-numbers>
+$wu-coordinate-tasks <N> --count 30 --concurrency 20 --active <issue-numbers>
 $wu-coordinate-tasks <N> --resume <owner>
 ```
 
-En Claude Code sustituyo `$wu-coordinate-tasks` por `/wu-coordinate-tasks`. Ahí el supervisor me pide una vez que ejecute `/add-dir` para cada worktree nuevo antes de lanzar agentes, porque los worktrees hermanos quedan fuera del directorio de trabajo de la sesión. El número de work unit es obligatorio, también al reanudar: si lo omito, el supervisor lo pregunta y nunca deduce un contenedor ni recurre al backlog global. Si omito la información sobre sesiones activas, la pregunta una vez antes de reservar el lote. Las casillas aportan contexto; las relaciones nativas y el estado actual de issues y PR determinan qué trabajo pertenece a esta unidad y sigue pendiente. No necesito abrir una conversación por agente.
+En Claude Code sustituyo `$wu-coordinate-tasks` por `/wu-coordinate-tasks`. Ahí el supervisor me pide que ejecute `/add-dir` para cada worktree nuevo antes de lanzar su agente, también en los lanzamientos posteriores, porque los worktrees hermanos quedan fuera del directorio de trabajo de la sesión. El número de work unit es obligatorio, también al reanudar: si lo omito, el supervisor lo pregunta y nunca deduce un contenedor ni recurre al backlog global. Si omito la información sobre sesiones activas, la pregunta una vez antes de reservar el lote. Las casillas aportan contexto; las relaciones nativas y el estado actual de issues y PR determinan qué trabajo pertenece a esta unidad y sigue pendiente. No necesito abrir una conversación por agente.
 
 La invocación autoriza selección, planificación, implementación, verificación y commits locales. Puedo autorizar explícitamente la publicación del lote seleccionado con `--publish`, que cubre los pushes de sus ramas y la creación o actualización de PR después de superar las comprobaciones. `--update-work-unit` autoriza actualizaciones mínimas de casillas de finalización en ese contenedor tras verificar la resolución. Creo tareas adicionales mediante `wu-tasks`; el coordinador no las crea. Estas opciones no autorizan un merge, un push forzado, cambios de credenciales reales ni staging remoto. El supervisor mantiene la publicación y las preguntas en la conversación principal; los agentes no publican. Preguntar cómo funciona el skill no inicia un lote.
 
