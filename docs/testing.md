@@ -269,6 +269,18 @@ I run permission checks against a temporary `XDG_CONFIG_HOME` with synthetic acc
 - In the fixture only, I give a dummy file mode `0644` on Unix or a Windows ACL grant outside owner/SYSTEM/Administrators. After restarting, the exposure warning appears in the full and Compact dashboards and opens System check. The audit leaves permissions unchanged. After repairing the fixture permissions, **Re-check** clears the finding and warning.
 - I save and rename a dedicated test account, then confirm its credential still works after restarting. The isolated automated checks verify that both actions write git-credential-store format directly, including accounts without clones, and keep reading legacy raw-token files. I never print a real token or credential-file contents in test output.
 
+### Clone identity proof
+
+On macOS or Linux I run `scripts/demo-fleet/identity-proof.sh` from the repository root to generate ten isolated clones. I launch the built binary from the printed fixture directory with its own home and Git settings:
+
+```bash
+binary=/absolute/path/to/GitboxApp
+fixture=$(scripts/demo-fleet/identity-proof.sh)
+(cd "$fixture" && env HOME="$fixture/home" XDG_CONFIG_HOME="$fixture/xdg"   GIT_CONFIG_GLOBAL="$fixture/global.gitconfig" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0   "$binary" --test-mode)
+```
+
+I open **Why this account?** for a baseline clone and expect a warning because the fixture endpoints are offline. I check that **wrong-host**, **include-helper** and **scoped-helper** show **Unsafe**, and that **other-host-helper** and **scoped-reset** show a warning without a helper conflict. I compare the clone config bytes before and after opening the panel and check that its synthetic secrets stay hidden. I use **Repair** on **wrong-host** and check that the proof reports the expected fetch URL. In Simple I expect one account sentence.
+
 ## Native tests
 
 The [local gate](local-gate.md) runs the native tests on every change: its macOS lane runs the full health check and the coordination suites, its Linux lane runs `go vet` and the short tests, and its Windows lane runs the coordination suites and the short tests. Each lane also builds the GUI and runs the `--version` smoke. The Windows lane sets `core.autocrlf=false` and `core.longpaths=true` for its own processes only, so my global Git config does not change.

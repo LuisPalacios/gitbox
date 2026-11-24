@@ -591,6 +591,27 @@ export namespace gitignore {
 
 }
 
+export namespace heal {
+
+	export class ProofOverride {
+	    scope: string;
+	    key: string;
+	    value: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ProofOverride(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scope = source["scope"];
+	        this.key = source["key"];
+	        this.value = source["value"];
+	    }
+	}
+
+}
+
 export namespace identity {
 	
 	export class GlobalIdentityStatus {
@@ -1080,6 +1101,59 @@ export namespace main {
 	        this.needsConfirm = source["needsConfirm"];
 	        this.url = source["url"];
 	    }
+	}
+	export class IdentityProofDTO {
+	    account: string;
+	    server: string;
+	    username: string;
+	    nameSource: string;
+	    emailSource: string;
+	    originURL: string;
+	    helperChain: string[];
+	    credentialFile?: string;
+	    overrides: heal.ProofOverride[];
+	    // Go type: time
+	    lastVerified?: any;
+	    verdict: string;
+	    reason?: string;
+
+	    static createFrom(source: any = {}) {
+	        return new IdentityProofDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.account = source["account"];
+	        this.server = source["server"];
+	        this.username = source["username"];
+	        this.nameSource = source["nameSource"];
+	        this.emailSource = source["emailSource"];
+	        this.originURL = source["originURL"];
+	        this.helperChain = source["helperChain"];
+	        this.credentialFile = source["credentialFile"];
+	        this.overrides = this.convertValues(source["overrides"], heal.ProofOverride);
+	        this.lastVerified = this.convertValues(source["lastVerified"], null);
+	        this.verdict = source["verdict"];
+	        this.reason = source["reason"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class IncompleteCloneDTO {
 	    source: string;

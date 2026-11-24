@@ -269,6 +269,18 @@ Ejecuto las comprobaciones de permisos contra un `XDG_CONFIG_HOME` temporal con 
 - Solo en el fixture, doy a un archivo ficticio el modo `0644` en Unix o una concesión de ACL Windows fuera de propietario/SYSTEM/Administrators. Tras reiniciar, el aviso de exposición aparece en los paneles completo y Compacto y abre Comprobación del sistema. La auditoría deja los permisos intactos. Después de reparar los permisos del fixture, **Volver a comprobar** elimina el hallazgo y el aviso.
 - Guardo y renombro una cuenta dedicada de pruebas y después confirmo que su credencial sigue funcionando tras reiniciar. Las comprobaciones automatizadas aisladas verifican que ambas acciones escriben directamente el formato git-credential-store, incluso en cuentas sin clones, y siguen leyendo archivos antiguos con tokens en bruto. Nunca imprimo un token real ni el contenido de archivos de credenciales en la salida de las pruebas.
 
+### Prueba de identidad del clon
+
+En macOS o Linux ejecuto `scripts/demo-fleet/identity-proof.sh` desde la raíz del repositorio para generar diez clones aislados. Ejecuto el binario compilado desde el directorio del fixture que imprime el script, con su propio directorio personal y ajustes de Git:
+
+```bash
+binary=/absolute/path/to/GitboxApp
+fixture=$(scripts/demo-fleet/identity-proof.sh)
+(cd "$fixture" && env HOME="$fixture/home" XDG_CONFIG_HOME="$fixture/xdg"   GIT_CONFIG_GLOBAL="$fixture/global.gitconfig" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0   "$binary" --test-mode)
+```
+
+Abro **¿Por qué esta cuenta?** para un clon de referencia y espero un aviso porque los servidores del fixture están desconectados. Compruebo que **wrong-host**, **include-helper** y **scoped-helper** muestran **Inseguro**, y que **other-host-helper** y **scoped-reset** muestran un aviso sin conflicto entre gestores. Comparo los bytes de la configuración del clon antes y después de abrir el panel y compruebo que los secretos sintéticos siguen ocultos. Uso **Reparar** en **wrong-host** y compruebo que la prueba muestra la URL de descarga prevista. En Simple espero una frase sobre la cuenta.
+
 ## Pruebas nativas
 
 El [gate local](local-gate.md) ejecuta las pruebas nativas en cada cambio: su carril de macOS ejecuta la comprobación de salud completa y las suites de coordinación, su carril de Linux ejecuta `go vet` y las pruebas cortas, y su carril de Windows ejecuta las suites de coordinación y las pruebas cortas. Cada carril también construye la GUI y ejecuta el smoke con `--version`. El carril de Windows fija `core.autocrlf=false` y `core.longpaths=true` solo para sus propios procesos, así que mi configuración global de Git no cambia.

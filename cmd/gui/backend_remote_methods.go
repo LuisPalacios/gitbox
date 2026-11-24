@@ -355,3 +355,11 @@ func (r *RemoteBackend) remoteSetup(method string, args ...any) CredentialSetupR
 	out.Findings = capList(r, "credential findings", out.Findings, maxRemoteNotes)
 	return out
 }
+
+func (r *RemoteBackend) GetIdentityProof(source, repo string) (IdentityProofDTO, error) {
+	return remoteCall[IdentityProofDTO](r, "GetIdentityProof", source, repo)
+}
+
+func (r *RemoteBackend) RepairRepoIdentity(source, repo string) error {
+	return r.callErr("RepairRepoIdentity", source, repo)
+}

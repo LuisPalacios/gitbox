@@ -193,6 +193,8 @@ You can verify credentials at any time:
 - Pick **Change credential…** from the account's ⋯ menu to open the Change Credential modal. Its Current-status panel shows the real status of the primary credential and of the API token, with the underlying error message (if any).
 - Click **Re-check** in that panel to run the verification again.
 
+In Advanced, I can also open [Why this account?](gui-guide.md#why-this-account) from a clone's details. It shows the helper chain after Git's last empty reset and the credential-file location for a matching token helper. The proof displays paths and credential-check timestamps from the clone's host and hides credential contents, arbitrary helper commands and URL credentials. Opening the panel reads local Git settings and uses the session's existing verification result. To check the credential again, I use **Fix credential** and **Re-check**.
+
 ## Missing tools on the host
 
 Credential types rely on external binaries that may be missing on the current machine: GCM needs `git-credential-manager`, SSH needs `ssh`, `ssh-keygen` and `ssh-add`. Gitbox checks for them before it starts a setup:

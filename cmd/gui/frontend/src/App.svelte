@@ -1006,7 +1006,7 @@
     detailLoading = false;
   }
 
-  // Auto-collapse expanded detail when the repo no longer needs attention.
+  // Auto-collapse expanded detail when the clone becomes unavailable.
   $: if (expandedRepo) {
     const st = $repoStates[expandedRepo];
     if (st && detailLocked(st.status)) {
@@ -1026,7 +1026,13 @@
       return;
     }
     expandedRepo = key;
-    void loadRepoDetail(sourceKey, repoName);
+    if (status === 'clean') {
+      detailLoader.cancel();
+      repoDetail = null;
+      detailLoading = false;
+    } else {
+      void loadRepoDetail(sourceKey, repoName);
+    }
   }
 
   async function loadRepoDetail(sourceKey: string, repoName: string) {
@@ -1283,6 +1289,12 @@
     }
     credStatuses = credStatuses;
   }
+
+  function fixProofCredential(accountKey: string) {
+    const account = $accounts[accountKey];
+    if (account) openCredChange(accountKey, account.default_credential_type || 'gcm');
+  }
+
   const openTokenSetup = (accountKey: string) => credentialDialog.openTokenSetup(accountKey);
 
   // ── Delete account ──
@@ -1620,7 +1632,7 @@
   $: rowProps = {
     simple, deleteMode, folderDeleteFailures, fetchingRepos, collapsedRepos, workspaceChoices,
     revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
-    expandedRepo, repoDetail, detailLoading, repoActions, credentialStatuses: credStatuses,
+    expandedRepo, repoDetail, detailLoading, repoActions, credentialStatuses: credStatuses, fixProofCredential,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
     togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
     toggleContainer, rescanContainer, chooseWorkspace, findWorkspaceFolder, toggleRepoCollapsed, isContainerRepo, showAccountView,

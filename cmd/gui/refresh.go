@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -787,13 +786,8 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 		a.mu.Lock()
 		revision := a.credentialRevision[key]
 		a.mu.Unlock()
-		fingerprint, _ := json.Marshal(struct {
-			Key      string
-			Account  config.Account
-			SSH      *config.SSHGlobal
-			Revision uint64
-		}{key, acct, cfg.Global.CredentialSSH, revision})
-		identity := string(fingerprint)
+		checkIdentity := credentialCheckIdentity(cfg, key, revision)
+		identity := key + "\x00" + checkIdentity
 		a.refreshMu.Lock()
 		if a.credentialRuns == nil {
 			a.credentialRuns = make(map[string]*credentialFlight)
@@ -833,12 +827,26 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 				return r.Overall == credential.StatusOffline
 			})
 		}
+		completed := ctx.Err() == nil
 		cancel()
 		result := CredentialStatus{Status: r.Overall.String(), Message: userText(r.PrimaryDetail), Primary: r.Primary.String(), PrimaryMsg: userText(r.PrimaryDetail), PAT: r.PAT.String(), PATMsg: userText(r.PATDetail), Problem: problem(r.PrimaryFailure), revision: revision}
 		if !r.ExpiresAt.IsZero() {
 			result.ExpiresAt = r.ExpiresAt.UTC().Format(time.RFC3339)
 		}
 		a.refreshMu.Lock()
+		if !started.Before(a.proofChecks[key].started) {
+			verification := heal.Verification{Failed: true}
+			if cached := a.proofChecks[key]; cached.identity == checkIdentity {
+				verification.CheckedAt, verification.ExpiresAt = cached.value.CheckedAt, cached.value.ExpiresAt
+			}
+			if completed && r.Primary == credential.StatusOK {
+				verification = heal.Verification{CheckedAt: time.Now(), ExpiresAt: r.ExpiresAt}
+			}
+			if a.proofChecks == nil {
+				a.proofChecks = make(map[string]proofVerification)
+			}
+			a.proofChecks[key] = proofVerification{identity: checkIdentity, started: started, value: verification}
+		}
 		call.result = result
 		delete(a.credentialRuns, identity)
 		close(call.done)

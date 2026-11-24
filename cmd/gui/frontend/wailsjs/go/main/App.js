@@ -226,6 +226,10 @@ export function GetConfigPath() {
   return window['go']['main']['App']['GetConfigPath']();
 }
 
+export function GetIdentityProof(arg1, arg2) {
+  return window['go']['main']['App']['GetIdentityProof'](arg1, arg2);
+}
+
 export function GetLanguage() {
   return window['go']['main']['App']['GetLanguage']();
 }
@@ -406,6 +410,10 @@ export function OpenRecipeImport() {
   return window['go']['main']['App']['OpenRecipeImport']();
 }
 
+export function OpenRepoConfigInEditor(arg1, arg2) {
+  return window['go']['main']['App']['OpenRepoConfigInEditor'](arg1, arg2);
+}
+
 export function OpenRepoInBrowser(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenRepoInBrowser'](arg1, arg2, arg3);
 }
@@ -528,6 +536,10 @@ export function RenameAccount(arg1, arg2) {
 
 export function RepairConfig() {
   return window['go']['main']['App']['RepairConfig']();
+}
+
+export function RepairRepoIdentity(arg1, arg2) {
+  return window['go']['main']['App']['RepairRepoIdentity'](arg1, arg2);
 }
 
 export function RepoNesting() {

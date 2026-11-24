@@ -23,7 +23,7 @@
   // Parent label per row key, for rows shown away from their container.
   export let parentLabels: Record<string, string> = {};
 
-  $: ({ expandedRepo, repoDetail, detailLoading, findWorkspaceFolder, repoActions, credentialStatuses, ...shared } = rowProps);
+  $: ({ expandedRepo, repoDetail, detailLoading, findWorkspaceFolder, repoActions, credentialStatuses, fixProofCredential, ...shared } = rowProps);
 </script>
 
 {#each rows as { key, sourceKey: rowSourceKey, repoName, depth, childCount, descendants, placeholders, placeholder } (key)}
@@ -41,7 +41,9 @@
     {showAccount} parentLabel={parentLabels[repoKey] || ''} {fadeHealthy} />
   {#if expandedRepo === repoKey}
     <RepoDetail simple={shared.simple} {state} {repoDetail} {detailLoading} {accountKey} actions={repoActions(rowSourceKey, repoName, state, true, accountStatus)}
-      issueActions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} />
+      issueActions={repoActions(rowSourceKey, repoName, state, false, accountStatus)}
+      source={rowSourceKey} repo={repoName} credentialStatus={credentialStatuses[accountKey]}
+      onFixCredential={() => fixProofCredential(accountKey || rowSourceKey)} />
   {:else if showIssues && issue}
     <div class="row-explanation"><ErrorExplanation info={issue} simple={shared.simple} {accountKey} actions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} /></div>
   {/if}

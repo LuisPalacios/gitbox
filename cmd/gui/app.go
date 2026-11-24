@@ -139,6 +139,7 @@ type App struct {
 	upstreamRevision   map[string]uint64
 	statusNetwork      map[statusRepoKey]statusNetworkChecks // guarded by mu
 	credentialRevision map[string]uint64
+	proofChecks        map[string]proofVerification // guarded by refreshMu
 	prs                prRefreshState
 
 	// probeMu serializes upstream-existence probes so a burst of
@@ -766,6 +767,21 @@ func (a *App) OpenFileInEditor(path string) error {
 	default:
 		cmd = exec.Command("xdg-open", path)
 	}
+	return cmd.Start()
+}
+
+// openRepoGitConfig opens an extensionless Git config as text.
+func (a *App) openRepoGitConfig(configPath string) error {
+	var cmd *exec.Cmd
+	switch {
+	case isWindows():
+		cmd = exec.Command("notepad.exe", configPath)
+	case isDarwin():
+		cmd = exec.Command("open", "-t", configPath)
+	default:
+		return a.OpenFileInEditor(configPath)
+	}
+	git.HideWindow(cmd)
 	return cmd.Start()
 }
 

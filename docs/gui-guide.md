@@ -131,6 +131,14 @@ Simple hides the rest: the Mirrors view, delete mode, the compact view and theme
 
 With PR indicators enabled, Simple shows **Review requested** when someone asks for your review. Click the label to see the requests. Advanced shows badges with counts for your open PRs (📝) and the PRs awaiting your review (👀).
 
+### Why this account?
+
+I click a cloned project, including one with a clean working tree, and select **Why this account?** in Advanced. The panel shows the configured account, server and username, the source of the expected commit name and email, the resolved fetch URL, and the credential helpers Git applies. It names conflicting settings and hides their values. In Simple, the project details show one sentence about the account or indicate that it needs attention.
+
+**Safe** means the inspected Git settings match and the current session verified the credential within 24 hours. **Warning** means Gitbox has no recent successful check, the latest check failed, or the token expires within 14 days. **Unsafe** means the inspected settings conflict or Gitbox could not read them. The panel reads the configuration on the host that owns the clone.
+
+I use **Repair** to apply the existing clone maintenance, **Fix credential** to open the account's credential settings, or **Open Git config** to edit the local clone's shared Git configuration. In a remote window I edit the file on the clone's host. I select **Refresh proof** after making a manual edit.
+
 ### Full view
 
 The full view shows the top bar, the sidebar, the selected view and the summary footer. The top bar holds the health rings and the Pull all, Fetch all, Delete mode, Compact view, theme, Simple/Advanced and Settings buttons; the GitBox logo at the far left folds the sidebar. The summary footer always shows both repo and mirror counts.

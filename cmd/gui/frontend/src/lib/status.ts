@@ -94,9 +94,9 @@ export function statusCountBadge(status: string): CountBadge | null {
 }
 
 // ── Detail panel ──
-// Statuses with nothing to inspect: an open detail panel folds when its
+// Statuses with no available clone: an open detail panel folds when its
 // row reaches one of them, and clicking such a row does nothing.
-const noDetailStatuses = new Set(['clean', 'not cloned', 'root offline', 'cloning', 'syncing', 'pending']);
+const noDetailStatuses = new Set(['not cloned', 'root offline', 'cloning', 'syncing', 'pending']);
 
 export function detailLocked(status: string): boolean {
   return noDetailStatuses.has(status);

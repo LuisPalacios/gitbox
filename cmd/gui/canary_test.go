@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/git/testutil"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
+	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
 // newCanary is a token no other text can hold by chance.
@@ -128,10 +130,29 @@ func TestTokenCanary(t *testing.T) {
 		{name: "ChangeCredentialType gcm", call: func(b Backend) (any, error) { return none(b.ChangeCredentialType("acct", "gcm")) }},
 		{name: "CredentialSetupGCM", call: func(b Backend) (any, error) { return b.CredentialSetupGCM("acct"), nil }},
 		{name: "CredentialVerify", call: func(b Backend) (any, error) { return b.CredentialVerify("acct"), nil }},
-		{name: "CredentialDelete", call: func(b Backend) (any, error) { return b.CredentialDelete("acct"), nil }},
 	} {
 		run(row)
 	}
+
+	// The proof must redact secrets planted in raw Git config as well as the
+	// token already seen in the account's credential-store file.
+	cfg := loadConfig(t, side.path)
+	clone := status.RepoPath(cfg, "acct", "org/repo", cfg.Sources["acct"].Repos["org/repo"])
+	gitConfig := filepath.Join(clone, ".git", "config")
+	f, err := os.OpenFile(gitConfig, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = fmt.Fprintf(f, "\n[user]\n  email = %s\n[credential]\n  helper = !%s\n", canary, canary)
+	if closeErr := f.Close(); err != nil || closeErr != nil {
+		t.Fatalf("planting proof canary: %v / %v", err, closeErr)
+	}
+	proof, err := link.Remote.GetIdentityProof("acct", "org/repo")
+	if err != nil || proof.Verdict != "unsafe" || len(proof.Overrides) < 2 {
+		t.Fatalf("proof did not inspect the injected settings: verdict %q, reason %q, %d overrides, %v", proof.Verdict, proof.Reason, len(proof.Overrides), err)
+	}
+	results = append(results, proof)
+	run(contractRow{name: "CredentialDelete", call: func(b Backend) (any, error) { return b.CredentialDelete("acct"), nil }})
 
 	// Positive controls: the work really ran with the token.
 	if !strings.Contains(argv.String(), "push --mirror") || !strings.Contains(argv.String(), "clone") {
