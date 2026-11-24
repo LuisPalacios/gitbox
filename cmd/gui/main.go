@@ -318,7 +318,7 @@ func runTerminalsWindow(app *App) {
 				// wezterm.lua. Then nudge the frontend to reload from
 				// disk and reveal the window.
 				app.SyncProfiles()
-				app.sink().Emit("profiles:reloaded")
+				emit(app.newOperation(), "profiles:reloaded", any(nil))
 				wailsrt.WindowUnminimise(app.ctx)
 				wailsrt.WindowShow(app.ctx)
 			},

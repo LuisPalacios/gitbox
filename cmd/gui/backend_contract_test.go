@@ -697,9 +697,9 @@ func runContractCall(t *testing.T, row contractRow, b Backend, sink *recordingSi
 func TestRemoteEventsAreRelayed(t *testing.T) {
 	link := serveRemote(t, contractConfig(t), nil)
 	statuses := []StatusResult{{Source: "acct", Repo: "org/repo", State: "clean", Branch: "main"}}
-	link.Host.sink().Emit("status:updated", statuses)
-	link.Host.sink().Emit("made:up", "by a hostile server")
-	link.Host.sink().Emit("fetch:done", map[string]any{"source": "acct", "repo": "org/repo", "error": "git fetch: offline"})
+	emit(link.Host.newOperation(), "status:updated", statuses)
+	emit(link.Host.newOperation(), "made:up", "by a hostile server")
+	emit(link.Host.newOperation(), "fetch:done", map[string]any{"source": "acct", "repo": "org/repo", "error": "git fetch: offline"})
 
 	deadline := time.Now().Add(5 * time.Second)
 	for len(link.Events.named("fetch:done")) == 0 && time.Now().Before(deadline) {
@@ -1093,6 +1093,7 @@ func TestRepositoryEventsAreRelayed(t *testing.T) {
 	}{
 		{"clone:progress", map[string]any{"source": "acct", "repo": "org/repo", "phase": "Receiving objects", "percent": 42}},
 		{"clone:done", map[string]any{"source": "acct", "repo": "org/repo", "path": "/h/git/org/repo", "fixes": []string{"set user.name"}}},
+		{"status:one", StatusResult{Source: "acct", Repo: "org/repo", State: "dirty", Untracked: 1}},
 		{"pull:done", map[string]any{"source": "acct", "repo": "org/repo", "skipped": "dirty", "state": "dirty", "modified": 2, "untracked": 1, "ahead": 0, "behind": 3}},
 		{"pull:done", map[string]any{"source": "acct", "repo": "org/other", "error": "offline", "code": "git.offline", "skipped": true, "host": "github.com"}},
 		{"mirror:setup:done", MirrorSetupResult{MirrorKey: "mir", RepoKey: "org/repo", Created: true, Mirrored: true, Method: "api"}},
@@ -1100,11 +1101,12 @@ func TestRepositoryEventsAreRelayed(t *testing.T) {
 		{"move:done", MoveResultDTO{NewOrigin: "https://example.invalid/o/r.git", DestRepoCreated: true, Warnings: []string{"w"}}},
 		{"reconcile:done", ReconcileDTO{Adopted: 1, Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{}, Incomplete: []IncompleteCloneDTO{{Source: "acct", Repo: "org/x", Path: "/h/x"}}}},
 	}
+	op := link.Host.newOperation().atRevision(7)
 	for _, e := range sent {
-		link.Host.sink().Emit(e.name, e.payload)
+		emit(op, e.name, e.payload)
 	}
-	link.Host.sink().Emit("pull:done", map[string]any{"source": "acct", "repo": "org/evil", "skipped": "<img src=x>"})
-	link.Host.sink().Emit("reconcile:done", map[string]any{"adopted": "many"})
+	emit(link.Host.newOperation(), "pull:done", map[string]any{"source": "acct", "repo": "org/evil", "skipped": "<img src=x>"})
+	emit(link.Host.newOperation(), "reconcile:done", map[string]any{"adopted": "many"})
 
 	deadline := time.Now().Add(5 * time.Second)
 	for len(link.Events.named("reconcile:done")) == 0 && time.Now().Before(deadline) {
@@ -1129,6 +1131,12 @@ func TestRepositoryEventsAreRelayed(t *testing.T) {
 		if w, g := canonJSON(t, []any{e.payload}), canonJSON(t, got[i].args); w != g {
 			t.Errorf("%s arrived as %s, want %s", e.name, g, w)
 		}
+	}
+	done, checked := link.Events.named("clone:done"), link.Events.named("status:one")
+	if len(done) != 1 || len(checked) != 1 ||
+		done[0].meta.OperationID != op.id || checked[0].meta.OperationID != op.id ||
+		checked[0].meta.ConfigRevision != 7 || done[0].meta.Sequence >= checked[0].meta.Sequence {
+		t.Errorf("remote completion order or metadata changed: %v, %v", done, checked)
 	}
 	if n := len(link.Events.named("pull:done")); n != 2 {
 		t.Errorf("pull:done arrived %d times, want the two valid ones", n)

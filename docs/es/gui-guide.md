@@ -210,6 +210,8 @@ Haz clic en **Fetch de todo** (icono ↻) para consultar todos los remotos en bu
 
 Mientras se ejecuta Fetch de todo o Pull de todo, una tira bajo la barra superior dice qué abarca, como "Haciendo fetch de 17 clones en 3 cuentas" o "Haciendo pull de 2 (solo avance rápido) y clonando 1", con una barra de progreso. Cuando termina, una tarjeta de resultado en la esquina inferior derecha lo resume: a cuántos clones hizo fetch, cuántos están ahora por detrás y listos para pull, cuáles omitió porque su cuenta está sin conexión, cualquier fallo con el primer error, y que los cambios locales quedaron intactos. Las tarjetas de éxito desaparecen tras unos segundos; una tarjeta con un fallo se queda hasta que la cierras. Los fetch del arranque y los periódicos solo dejan tarjeta cuando algo cambió o falló.
 
+Al terminar un clonado o pull, la fila muestra **Comprobando…** mientras Gitbox comprueba los archivos locales. Si encuentra cambios, la fila pasa a **Cambios en este ordenador** en modo Simple.
+
 Otras acciones informan de sus errores de la misma forma, por ejemplo una herramienta que no se abre o un mirror que no se puede añadir.
 
 #### Fetch periódico

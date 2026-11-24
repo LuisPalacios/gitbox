@@ -128,6 +128,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `probe_test.go` (10) — upstream probes: bounded concurrency, shared flights and throttling, cancellation, a shared deadline for credential lookup, stale config and rotated tokens, shutdown.
 - `status_freshness_test.go` (4) — confirmed network timestamps and status publication only when a row can show the new time, changed repository/account identity, status wire data for local branches.
 - `startup_test.go` (2 + `BenchmarkStartupSnapshot`) — nesting before clones exist, a snapshot detached from the live config.
+- `event_types_test.go`, `clone_test.go` — I verify that the TypeScript DTOs match Go and that a real clone whose hook leaves an untracked file publishes a dirty status after completion.
 - `update_test.go` (2) — the AppImage build refuses `ApplyUpdate` before any download, and a new version is confirmed as started only after the config loads.
 - `onboarding_test.go` (3) — I check that root and destination previews leave the filesystem and config unchanged, adopt one chosen clone while keeping its neighbors untouched, and exercise the first-launch fixture inside its temporary root.
 - `repo_detail_test.go` (1) — incoming commits and local file details coexist, and the preview clears after the clone receives the commits.
@@ -138,6 +139,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 
 - `credential-token.test.mjs` (7) — I execute the real handlers with an isolated bridge: clear saved tokens before post-setup, retain failed tokens for correction and retry, show the credential audit's findings right after a store, clear the onboarding token once stored, reset on close and reopen, and compile the real credential modal with fixture initial state to check its rendered failed input and enabled retry button, then its hidden successful input. In a remote window the real modal offers no GCM and shows a GCM account's reason with **Switch to token** (#242).
 - `first-project.test.mjs` (2) — I check that a download only reaches the ready screen after the selected checkout appears. A failed or skipped transfer stays out of the success screen, and identity warnings stay visible.
+- `events.test.mjs` (5) — I verify the startup snapshot sequence, reconnects, delivery to renamed or deleted repos, completion ordering and typed listeners.
 - `repo-tree.test.mjs` (8) — the clone tree: cross-source ownership, no duplicate rows, nested collapse, recovery from stale parents and cycles, alphabetical order, attention groups split by account, a container's placeholder rows.
 - `repo-detail.test.mjs` (6) — nil-slice normalisation, switching clones, closing and reopening during a read, out-of-order refreshes, current versus superseded errors, complete incoming lists and independent history errors.
 - `status.test.mjs` (11) — status glyphs, palette, count badges, detail-panel and credential rules, account health, token expiry and localized check age. I check that the clone retains a repair warning until it receives an updated result.

@@ -232,6 +232,7 @@ func classOf(method string) (methodInfo, bool) {
 // eventClass covers every event name passed to EventSink.Emit.
 var eventClass = map[string]eventInfo{
 	"clone:done":               {classRemote, "P5"},
+	"clone:start":              {classRemote, "P5"},
 	"clone:progress":           {classRemote, "P5"},
 	"credentials:updated":      {classRemote, "P4"},
 	"discover:done":            {classRemote, "P4"},
@@ -249,10 +250,12 @@ var eventClass = map[string]eventInfo{
 	"network:state":            {classRemote, "P4"},
 	"pr:refreshed":             {classRemote, "P4"},
 	"profiles:reloaded":        {classLocal, "P1a"},
+	"pull:start":               {classRemote, "P5"},
 	"pull:done":                {classRemote, "P5"},
 	"reconcile:done":           {classRemote, "P5"},
 	"remote:log":               {classLocal, "P3b"},
 	"remote:state":             {classLocal, "P3b"},
+	"status:one":               {classRemote, "P5"},
 	"status:batch":             {classRemote, "P4"},
 	"status:updated":           {classRemote, "P4"},
 	"tools:updated":            {classLocal, "P1b"},

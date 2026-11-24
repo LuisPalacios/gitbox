@@ -200,12 +200,12 @@
   }
 
   // move:progress — one phase finished (or failed).
-  export function onProgress(p: any) {
+  export function onProgress(p: import('../dto.generated').EventPayloads['move:progress']) {
     moveProgress = [...moveProgress, p as MoveProgressEventDTO];
   }
 
   // move:done — the move finished; r carries the outcome.
-  export function onDone(r: any) {
+  export function onDone(r: import('../dto.generated').EventPayloads['move:done']) {
     moveResult = r as MoveResultDTO;
     moveModalStep = 'result';
     // If the user opted to delete the local source clone, the

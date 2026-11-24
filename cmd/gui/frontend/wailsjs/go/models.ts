@@ -1865,6 +1865,7 @@ export namespace main {
 	}
 	
 	export class StartupSnapshot {
+	    eventWatermark: number;
 	    config: ConfigDTO;
 	    nesting: Record<string, string>;
 	    configPath: string;
@@ -1881,6 +1882,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.eventWatermark = source["eventWatermark"];
 	        this.config = this.convertValues(source["config"], ConfigDTO);
 	        this.nesting = source["nesting"];
 	        this.configPath = source["configPath"];

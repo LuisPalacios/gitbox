@@ -286,8 +286,8 @@ func TestRefresh_FetchAllHealthyHostFinishesWhileSlowHostWaits(t *testing.T) {
 		}
 		var healthyDone int
 		for _, event := range events.named("fetch:done") {
-			payload := event.args[0].(map[string]any)
-			if payload["source"] == "source-2" && payload["error"] == nil {
+			payload := event.args[0].(fetchDoneDTO)
+			if payload.Source == "source-2" && payload.Error == "" {
 				healthyDone++
 			}
 		}
@@ -495,7 +495,7 @@ func TestRefresh_MaintenanceFailureSkipsNetworkAndSurfacesError(t *testing.T) {
 		if len(perRepo) != 1 || len(allDone) != 1 {
 			t.Fatalf("missing or repeated failure completion events: %v", events.events)
 		}
-		if perRepo[0].args[0].(map[string]any)["error"] == nil || allDone[0].args[0].(map[string]string)["error"] == "" {
+		if perRepo[0].args[0].(fetchDoneDTO).Error == "" || allDone[0].args[0].(fetchAllDoneDTO).Error == "" {
 			t.Fatal("completion events hid the maintenance error")
 		}
 	})
@@ -595,7 +595,7 @@ func TestRefresh_RetriesAConnectRefusedRightAway(t *testing.T) {
 			t.Fatalf("fetch calls = %d, want 2 (one retry)", calls.Load())
 		}
 		done := events.named("fetch:done")
-		if len(done) != 1 || done[0].args[0].(map[string]any)["error"] != nil {
+		if len(done) != 1 || done[0].args[0].(fetchDoneDTO).Error != "" {
 			t.Fatalf("want one clean fetch:done, got %v", done)
 		}
 	})
@@ -798,7 +798,7 @@ func TestHealGate(t *testing.T) {
 			close(release)
 			synctest.Wait()
 			a.stopRefresh()
-			if active != 1 || len(completed) != 1 || completed[0].args[0].(map[string]any)["repo"] != second {
+			if active != 1 || len(completed) != 1 || completed[0].args[0].(pullDoneDTO).Repo != second {
 				t.Fatalf("while fetching first clone: entered %d, completed %+v", active, completed)
 			}
 			if calls.Load() != 2 || len(events.named("pull:done")) != 2 || len(events.named("fetch:done")) != 1 || len(a.repairPaths.tails) != 0 {

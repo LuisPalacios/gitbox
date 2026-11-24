@@ -61,7 +61,7 @@ export function statusSymbol(status: string): string {
 // A row still waiting for its first scan, or fetching right now, shows a
 // spinning ↻ instead of its status shape.
 export function rowBusy(status: string, fetching: boolean): boolean {
-  return status === 'unknown' || fetching;
+  return status === 'unknown' || status === 'pending' || fetching;
 }
 
 export function rowGlyph(status: string, fetching: boolean): string {
@@ -96,7 +96,7 @@ export function statusCountBadge(status: string): CountBadge | null {
 // ── Detail panel ──
 // Statuses with nothing to inspect: an open detail panel folds when its
 // row reaches one of them, and clicking such a row does nothing.
-const noDetailStatuses = new Set(['clean', 'not cloned', 'root offline', 'cloning', 'syncing']);
+const noDetailStatuses = new Set(['clean', 'not cloned', 'root offline', 'cloning', 'syncing', 'pending']);
 
 export function detailLocked(status: string): boolean {
   return noDetailStatuses.has(status);

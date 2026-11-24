@@ -281,7 +281,7 @@ func (a *App) refreshPRAccounts(ctx context.Context) {
 				}
 				a.prs.cache[key] = prEntry{req.account, req.includeDrafts, data}
 			}
-			a.sink().Emit("pr:refreshed", upd)
+			emit(a.newOperation(), "pr:refreshed", upd)
 		}
 		delete(a.prs.active, key)
 		a.mu.Unlock()

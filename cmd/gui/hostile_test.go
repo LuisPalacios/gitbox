@@ -235,13 +235,22 @@ func TestHostileServer(t *testing.T) {
 	// and wrong types are dropped; an oversized list is cut. The host's
 	// harness list is relayed as data, and a harness it names that is not
 	// the catalog's never runs.
-	h.srv.Emit("made:up", "by a hostile server")
-	h.srv.Emit("update:quit", "v9")
-	h.srv.Emit("harnesses:updated", map[string]any{"not": "a list"})
-	h.srv.Emit("harnesses:updated", []map[string]any{{"name": "evil", "command": "/bin/sh", "evil": "<script>"}})
-	h.srv.Emit("fetch:done", map[string]any{"source": 7, "repo": "r"})
-	h.srv.Emit("fetch:done", map[string]any{"source": "a", "repo": "r", "error": "boom", "evil": "<script>"})
-	h.srv.Emit("status:updated", tooMany)
+	var hostSequence uint64
+	emitHost := func(name string, payload any) {
+		hostSequence++
+		h.srv.Emit(name, Envelope[any]{
+			EventMetadata: EventMetadata{Schema: eventSchema, OperationID: "1", Sequence: hostSequence},
+			Payload:       payload,
+		})
+	}
+	h.srv.Emit("fetch:done", map[string]any{"source": "s", "repo": "legacy-wire-shape"})
+	emitHost("made:up", "by a hostile server")
+	emitHost("update:quit", "v9")
+	emitHost("harnesses:updated", map[string]any{"not": "a list"})
+	emitHost("harnesses:updated", []map[string]any{{"name": "evil", "command": "/bin/sh", "evil": "<script>"}})
+	emitHost("fetch:done", map[string]any{"source": 7, "repo": "r"})
+	emitHost("fetch:done", map[string]any{"source": "a", "repo": "r", "error": "boom", "evil": "<script>"})
+	emitHost("status:updated", tooMany)
 	updates := h.waitEvent(t, "status:updated")
 	if n := len(updates[0].args[0].([]StatusResult)); n != maxRemoteRepos {
 		t.Errorf("status:updated carried %d rows, want %d", n, maxRemoteRepos)

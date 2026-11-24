@@ -285,7 +285,7 @@
     repos = [];
     selected = {};
     stopListening?.();
-    stopListening = events.on('discover:done', (data: any) => {
+    stopListening = events.on('discover:done', (data) => {
       if (data?.accountKey && data.accountKey !== accountKey) return;
       stopListening?.();
       stopListening = null;

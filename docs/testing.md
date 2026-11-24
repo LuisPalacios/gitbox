@@ -325,6 +325,7 @@ I launch GitboxApp on each platform with the commands `./scripts/run-commands.sh
 - [ ] Credential setup works for token, GCM and SSH
 - [ ] Discovery: **Find** → select repos → **Add & Pull** clones them into the account's root
 - [ ] Clone, **Pull all** and **Fetch all** update the status dots; the activity strip shows the scope while they run, and a result card sums them up
+- [ ] In a test repo whose checkout leaves an untracked file, I download the repo in Simple and check that the row goes from **Checking…** to **Changes on this computer**. I repeat in Spanish.
 - [ ] The repo detail panel shows branch and ahead/behind in Advanced, and changed files in both modes; a clone with incoming updates opens a scrollable list of every commit with author and message, keeps local-file details, and refreshes after an update
 - [ ] Incoming preview: a long list fits a small window; switching clones or closing and reopening while loading never shows another clone's results; opening the panel alone does not fetch or pull
 - [ ] Clone roots: in Settings I add a root, make it default and remove it; with two roots, a row's **Clone** asks which root and lands there, and **Pull all** doesn't ask

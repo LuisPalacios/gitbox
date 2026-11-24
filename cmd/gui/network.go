@@ -331,7 +331,7 @@ func (a *App) downServers() []string {
 // means the network is back.
 func (a *App) publishNetworkState() {
 	hosts := a.downServers()
-	a.sink().Emit("network:state", map[string]any{"offline": len(hosts) > 0, "hosts": hosts})
+	emit(a.newOperation(), "network:state", networkStateDTO{Offline: len(hosts) > 0, Hosts: hosts})
 }
 
 // watchNetwork starts the watcher unless it is already running. Every

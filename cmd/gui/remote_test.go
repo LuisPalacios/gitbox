@@ -245,9 +245,9 @@ func TestRemoteLifecycleDialFailure(t *testing.T) {
 // fake the connected view, update:quit could close the window.
 func TestRelayDropsLocalEvents(t *testing.T) {
 	link := serveRemote(t, contractConfig(t), nil)
-	link.Host.sink().Emit("remote:state", RemoteStateDTO{State: remoteConnected, Alias: "forged"})
-	link.Host.sink().Emit("update:quit")
-	link.Host.sink().Emit("status:updated", []StatusResult{})
+	emit(link.Host.newOperation(), "remote:state", RemoteStateDTO{State: remoteConnected, Alias: "forged"})
+	emit(link.Host.newOperation(), "update:quit", any(nil))
+	emit(link.Host.newOperation(), "status:updated", []StatusResult{})
 	deadline := time.Now().Add(5 * time.Second)
 	for len(link.Events.named("status:updated")) == 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)

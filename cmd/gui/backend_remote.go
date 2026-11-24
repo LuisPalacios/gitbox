@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,8 +26,8 @@ import (
 // again on this side, and events with a name this build does not know are
 // dropped.
 type RemoteBackend struct {
-	sink func() EventSink
-	log  io.Writer
+	clientApp *App
+	log       io.Writer
 	// onTruncate runs when a list from the server was cut (capList).
 	onTruncate func()
 	// refuseUnserved refuses, before it reaches the wire, every method that
@@ -56,17 +57,16 @@ type longCall struct {
 var _ Backend = (*RemoteBackend)(nil)
 
 // newRemoteBackend returns a backend with no connection: every call fails
-// with not_connected until connect succeeds. sink says where the server's
-// events go.
-func newRemoteBackend(sink func() EventSink, log io.Writer) *RemoteBackend {
-	return &RemoteBackend{sink: sink, log: log}
+// with not_connected until connect succeeds. Events go to the client App.
+func newRemoteBackend(app *App, log io.Writer) *RemoteBackend {
+	return &RemoteBackend{clientApp: app, log: log}
 }
 
 // dialRemoteBackend runs the handshake with the server whose output is in
 // and whose input is out, and returns its backend. The handshake fails
 // unless the server is this same build.
 func dialRemoteBackend(in io.Reader, out io.WriteCloser, sink func() EventSink, log io.Writer) (*RemoteBackend, error) {
-	r := newRemoteBackend(sink, log)
+	r := newRemoteBackend(&App{events: sink()}, log)
 	if err := r.connect(in, out); err != nil {
 		return nil, err
 	}
@@ -146,7 +146,10 @@ func (r *RemoteBackend) goLong(method, done string, failed func(msg string) any,
 		if err != nil {
 			r.note(method, err)
 			if raw, merr := json.Marshal(failed(userMsg(err))); merr == nil && !seen {
-				r.relayEvent(done, []json.RawMessage{raw})
+				r.relayPayload(done, Envelope[json.RawMessage]{
+					EventMetadata: EventMetadata{Client: true},
+					Payload:       raw,
+				})
 			}
 		}
 	}()
@@ -234,28 +237,49 @@ func (r *RemoteBackend) logf(format string, args ...any) {
 // this build emits and encoded again, so a field this build does not know,
 // or one of the wrong type, never reaches the window.
 func (r *RemoteBackend) relayEvent(name string, payload []json.RawMessage) {
+	var event Envelope[json.RawMessage]
+	if len(payload) != 1 || json.Unmarshal(payload[0], &event) != nil ||
+		event.Schema != eventSchema || event.Client || event.Sequence == 0 || event.Sequence >= 1<<53 ||
+		event.ConfigRevision >= 1<<53 || len(event.Payload) == 0 {
+		r.logf("dropping event %s: invalid envelope", userText(name))
+		return
+	}
+	if id, err := strconv.ParseUint(event.OperationID, 10, 64); err != nil || id == 0 || strconv.FormatUint(id, 10) != event.OperationID {
+		r.logf("dropping event %s: invalid operation ID", userText(name))
+		return
+	}
+	r.relayPayload(name, event)
+}
+
+func (r *RemoteBackend) relayPayload(name string, event Envelope[json.RawMessage]) {
 	decode, known := relayedEvents[name]
 	if info, ok := eventClass[name]; !known || !ok || info.Class != classRemote {
 		r.logf("dropping event %q, which this window does not take from a server", userText(name))
 		return
 	}
-	if len(payload) > 1 || (len(payload) == 0) != (decode == nil) {
-		r.logf("dropping event %s: it carries %d payloads", name, len(payload))
+	var item any
+	if decode == nil && string(event.Payload) != "null" {
+		r.logf("dropping event %s: unexpected payload", name)
 		return
 	}
-	var items []any
 	if decode != nil {
-		item, err := decode(r, payload[0])
+		var err error
+		item, err = decode(r, event.Payload)
 		if err != nil {
 			r.logf("dropping event %s: its payload cannot be decoded", name)
 			return
 		}
-		items = append(items, item)
-		if longDoneEvents[name] {
+		if longDoneEvents[name] && !event.Client {
 			r.sawDone(name, item)
 		}
 	}
-	r.sink().Emit(name, items...)
+	if event.Client {
+		op := r.clientApp.newOperation()
+		op.client = true
+		emit(op, name, item)
+		return
+	}
+	r.clientApp.transport().Emit(name, Envelope[any]{EventMetadata: event.EventMetadata, Payload: item})
 }
 
 // longDoneEvents end a long call (goLong).
@@ -265,27 +289,27 @@ var longDoneEvents = map[string]bool{"clone:done": true, "pull:done": true, "mov
 type fetchEventDTO struct {
 	Source       string `json:"source"`
 	Repo         string `json:"repo"`
-	Error        string `json:"error"`
-	Code         string `json:"code"`
-	Host         string `json:"host"`
-	Skipped      bool   `json:"skipped"`
-	RefusedFast  bool   `json:"refusedFast"`
-	UpstreamGone bool   `json:"upstreamGone"`
+	Error        string `json:"error,omitempty"`
+	Code         string `json:"code,omitempty"`
+	Host         string `json:"host,omitempty"`
+	Skipped      bool   `json:"skipped,omitempty"`
+	RefusedFast  bool   `json:"refusedFast,omitempty"`
+	UpstreamGone bool   `json:"upstreamGone,omitempty"`
 }
 
 type fetchDoneDTO struct {
 	fetchEventDTO
-	RepairWarnings []string `json:"repairWarnings"`
+	RepairWarnings []string `json:"repairWarnings,omitzero"`
 }
 
 type fetchAllDoneDTO struct {
-	Error string `json:"error"`
+	Error string `json:"error,omitempty"`
 }
 
 type discoverDoneDTO struct {
 	AccountKey string           `json:"accountKey"`
-	Error      string           `json:"error"`
-	Repos      []DiscoverResult `json:"repos"`
+	Error      string           `json:"error,omitempty"`
+	Repos      []DiscoverResult `json:"repos,omitempty"`
 }
 
 type mirrorDiscoverProgressDTO struct {
@@ -296,8 +320,8 @@ type mirrorDiscoverProgressDTO struct {
 }
 
 type mirrorDiscoverDoneDTO struct {
-	Error   string                   `json:"error"`
-	Results []mirror.DiscoveryResult `json:"results"`
+	Error   string                   `json:"error,omitempty"`
+	Results []mirror.DiscoveryResult `json:"results,omitempty"`
 }
 
 type networkStateDTO struct {
@@ -314,39 +338,41 @@ type cloneProgressDTO struct {
 
 // cloneDoneDTO is clone:done: the path of the new clone, or why it failed,
 // with what heal.Repo fixed or warned about, or the unreachable server
-// (describeUnreachable).
+// (unreachableDetails).
 type cloneDoneDTO struct {
 	Source   string   `json:"source"`
 	Repo     string   `json:"repo"`
-	Path     string   `json:"path"`
-	Error    string   `json:"error"`
-	Code     string   `json:"code"`
-	Host     string   `json:"host"`
-	Skipped  bool     `json:"skipped"`
-	Warnings []string `json:"warnings"`
-	Fixes    []string `json:"fixes"`
+	Path     string   `json:"path,omitempty"`
+	Error    string   `json:"error,omitempty"`
+	Code     string   `json:"code,omitempty"`
+	Host     string   `json:"host,omitempty"`
+	Skipped  bool     `json:"skipped,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+	Fixes    []string `json:"fixes,omitempty"`
 }
 
 // pullDoneDTO is pull:done. Skipped is a pull skip reason, or true for an
 // unreachable server.
 type pullDoneDTO struct {
-	RepairWarnings []string   `json:"repairWarnings"`
+	RepairWarnings []string   `json:"repairWarnings,omitzero"`
 	Source         string     `json:"source"`
 	Repo           string     `json:"repo"`
-	Error          string     `json:"error"`
-	Code           string     `json:"code"`
-	Host           string     `json:"host"`
-	Skipped        skipReason `json:"skipped"`
-	State          string     `json:"state"`
-	Modified       int        `json:"modified"`
-	Untracked      int        `json:"untracked"`
-	Ahead          int        `json:"ahead"`
-	Behind         int        `json:"behind"`
+	Error          string     `json:"error,omitempty"`
+	Code           string     `json:"code,omitempty"`
+	Host           string     `json:"host,omitempty"`
+	Skipped        skipReason `json:"skipped,omitzero"`
+	State          string     `json:"state,omitempty"`
+	Modified       *int       `json:"modified,omitempty"`
+	Untracked      *int       `json:"untracked,omitempty"`
+	Ahead          *int       `json:"ahead,omitempty"`
+	Behind         *int       `json:"behind,omitempty"`
 }
 
 // skipReason holds what pull:done says in skipped: true, false or an
 // identifier such as "settingsChanged". Anything else does not decode.
 type skipReason struct{ v any }
+
+func (s skipReason) IsZero() bool { return s.v == nil }
 
 func (s *skipReason) UnmarshalJSON(b []byte) error {
 	var flag bool
@@ -379,6 +405,14 @@ type payloadDecoder func(r *RemoteBackend, raw json.RawMessage) (any, error)
 // relayedEvents are the events a remote window takes from its server: the
 // P4 and P6 events of eventClass. TestRelayedEventsAreRemote keeps the two in step.
 var relayedEvents = map[string]payloadDecoder{
+	"status:one": func(_ *RemoteBackend, raw json.RawMessage) (any, error) {
+		var row StatusResult
+		if err := json.Unmarshal(raw, &row); err != nil {
+			return nil, err
+		}
+		row.Error = userText(row.Error)
+		return row, nil
+	},
 	"status:batch": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
 		var batch StatusBatch
 		if err := json.Unmarshal(raw, &batch); err != nil {
@@ -414,6 +448,8 @@ var relayedEvents = map[string]payloadDecoder{
 	"network:state":            typedPayload[networkStateDTO],
 	// The repository mutations (#295). Progress keeps the server's
 	// coalescing: at most one per operation every rpc.ProgressInterval.
+	"clone:start":    typedPayload[repoEventDTO],
+	"pull:start":     typedPayload[repoEventDTO],
 	"clone:progress": typedPayload[cloneProgressDTO],
 	"clone:done": func(r *RemoteBackend, raw json.RawMessage) (any, error) {
 		var done cloneDoneDTO

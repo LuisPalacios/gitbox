@@ -482,8 +482,8 @@
     </div>
     <span class="progress-pct" style="color:{sc(state.status)}">{state.progress}%</span>
   {:else}
-    {#if state.status === 'unknown'}<span class="status-pending">{$t(presentation.labelKey)}</span>{/if}
-    {#if state.status !== 'unknown'}
+    {#if state.status === 'unknown' || state.status === 'pending'}<span class="status-pending">{$t(presentation.labelKey)}</span>{/if}
+    {#if state.status !== 'unknown' && state.status !== 'pending'}
     {@render prBadges()}
     <span class="status-badges">
       {@render words()}

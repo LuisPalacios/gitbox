@@ -39,7 +39,7 @@ func (a *App) Startup(ctx context.Context) {
 			a.recoveryMu.Lock()
 			defer a.recoveryMu.Unlock()
 			if a.updateRecovery == r && a.finishUpdateRecovery(false) == nil {
-				a.sink().Emit("update:recoveryExpired")
+				emit(a.newOperation(), "update:recoveryExpired", any(nil))
 			}
 		})
 	}
@@ -180,7 +180,7 @@ func (a *App) DomReady(_ context.Context) {
 	a.toolsOnce.Do(func() {
 		a.toolsWG.Go(func() {
 			a.syncDetected()
-			a.sink().Emit("tools:updated")
+			emit(a.newOperation(), "tools:updated", any(nil))
 		})
 	})
 
@@ -308,7 +308,8 @@ func (a *App) ApplyUpdate() error {
 		return fmt.Errorf("no update available")
 	}
 
-	a.sink().Emit("update:progress", "Downloading...")
+	op := a.newOperation()
+	emit(op, "update:progress", "Downloading...")
 
 	zipPath, err := update.DownloadRelease(ctx, result.Release, opts)
 	if err != nil {
@@ -316,7 +317,7 @@ func (a *App) ApplyUpdate() error {
 	}
 	defer os.RemoveAll(filepath.Dir(zipPath))
 
-	a.sink().Emit("update:progress", "Applying...")
+	emit(op, "update:progress", "Applying...")
 
 	// Extract first so we can retry with elevation if the in-place
 	// install fails due to permissions (e.g. Program Files on Windows).
@@ -335,12 +336,12 @@ func (a *App) ApplyUpdate() error {
 	if err := update.InstallVersion(extractDir, installDir, version); err != nil {
 		if errors.Is(err, update.ErrNeedElevation) {
 			os.RemoveAll(extractDir)
-			a.sink().Emit("update:progress", "Requesting admin privileges...")
+			emit(op, "update:progress", "Requesting admin privileges...")
 			if elevErr := update.ApplyElevated(zipPath, result.Release.TagName, exe != ""); elevErr != nil {
 				return fmt.Errorf("elevated update: %w", elevErr)
 			}
 			// The helper holds the verified payload and waits for this process to exit.
-			a.sink().Emit("update:quit", result.Latest)
+			emit(op, "update:quit", result.Latest)
 			return nil
 		}
 		os.RemoveAll(extractDir)
@@ -352,14 +353,14 @@ func (a *App) ApplyUpdate() error {
 	// Start the new version, which waits for this process to exit, then
 	// quit. Quit runs BeforeClose, so the window state is saved as usual.
 	if exe != "" && update.Relaunch(exe, os.Getpid(), os.Args[1:]) == nil {
-		a.sink().Emit("update:restarting", result.Latest)
+		emit(op, "update:restarting", result.Latest)
 		go func() {
 			time.Sleep(time.Second) // let the pill show "Restarting…"
 			wailsrt.Quit(a.ctx)
 		}()
 		return nil
 	}
-	a.sink().Emit("update:done", result.Latest)
+	emit(op, "update:done", result.Latest)
 	return nil
 }
 

@@ -702,6 +702,10 @@ El backend Go (`cmd/gui/app.go`) expone métodos que el frontend Svelte llama me
 
 La instantánea de arranque inicializa las filas de repositorios. Ocho trabajadores comprueban el estado local y envían `status:batch` al reunir ocho resultados o tras 250 ms. La interfaz acepta lotes de su propia pasada y revisión de configuración, conserva las demás filas y programa la consulta de remotos, mirrors y PR tras el primer resultado o al terminar una pasada vacía. La interfaz muestra el primer lote de inmediato y agrupa los resultados siguientes en actualizaciones separadas por un máximo de 125 ms mientras llegan resultados. Al terminar, muestra las filas pendientes e inicia el descubrimiento local. La pasada completa también atiende a quienes esperan `GetAllStatus` en el orden de la configuración.
 
+Los eventos de operaciones largas llevan un esquema, la revisión de configuración del host, un identificador de operación estable y una secuencia creciente por instancia de la app. La instantánea de arranque registra la última secuencia junto con la configuración. La interfaz descarta los eventos cubiertos por la instantánea y los de revisiones anteriores, y comprueba que cada repo siga en la configuración antes de actualizar su fila. Al reconectar se inicia una nueva secuencia del host. El relay RPC conserva los metadatos y aplica la lista de eventos permitidos y los filtros de datos. Ejecuto `go generate ./cmd/gui` para actualizar los tipos TypeScript de los eventos.
+
+Cuando el clonado o pull termina bien, la fila muestra **Comprobando…** hasta que Git informa del estado del árbol de trabajo. El backend comprueba ese repo y envía `status:one` con el mismo identificador. Una comprobación anterior no sustituye el resultado de una operación más reciente sobre la misma fila.
+
 **Estructura del frontend:**
 
 - `App.svelte` compone el armazón y guarda el estado de la app, los listeners de eventos y las acciones que comparten varias partes.

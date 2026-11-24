@@ -1,3 +1,5 @@
+import type { AIHarnessEntry as AIHarnessInfo } from './dto.generated';
+
 // Types mirroring Go structs from pkg/config and cmd/gui/app.go
 
 export interface GlobalConfig {
@@ -184,7 +186,8 @@ export type PullSkipReason = 'dirty' | 'conflict' | 'inProgress' | 'settingsChan
 
 // Frontend-only UI state for a single repo row
 export interface RepoState {
-  status: 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'conflict' | 'not cloned' | 'no upstream' | 'upstream gone' | 'root offline' | 'error' | 'syncing' | 'cloning' | 'unknown';
+  statusCheckRevision?: number;
+  status: 'clean' | 'dirty' | 'behind' | 'ahead' | 'diverged' | 'conflict' | 'not cloned' | 'no upstream' | 'upstream gone' | 'root offline' | 'error' | 'syncing' | 'cloning' | 'pending' | 'unknown';
   path?: string;
   progress: number;
   behind: number;
@@ -362,16 +365,7 @@ export interface TerminalProfileInfo {
   source: string;
 }
 
-export interface AIHarnessInfo {
-  id: string;
-  name: string;
-  command: string;
-  args: string[];
-  // Written by the Go-side harness sync (issue #81). `missing` entries are
-  // kept in config but must not be offered in menus.
-  source?: 'detected' | 'user' | '';
-  missing?: boolean;
-}
+export type { AIHarnessEntry as AIHarnessInfo } from './dto.generated';
 
 // ── PR / review indicators (issue #29) ──
 
@@ -471,6 +465,7 @@ export interface CredentialFinding {
 }
 
 export interface StartupSnapshot {
+  eventWatermark: number;
   credentialFindings: CredentialFinding[];
   config: ConfigDTO;
   nesting: Record<string, string>;

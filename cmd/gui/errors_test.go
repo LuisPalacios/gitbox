@@ -122,29 +122,28 @@ func TestDescribeFetchFailure(t *testing.T) {
 		t.Fatal("the fetch must fail")
 	}
 
-	payload := map[string]any{"source": "s", "repo": "r"}
-	describeFetchFailure(payload, fmt.Errorf("refresh: %w", err))
-	if payload["code"] != "git.offline" || payload["host"] != "127.0.0.1" {
+	payload := fetchEventDTO{Source: "s", Repo: "r"}
+	describeFetchFailure(&payload, fmt.Errorf("refresh: %w", err))
+	if payload.Code != "git.offline" || payload.Host != "127.0.0.1" {
 		t.Errorf("payload = %v, want code git.offline and host 127.0.0.1", payload)
 	}
 	// How fast the OS refuses a loopback connect depends on the platform
 	// (Windows retries for about two seconds), so the flag only has to
 	// agree with the classifier.
-	if _, flagged := payload["refusedFast"]; flagged != git.IsRefusedFast(err) {
+	if flagged := payload.RefusedFast; flagged != git.IsRefusedFast(err) {
 		t.Errorf("refusedFast in payload = %v, IsRefusedFast = %v", flagged, git.IsRefusedFast(err))
 	}
-	if payload["error"] != "refresh: git fetch: offline (exit 128)" {
-		t.Errorf("error text = %q", payload["error"])
+	if payload.Error != "refresh: git fetch: offline (exit 128)" {
+		t.Errorf("error text = %q", payload.Error)
 	}
-	for key, value := range payload {
-		if text := fmt.Sprint(value); strings.Contains(text, token) || strings.Contains(text, "user:") || strings.Contains(text, "x.git") {
-			t.Errorf("payload[%q] leaks the remote URL: %s", key, text)
-		}
+	encoded := asJSON(t, payload)
+	if strings.Contains(encoded, token) || strings.Contains(encoded, "user:") || strings.Contains(encoded, "x.git") {
+		t.Errorf("payload leaks the remote URL: %s", encoded)
 	}
 
-	plain := map[string]any{}
-	describeFetchFailure(plain, errors.New("repository maintenance: x"))
-	if len(plain) != 1 || plain["error"] != "repository maintenance: x" {
+	var plain fetchEventDTO
+	describeFetchFailure(&plain, errors.New("repository maintenance: x"))
+	if plain != (fetchEventDTO{Error: "repository maintenance: x"}) {
 		t.Errorf("an untyped failure = %v, want only its text", plain)
 	}
 }

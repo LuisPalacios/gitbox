@@ -195,7 +195,7 @@ func (a *App) requestStatus(emit, dirty bool) *statusFlight {
 	return a.requestStatusStream(emit, dirty, 0)
 }
 
-func (a *App) requestStatusStream(emit, dirty bool, stream uint64) *statusFlight {
+func (a *App) requestStatusStream(publishFinal, dirty bool, stream uint64) *statusFlight {
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
 	if a.refreshClosed {
@@ -208,11 +208,11 @@ func (a *App) requestStatusStream(emit, dirty bool, stream uint64) *statusFlight
 			call.stream = stream
 			call.dirty = true
 		}
-		call.emit = call.emit || emit
+		call.emit = call.emit || publishFinal
 		call.dirty = call.dirty || dirty
 		return call
 	}
-	call := &statusFlight{done: make(chan struct{}), emit: emit, stream: stream}
+	call := &statusFlight{done: make(chan struct{}), emit: publishFinal, stream: stream}
 	a.statusRun = call
 	a.refreshWG.Go(func() {
 		for {
@@ -221,6 +221,7 @@ func (a *App) requestStatusStream(emit, dirty bool, stream uint64) *statusFlight
 			pass := call.stream
 			a.refreshMu.Unlock()
 			cfg, revision := a.refreshSnapshot()
+			op := a.newOperation().atRevision(revision)
 			sweepStarted := time.Now()
 			convert := func(raw []status.RepoStatus) []StatusResult {
 				rows := make([]StatusResult, len(raw))
@@ -236,7 +237,7 @@ func (a *App) requestStatusStream(emit, dirty bool, stream uint64) *statusFlight
 					a.refreshMu.Lock()
 					defer a.refreshMu.Unlock()
 					if !a.refreshClosed && !call.dirty && call.stream == pass {
-						a.sink().Emit("status:batch", StatusBatch{PassID: pass, Revision: revision, Items: a.overlayStatus(convert(raw))})
+						emit(op, "status:batch", StatusBatch{PassID: pass, Revision: revision, Items: a.overlayStatus(convert(raw))})
 					}
 				}
 			}
@@ -262,10 +263,10 @@ func (a *App) requestStatusStream(emit, dirty bool, stream uint64) *statusFlight
 			a.cachedStatusConfig = cfg
 			call.results = local
 			if call.emit && !a.refreshClosed {
-				a.sink().Emit("status:updated", a.overlayStatus(local))
+				emit(op, "status:updated", a.overlayStatus(local))
 			}
 			if pass != 0 && !a.refreshClosed {
-				a.sink().Emit("status:batch", StatusBatch{PassID: pass, Revision: revision, Done: true})
+				emit(op, "status:batch", StatusBatch{PassID: pass, Revision: revision, Done: true})
 			}
 			a.statusRun = nil
 			close(call.done)
@@ -305,17 +306,21 @@ func (a *App) refreshStatusLocal() { a.requestStatus(true, true); a.probeUpstrea
 
 // I overlay provider results without spawning another fleet of git processes.
 func (a *App) emitCachedStatus() {
-	current := a.snapshotRefreshConfig()
+	current, revision := a.refreshSnapshot()
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
 	if a.cachedStatusConfig != nil && reflect.DeepEqual(current, a.cachedStatusConfig) && !a.refreshClosed {
-		a.sink().Emit("status:updated", a.overlayStatus(a.cachedStatus))
+		emit(a.newOperation().atRevision(revision), "status:updated", a.overlayStatus(a.cachedStatus))
 	}
 }
 
 func (a *App) sameRefreshRepo(cfg *config.Config, source, repo string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.sameRefreshRepoLocked(cfg, source, repo)
+}
+
+func (a *App) sameRefreshRepoLocked(cfg *config.Config, source, repo string) bool {
 	current := a.cfg
 	if current == nil {
 		return false
@@ -336,17 +341,18 @@ func (a *App) sameRefreshRepo(cfg *config.Config, source, repo string) bool {
 		reflect.DeepEqual(cfg.Global.CredentialToken, current.Global.CredentialToken)
 }
 
-func (a *App) fetchOne(cfg *config.Config, source, repo string, lost *sync.Map) error {
+func (a *App) fetchOne(cfg *config.Config, revision uint64, source, repo string, lost *sync.Map) error {
+	op := a.newOperation().atRevision(revision)
 	src, ok := cfg.Sources[source]
 	if !ok {
 		err := fmt.Errorf("source %q not found", source)
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
+		emit(op, "fetch:done", fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo, Error: userMsg(err)}})
 		return err
 	}
 	r, ok := src.Repos[repo]
 	if !ok {
 		err := fmt.Errorf("repo %q not found", repo)
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
+		emit(op, "fetch:done", fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo, Error: userMsg(err)}})
 		return err
 	}
 	account := cfg.Accounts[src.Account]
@@ -385,9 +391,9 @@ func (a *App) fetchOne(cfg *config.Config, source, repo string, lost *sync.Map) 
 		release, err := a.fetches.acquire(ctx, host)
 		if err == nil {
 			if lost != nil && fetchEndpointLost(lost, addr) {
-				err = a.skipUnreachable(source, repo, addr)
+				err = skipUnreachable(op, source, repo, addr)
 			} else {
-				err = a.performFetch(cfg, source, repo, path)
+				err = a.performFetch(op, cfg, source, repo, path)
 				if lost != nil && addr != "" && isConnectionFailure(err) {
 					lost.Store(addr, true)
 				}
@@ -432,15 +438,15 @@ func retryWithBackoff(ctx context.Context, started time.Time, again func() bool)
 	}
 }
 
-func (a *App) performFetch(cfg *config.Config, source, repo, path string) error {
+func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, path string) error {
 	a.maintenanceMu.RLock()
 	report, current := a.repairUnderMaintenance(cfg, source, repo, func() {
-		a.sink().Emit("fetch:start", map[string]string{"source": source, "repo": repo})
+		emit(op, "fetch:start", fetchEventDTO{Source: source, Repo: repo})
 	})
 	a.maintenanceMu.RUnlock()
 	if !current {
 		err := fmt.Errorf("repository settings changed during refresh")
-		a.sink().Emit("fetch:done", map[string]string{"source": source, "repo": repo, "error": userMsg(err)})
+		emit(op, "fetch:done", fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo, Error: userMsg(err)}})
 		return err
 	}
 	var err error
@@ -476,22 +482,23 @@ func (a *App) performFetch(cfg *config.Config, source, repo, path string) error 
 			return err
 		})
 	}
-	payload := map[string]any{"source": source, "repo": repo}
+	payload := fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo}}
 	if report.Skipped == "" && !a.readOnly {
-		payload["repairWarnings"] = append([]string{}, report.Warnings...)
+		payload.RepairWarnings = append([]string{}, report.Warnings...)
 	}
 	if errors.Is(err, errServerUnreachable) {
-		describeUnreachable(payload, addr)
+		payload.Error, payload.Code, payload.Host = unreachableDetails(addr)
+		payload.Skipped = true
 	} else if err != nil {
-		describeFetchFailure(payload, err)
+		describeFetchFailure(&payload.fetchEventDTO, err)
 		if git.IsUpstreamGoneError(err) {
-			payload["upstreamGone"] = true
+			payload.UpstreamGone = true
 		}
 	}
 	if (err == nil || git.IsUpstreamGoneError(err)) && a.sameRefreshRepo(cfg, source, repo) {
 		a.recordFetchStatus(cfg, source, repo, err != nil, time.Now())
 	}
-	a.sink().Emit("fetch:done", payload)
+	emit(a.currentRepoOperation(op, cfg, source, repo), "fetch:done", payload)
 	return err
 }
 
@@ -528,24 +535,20 @@ func (a *App) onServerCtx(parent context.Context, addr string, work func(context
 	return err
 }
 
-// describeUnreachable fills the payload of work that did not run, or was
-// stopped, because its server does not answer: the same facts as a failed
-// fetch, plus skipped.
-func describeUnreachable(payload map[string]any, addr string) {
-	payload["error"] = userMsg(errServerUnreachable)
-	payload["code"] = "git." + string(git.CodeOffline)
-	payload["skipped"] = true
-	if host, _, err := net.SplitHostPort(addr); err == nil {
-		payload["host"] = host
-	}
+// unreachableDetails reports an operation the network guard stopped or
+// skipped because its server did not answer.
+func unreachableDetails(addr string) (message, code, host string) {
+	host, _, _ = net.SplitHostPort(addr)
+	return userMsg(errServerUnreachable), "git." + string(git.CodeOffline), host
 }
 
 // skipUnreachable reports a clone as failed without trying it: its server is
 // unreachable.
-func (a *App) skipUnreachable(source, repo, addr string) error {
-	payload := map[string]any{"source": source, "repo": repo}
-	describeUnreachable(payload, addr)
-	a.sink().Emit("fetch:done", payload)
+func skipUnreachable(op eventOperation, source, repo, addr string) error {
+	payload := fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo}}
+	payload.Error, payload.Code, payload.Host = unreachableDetails(addr)
+	payload.Skipped = true
+	emit(op, "fetch:done", payload)
 	return errServerUnreachable
 }
 
@@ -587,18 +590,13 @@ func (a *App) anyServerReachable(ctx context.Context, cfg *config.Config) bool {
 // fetch: the scrubbed text and, as data, the code, the server that could not
 // be reached and whether the connect was refused at once. The frontend
 // groups failures by these facts, never by reading the text.
-func describeFetchFailure(payload map[string]any, err error) {
+func describeFetchFailure(payload *fetchEventDTO, err error) {
 	ue := toUserError(err)
-	payload["error"] = ue.String()
-	if ue.Code != "" {
-		payload["code"] = ue.Code
+	payload.Error, payload.Code = ue.String(), ue.Code
+	if ge, ok := errors.AsType[*git.GitError](err); ok {
+		payload.Host = ge.Host
 	}
-	if ge, ok := errors.AsType[*git.GitError](err); ok && ge.Host != "" {
-		payload["host"] = ge.Host
-	}
-	if git.IsRefusedFast(err) {
-		payload["refusedFast"] = true
-	}
+	payload.RefusedFast = git.IsRefusedFast(err)
 }
 
 // FetchAllRepos joins the active cycle, including its final status and provider work.
@@ -627,13 +625,14 @@ func (a *App) fetchAllReposContext(ctx context.Context) error {
 	call := &fetchFlight{done: make(chan struct{})}
 	a.fetchRun = call
 	a.refreshWG.Go(func() {
-		a.sink().Emit("fetch:allstart")
+		op := a.newOperation()
+		emit(op, "fetch:allstart", any(nil))
 		err := a.fetchCycle()
-		payload := map[string]string{}
+		payload := fetchAllDoneDTO{}
 		if err != nil {
-			payload["error"] = userMsg(err)
+			payload.Error = userMsg(err)
 		}
-		a.sink().Emit("fetch:alldone", payload)
+		emit(op.currentRevision(), "fetch:alldone", payload)
 		a.refreshMu.Lock()
 		call.err = err
 		a.fetchRun = nil
@@ -652,7 +651,7 @@ func (a *App) fetchAllReposContext(ctx context.Context) error {
 func (a *App) fetchCycle() error {
 	var errs []error
 	for range 2 {
-		cfg := a.snapshotRefreshConfig()
+		cfg, revision := a.refreshSnapshot()
 		// One short connect per server decides, before anything is queued,
 		// which servers are there. Nothing goes out to one that is not.
 		ctx := a.refreshContext()
@@ -667,7 +666,7 @@ func (a *App) fetchCycle() error {
 			network.Go(func() { a.probeUpstreamExistence() })
 		}
 		network.Go(func() { a.verifyRefreshCredentials(cfg) })
-		errs = a.fetchClones(ctx, cfg)
+		errs = a.fetchClones(ctx, cfg, revision)
 		// I publish local changes before waiting for remote checks.
 		local := a.requestStatus(true, reachable)
 		<-local.done
@@ -693,7 +692,7 @@ func fetchEndpointLost(lost *sync.Map, addr string) bool {
 
 // fetchClones drains each host's queue independently, so waiting for a
 // busy host never blocks the collection or dispatch of another host's repos.
-func (a *App) fetchClones(ctx context.Context, cfg *config.Config) []error {
+func (a *App) fetchClones(ctx context.Context, cfg *config.Config, revision uint64) []error {
 	type job struct {
 		source string
 		repo   string
@@ -725,9 +724,9 @@ func (a *App) fetchClones(ctx context.Context, cfg *config.Config) []error {
 					j := jobs[index]
 					var err error
 					if fetchEndpointLost(&lost, j.addr) || !a.reachable(ctx, j.addr) {
-						err = a.skipUnreachable(j.source, j.repo, j.addr)
+						err = skipUnreachable(a.newOperation().atRevision(revision), j.source, j.repo, j.addr)
 					} else {
-						err = a.fetchOne(cfg, j.source, j.repo, &lost)
+						err = a.fetchOne(cfg, revision, j.source, j.repo, &lost)
 					}
 					if err != nil {
 						mu.Lock()
@@ -773,7 +772,7 @@ func (a *App) verifyRefreshCredentials(cfg *config.Config) {
 		}
 	}
 	if reflect.DeepEqual(cfg.Accounts, current.Accounts) && reflect.DeepEqual(cfg.Global, current.Global) {
-		a.sink().Emit("credentials:updated", results)
+		emit(a.newOperation(), "credentials:updated", results)
 	}
 }
 
