@@ -427,9 +427,10 @@ func runRemoteWindow(app *App, f remoteFlags) {
 
 // runRemotesWindow runs the Remote hosts window (#330): its own process,
 // independent of the window that opened it, with a single-instance lock, so
-// a second open focuses it. Like the terminals window it writes only client
+// a second open shows it. Like the terminals window it writes only client
 // preferences, through a store of its own on this machine's gitbox.json (the
-// test window's, in test mode). Closing it ends the process.
+// test window's, in test mode). Closing it hides it, so it opens again at
+// once; the process ends after remotesIdleTimeout hidden.
 func runRemotesWindow(app *App, f remoteFlags) {
 	path := f.prefsFile
 	if path == "" {
@@ -440,6 +441,11 @@ func runRemotesWindow(app *App, f remoteFlags) {
 	app.testMode = f.testMode
 	app.experimentalRemote = true
 	app.windowMode = "remotes"
+	quitRemotesWindow = func(a *App) {
+		if a.ctx != nil {
+			wailsrt.Quit(a.ctx)
+		}
+	}
 	lockID := "com.luispalacios.gitbox.remotes"
 	if f.testMode {
 		lockID += ".test"
@@ -452,7 +458,8 @@ func runRemotesWindow(app *App, f remoteFlags) {
 		MinHeight: 480,
 		// The frontend shows the window after its first paint, as in the
 		// terminals window.
-		StartHidden: true,
+		StartHidden:       true,
+		HideWindowOnClose: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -463,6 +470,7 @@ func runRemotesWindow(app *App, f remoteFlags) {
 				if app.ctx == nil {
 					return
 				}
+				app.touchRemotesWindow()
 				wailsrt.WindowUnminimise(app.ctx)
 				wailsrt.WindowShow(app.ctx)
 			},

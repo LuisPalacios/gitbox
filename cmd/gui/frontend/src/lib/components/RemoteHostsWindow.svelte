@@ -58,7 +58,11 @@
     load();
     const refresh = () => load();
     window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
+    // While the window shows, a refresh every minute keeps the states of
+    // the hosts current and tells the process the window is in use: hidden
+    // for ten minutes without one, it ends (#330).
+    const beat = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 60_000);
+    return () => { window.removeEventListener('focus', refresh); clearInterval(beat); };
   });
 
   function say(res: RemoteResult, ok: string): boolean {

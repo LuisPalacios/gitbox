@@ -785,6 +785,7 @@ func (a *App) freshPrefs() config.ClientPrefs {
 // (#330): every configured remote, whether a window of it is open and how
 // its connection is, and what the host reported last.
 func (a *App) ListRemotes() RemotesDTO {
+	a.touchRemotesWindow()
 	out := RemotesDTO{Enabled: a.remoteEnabled(), Current: a.remoteAlias, Remotes: []RemoteEntryDTO{}, RemoteEditors: remote.RemoteEditorCommands()}
 	dir := config.WindowsDir(a.prefsPath())
 	for _, r := range a.freshPrefs().Remotes {
@@ -803,6 +804,30 @@ func (a *App) ListRemotes() RemotesDTO {
 type SSHHostDTO struct {
 	Alias string   `json:"alias"`
 	Names []string `json:"names"`
+}
+
+// The Remote hosts window hides when it is closed, so it opens again at
+// once (#330). While it shows, its view reads ListRemotes every minute; once
+// no read has come for remotesIdleTimeout it is hidden, and its process
+// ends.
+var remotesIdleTimeout = 10 * time.Minute
+
+// quitRemotesWindow ends the Remote hosts window's process. runRemotesWindow
+// sets it, since the server build carries no Wails; tests replace it.
+var quitRemotesWindow = func(*App) {}
+
+// touchRemotesWindow restarts the idle countdown of the Remote hosts
+// window. Other windows have none.
+func (a *App) touchRemotesWindow() {
+	if a.windowMode != "remotes" {
+		return
+	}
+	a.remotesIdleMu.Lock()
+	defer a.remotesIdleMu.Unlock()
+	if a.remotesIdle != nil {
+		a.remotesIdle.Stop()
+	}
+	a.remotesIdle = time.AfterFunc(remotesIdleTimeout, func() { quitRemotesWindow(a) })
 }
 
 // ListSSHHosts suggests the Host lines of this computer's ssh configuration

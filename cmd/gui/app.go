@@ -102,6 +102,11 @@ type App struct {
 	// interactive and the editor scrolls on its own).
 	windowMode string
 
+	// remotesIdle ends the Remote hosts window's process once it has been
+	// hidden for remotesIdleTimeout (#330); see touchRemotesWindow.
+	remotesIdleMu sync.Mutex
+	remotesIdle   *time.Timer
+
 	// terminalsCmd tracks the Profile-editor subprocess spawned by
 	// OpenTerminalsManagerWindow (issue #69). Captured so the parent's
 	// Shutdown can tear it down — otherwise the editor window survives the

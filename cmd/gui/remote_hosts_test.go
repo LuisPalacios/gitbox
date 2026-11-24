@@ -223,3 +223,40 @@ func TestRemoteHostsWindowBindings(t *testing.T) {
 		t.Errorf("OpenRemotesWindow with a failing start = %+v", res)
 	}
 }
+
+// The Remote hosts window ends once no read has come for the idle timeout;
+// every read restarts the countdown, and other windows have none (#330).
+func TestRemotesWindowIdleQuit(t *testing.T) {
+	prevTimeout, prevQuit := remotesIdleTimeout, quitRemotesWindow
+	t.Cleanup(func() { remotesIdleTimeout, quitRemotesWindow = prevTimeout, prevQuit })
+	quits := make(chan *App, 4)
+	quitRemotesWindow = func(a *App) { quits <- a }
+	remotesIdleTimeout = 400 * time.Millisecond
+
+	local, _ := remoteHostsApp(t)
+	local.ListRemotes()
+	select {
+	case <-quits:
+		t.Fatal("a local window quit on idle")
+	case <-time.After(600 * time.Millisecond):
+	}
+
+	a, _ := remoteHostsApp(t)
+	a.windowMode = "remotes"
+	a.ListRemotes()
+	time.Sleep(250 * time.Millisecond)
+	a.ListRemotes() // a read before the timeout restarts the countdown
+	select {
+	case <-quits:
+		t.Fatal("the window quit although a read restarted the countdown")
+	case <-time.After(200 * time.Millisecond):
+	}
+	select {
+	case got := <-quits:
+		if got != a {
+			t.Fatal("another App quit")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the hidden window never quit")
+	}
+}
