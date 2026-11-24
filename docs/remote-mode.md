@@ -217,7 +217,7 @@ It deletes only what gitbox put there: the build folders, the build logs in `log
 - the install decisions, the hash of the uploaded file and the pin;
 - what `ssh` and the server print on stderr.
 
-**Copy log** copies it. **Run doctor** runs `gitbox-server --doctor` on the host in a separate command, verified like a start, and shows the server build, the git version, the config path and whether that folder allows writing and running programs. For each clone root of the host's config, it also shows whether the server can read it, and names the cause when it cannot: the folder is missing, macOS privacy protection blocks it (see [macOS hosts](#macos-hosts)), the permissions refuse it, or it cannot be read.
+**Copy log** copies it, and I can also select and copy any part of the log or of the doctor's report, which scroll together. **Run doctor** runs `gitbox-server --doctor` on the host in a separate command, verified like a start, and shows the server build, the git version, the config path and whether that folder allows writing and running programs. For each clone root of the host's config, it also shows whether the server can read it, and names the cause when it cannot: the folder is missing, macOS privacy protection blocks it (see [macOS hosts](#macos-hosts)), the permissions refuse it, or it cannot be read.
 
 On the host, the server also writes `<root>/logs/<build>.log`, rotated at 1 MiB with three older files kept.
 

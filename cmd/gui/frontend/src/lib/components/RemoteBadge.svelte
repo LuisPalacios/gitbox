@@ -67,5 +67,5 @@
     font-size: 10px; font-weight: 700; color: #fff; background: var(--alert);
   }
   .log-overlay { position: fixed; inset: 0; z-index: 60; background: var(--overlay); display: flex; justify-content: flex-end; }
-  .log-drawer { width: min(640px, 92vw); height: 100%; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; }
+  .log-drawer { width: 100%; height: 100%; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; }
 </style>

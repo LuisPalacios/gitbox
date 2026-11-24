@@ -52,7 +52,11 @@ func (r *runner) probe(ctx context.Context) (Probe, error) {
 	if len(res.fields) > 4 {
 		p.Libc = res.fields[4]
 	}
-	r.log.Printf("probe: %s %s, shell %s, libc %s", clean(p.RawOS), clean(p.RawArch), clean(p.Shell), clean(p.Libc))
+	if p.Libc != "" {
+		r.log.Printf("probe: %s %s, shell %s, libc %s", clean(p.RawOS), clean(p.RawArch), clean(p.Shell), clean(p.Libc))
+	} else {
+		r.log.Printf("probe: %s %s, shell %s", clean(p.RawOS), clean(p.RawArch), clean(p.Shell))
+	}
 	if err := p.resolve(r.alias); err != nil {
 		return p, err
 	}

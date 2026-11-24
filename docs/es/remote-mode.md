@@ -217,7 +217,7 @@ Solo borra lo que puso gitbox: las carpetas de build, los registros de build de 
 - las decisiones de instalación, el hash del archivo subido y el pin;
 - lo que `ssh` y el servidor imprimen en stderr.
 
-**Copiar registro** lo copia. **Diagnosticar** ejecuta `gitbox-server --doctor` en el host en un comando aparte, verificado como un arranque, y muestra el build del servidor, la versión de git, la ruta de la configuración y si esa carpeta permite escribir y ejecutar programas. Para cada raíz de clonado de la configuración del host, también muestra si el servidor puede leerla, y nombra la causa cuando no puede: la carpeta no existe, la protección de privacidad de macOS la bloquea (consulta [Hosts macOS](#hosts-macos)), los permisos la rechazan, o no se puede leer.
+**Copiar registro** lo copia, y también puedo seleccionar y copiar cualquier parte del registro o del informe del diagnóstico, que se desplazan juntos. **Diagnosticar** ejecuta `gitbox-server --doctor` en el host en un comando aparte, verificado como un arranque, y muestra el build del servidor, la versión de git, la ruta de la configuración y si esa carpeta permite escribir y ejecutar programas. Para cada raíz de clonado de la configuración del host, también muestra si el servidor puede leerla, y nombra la causa cuando no puede: la carpeta no existe, la protección de privacidad de macOS la bloquea (consulta [Hosts macOS](#hosts-macos)), los permisos la rechazan, o no se puede leer.
 
 En el host, el servidor también escribe `<root>/logs/<build>.log`, que rota a 1 MiB y guarda tres archivos anteriores.
 
