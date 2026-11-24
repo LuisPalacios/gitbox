@@ -86,8 +86,16 @@ func (t tapWriter) Close() error { return t.w.Close() }
 // change, refused GCM setup, or credential deletion, or on the
 // command line of no process of the host (sampled every 50 ms) nor of the
 // ssh this side starts. A refused GCM setup starts no git credential, and
-// its refusal names the store GCM would use on the host's OS.
+// its refusal names the store GCM would use on the host's OS. It runs on a
+// session the host serves itself and on one through the daemon (#247),
+// whose events.log must not hold the token either.
 func TestTokenCanary(t *testing.T) {
+	for _, mode := range []string{"serve", "daemon"} {
+		t.Run(mode, func(t *testing.T) { tokenCanary(t, mode == "daemon") })
+	}
+}
+
+func tokenCanary(t *testing.T, daemon bool) {
 	forgeBin := os.Getenv("GITBOX_IT_FAKEFORGE")
 	if forgeBin == "" {
 		t.Fatal("GITBOX_IT_FAKEFORGE is required; run scripts/remote-it.sh")
@@ -119,6 +127,7 @@ func TestTokenCanary(t *testing.T) {
 
 	// This side's ssh, with every command line it is given.
 	s := c.client(t, "client-canary", true)
+	s.opts.Daemon = daemon
 	argvLog := filepath.Join(t.TempDir(), "ssh-argv.log")
 	sshReal, err := exec.LookPath("ssh")
 	if err != nil {
@@ -148,6 +157,9 @@ func TestTokenCanary(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
+	if (client.Server().Daemon != nil) != daemon {
+		t.Fatalf("the daemon served the session: %v, want %v (fallback %q)", client.Server().Daemon != nil, daemon, client.Server().Fallback)
+	}
 
 	var answers []string
 	call := func(method string, params ...any) json.RawMessage {
@@ -252,7 +264,15 @@ func TestTokenCanary(t *testing.T) {
 	if !strings.Contains(fromServer.String(), "clone:done") || !strings.Contains(processes, "fakeforge -listen") || !strings.Contains(serverLog, "serving client") {
 		t.Fatalf("a tap saw nothing: wire %d bytes, ps %d bytes, server log %d bytes", len(fromServer.String()), len(processes), len(serverLog))
 	}
+	journal := ""
+	if daemon {
+		journal = c.sh("cat " + s.root + "/*/state/" + remote.EventsLogName + " 2>/dev/null || true")
+		if !strings.Contains(journal, "clone:done") {
+			t.Fatalf("the daemon's events.log holds no clone:done (%d bytes)", len(journal))
+		}
+	}
 	for where, text := range map[string]string{
+		"the daemon's events.log":       journal,
 		"the host's answers and events": fromServer.String(),
 		"the answers and errors":        strings.Join(answers, "\n"),
 		"the connection log":            strings.Join(s.log.Lines(), "\n"),

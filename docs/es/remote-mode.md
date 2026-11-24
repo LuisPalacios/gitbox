@@ -2,7 +2,7 @@
 
 El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio o un Mac. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
 
-Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host, cambia su configuración y sus clones, configura en él credenciales de token y SSH, y abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales. Se admiten hosts Linux y macOS (consulta [Hosts macOS](#hosts-macos)); los hosts Windows llegan después.
+Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host, cambia su configuración y sus clones, configura en él credenciales de token y SSH, abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales, y sigue adelante cuando se cae la conexión: un daemon en el host mantiene el trabajo en marcha, y la ventana vuelve a conectarse a él. Se admiten hosts Linux y macOS (consulta [Hosts macOS](#hosts-macos)); los hosts Windows llegan después.
 
 ## Antes de empezar: un alias que no pida nada
 
@@ -54,7 +54,7 @@ Un texto que habla de este ordenador nombra el host en su lugar, porque la acci�
 
 Esto funciona, y todo se ejecuta en el host:
 
-- el estado de cada repositorio, **Fetch de todo**, **Fetch** en un repositorio y la comprobación periódica del estado;
+- el estado de cada repositorio, **Fetch de todo**, **Fetch** en un repositorio y la comprobación periódica del estado, que el host ejecuta por su cuenta (consulta [El daemon](#el-daemon));
 - los detalles del repositorio, las insignias de pull requests y sus listas, y el estado de los espejos;
 - **Buscar proyectos** de una cuenta, que lista los repositorios del proveedor sin añadirlos;
 - las comprobaciones de credenciales, la vista previa de la limpieza y la comprobación previa del traslado;
@@ -104,20 +104,26 @@ Si la conexión se cae mientras se guarda un cambio, el `gitbox.json` del host c
 
 ### Cuando la conexión se cae durante una acción larga
 
-Un clon, una actualización, un traslado o una configuración de espejo se ejecuta en el host mientras la ventana que lo empezó sigue conectada. Cerrar la ventana, desconectar o perder la conexión lo detiene allí, junto con sus procesos de git:
+Un clon, una actualización, un traslado, una configuración de espejo o un **Fetch de todo** se ejecuta en el host, en su daemon (consulta [El daemon](#el-daemon)). Cerrar la ventana, **Desconectar** o una conexión caída solo separan la ventana: la acción sigue allí, junto con sus procesos de git, y nada en este ordenador la cancela.
+
+Cuando la conexión se cae, la ventana vuelve a conectarse por sí sola, como describe [La insignia y la conexión](#la-insignia-y-la-conexión). La nueva conexión recibe los resultados de lo que terminó mientras tanto, y una acción todavía en curso vuelve a preguntar al host con el mismo id de petición: el host responde con el resultado del primer intento y nunca la ejecuta dos veces. Un **Fetch de todo** que la caída interrumpió termina con su tarjeta de resultado habitual. Cualquier otra llamada que la ventana hace mientras vuelve a conectarse espera a la nueva conexión en lugar de fallar. Después de **Desconectar**, el siguiente **Conectar** hace lo mismo. Una acción solo falla en la ventana cuando la ventana deja de intentar volver a conectarse o se cierra.
+
+Una sesión que el host sirve sin el daemon se comporta como antes: cerrar la ventana, desconectar o perder la conexión detiene la acción allí, junto con sus procesos de git:
 
 - Un clon se detiene, y git borra la carpeta que creó. Si el host mató a git de golpe, la carpeta se queda: la siguiente reconciliación la señala como un clon que se detuvo antes de terminar, y yo borro la carpeta y vuelvo a clonar. Gitbox nunca la borra por mí.
 - Una actualización se detiene, y git deja el clon como estaba o avanzado.
 - Un traslado se detiene entre dos pasos y nunca empieza a borrar el repositorio de origen ni el clon local. Un destino que ya creó se queda en el proveedor, y el traslado lo indica; una vez que el origin apunta al destino, la configuración también lo dice.
 - Una configuración de espejo se detiene, y lo que el proveedor ya creó se queda.
 
-La ventana marca la acción como fallida con el error de la conexión, así que nada espera una respuesta que no va a llegar.
+La ventana marca entonces la acción como fallida con el error de la conexión, así que nada espera una respuesta que no va a llegar.
 
 ### La insignia y la conexión
 
 La barra de título muestra una insignia con el alias, el sistema del host en el modo avanzado y el estado de la conexión. Al hacer clic se abre el registro de conexión.
 
-Cuando la conexión se cae, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server.** y un botón **Conectar**. Mientras está desconectada, la ventana no lanza ninguna recarga en segundo plano ni la comprobación periódica, así que no aparece ningún otro error. **Conectar** vuelve a hacer la misma conexión, borra lo que dejó la desconexión y recarga todo. Después la ventana reconcilia los clones del host y actualiza su estado antes de volver a ofrecer acciones, bajo **Reconectado a my-server. Leyendo sus clones antes de devolver las acciones…**
+Cuando se cae la conexión con el daemon, por un `ssh` que muere, la tapa del portátil cerrada o tres latidos perdidos con 10 segundos entre ellos, la ventana vuelve a conectarse por sí sola. Desde el momento en que se cae la conexión dice **Se cortó la conexión; el host sigue con su trabajo. Conectando de nuevo, intento 1 de 3…**, y sus acciones quedan desactivadas hasta la siguiente conexión. Hace tres intentos, tras 2, 5 y 10 segundos. Una conexión nueva tiene que llegar al mismo build del servidor, como la primera. Cuando fallan todos los intentos, o cuando el host sirve la sesión sin el daemon, la ventana muestra el fallo como sigue.
+
+Cuando no hay conexión, la ventana conserva el último estado que recibió, atenuado e inactivo, bajo **Desconectado de my-server.** y un botón **Conectar**. Mientras está desconectada, la ventana no lanza ninguna recarga en segundo plano ni la comprobación periódica, así que no aparece ningún otro error. **Conectar** vuelve a hacer la misma conexión. Una conexión nueva, automática o con **Conectar**, conserva la vista que tenía. Cuando reanuda el daemon del host con todos los eventos que la ventana se perdió, la ventana conserva también sus filas y el trabajo en curso, y vuelve a leer la configuración y el estado. Si no, cuando el daemon se reinició o ya no guardaba algunos de esos eventos, la ventana borra lo que dejó la desconexión y recarga todo, y después reconcilia los clones del host. En ambos casos actualiza su estado antes de volver a ofrecer acciones, bajo **Reconectado a my-server. Leyendo sus clones antes de devolver las acciones…**
 
 ### En qué confía la ventana
 
@@ -163,7 +169,12 @@ Todo vive bajo la **raíz del servidor**: el `server_dir` del remoto si lo confi
 
 ```text
 <root>/<build>/gitbox-server       el servidor, modo 0700
-<root>/<build>/in-use.<client id>  uno por cada servidor en marcha
+<root>/<build>/in-use.<client id>  uno por cada sesión conectada
+<root>/<build>/state/              la carpeta de estado del daemon, modo 0700
+<root>/<build>/state/rpc.sock      el socket del daemon, modo 0600
+<root>/<build>/state/daemon.pid    el id de proceso del daemon; daemon.lock es su bloqueo
+<root>/<build>/state/events.log    los últimos 1.000 eventos que terminaron una operación
+<root>/<build>/daemon.fallback     por qué la última sesión funcionó sin el daemon
 <root>/.gc.lock/                   el bloqueo de la recolección de basura
 <root>/logs/<build>.log[.1..3]     el registro del servidor
 ```
@@ -191,21 +202,32 @@ Cada arranque verifica el servidor y lo arranca en el mismo comando remoto, así
 
 Esto detecta la corrupción, una subida truncada y un archivo sustituido por error. No puede parar a un atacante que ya ejecuta código como mi usuario remoto y cambia el archivo entre la comprobación y el arranque. Frente a ese atacante, el cliente trata como no fiable todo lo que dice el servidor.
 
+### El daemon
+
+El arranque verificado ejecuta `gitbox-server proxy`, no el servidor. El proxy se conecta al daemon de su build a través de `state/rpc.sock`, y cuando ninguno responde arranca `gitbox-server run` desde el mismo archivo verificado. Después retransmite la sesión. Hay un daemon por usuario y build, compartido por todas las ventanas de ese build, y guarda una sola copia del estado del host para todas ellas. Cuando la sesión termina, el proxy sale y el daemon se queda.
+
+- **Qué guarda.** El trabajo que empezó una ventana sigue cuando la ventana se va. El resultado de una petición que cambia el host se guarda durante 10 minutos después de terminar, por ventana, así que una ventana que vuelve a preguntar recibe la misma respuesta. Los últimos 1.000 eventos que terminaron una operación van a `state/events.log`, y una ventana que vuelve a conectarse recibe los que se perdió. El archivo contiene lo que la ventana habría mostrado, y nunca un token.
+- **Sincronizar sin ninguna ventana conectada.** El daemon ejecuta el fetch de todo, el estado de los espejos y la actualización de las pull requests con el intervalo de la comprobación periódica del estado. Cada ventana envía su propio intervalo cuando se conecta y cuando lo cambio, y gana el último. Una ventana conectada a un daemon no tiene temporizador propio. El fetch nunca toca un árbol de trabajo.
+- **Cuánto vive.** El daemon termina cuando ninguna ventana ha estado conectada durante 24 horas y no hay nada en marcha. Desinstalar, **Reinstalar servidor** y la recolección de basura de su build lo detienen antes. Para detenerlo a mano, ejecuto `kill $(cat ~/.gitbox-server/<build>/state/daemon.pid)` en el host. La siguiente conexión arranca un daemon nuevo, que no tiene ninguno de los eventos del anterior para dar.
+- **Quién puede llegar a él.** El socket tiene modo 0600 y está en una carpeta de modo 0700, los dos míos. El daemon también comprueba el id de usuario de cada conexión, rechaza a cualquier otro usuario y solo registra ese id. No abre ningún puerto TCP. Al arrancar, registra el SHA-256 de su propio archivo; ese valor es solo informativo, porque el proceso lo dice de sí mismo.
+- **Cuando no puede funcionar.** Cuando la carpeta de estado no es solo mía, o el daemon no arranca o no responde, el proxy sirve la sesión en su propio proceso, como antes del daemon, y el trabajo se detiene cuando se cae la conexión. El registro del servidor dice por qué, el registro de conexión dice **the host serves this session without the daemon (…): work stops if the link drops**, y **Diagnosticar** muestra el motivo. Un host Windows todavía no tiene daemon.
+- **Cerrar sesión.** En un host Linux cuyo systemd-logind configura `KillUserProcesses=yes`, cerrar la última sesión termina el daemon. `loginctl enable-linger` para mi usuario lo mantiene en marcha.
+
 ### Recolección de basura
 
 Después de cada arranque, el servidor borra lo que ya nadie usa:
 
-- cualquier otra carpeta de build sin un marcador de uso refrescado en los últimos 10 minutos y sin una subida en curso;
+- cualquier otra carpeta de build sin un marcador de uso refrescado en los últimos 10 minutos y sin una subida en curso, después de detener el daemon de ese build; un build cuyo daemon no se detiene se queda;
 - los archivos temporales de subida con más de una hora;
 - los registros de los builds que ya no están.
 
-Un servidor en marcha refresca su marcador cada minuto y borra su propio marcador, y ningún otro, cuando se detiene. La recolección toma el bloqueo creando `.gc.lock`, que también funciona en NFS, y rompe un bloqueo con más de 5 minutos, y lo dice en el registro. Solo toca nombres que crea gitbox, así que el resto de archivos de la raíz del servidor se quedan.
+Una sesión conectada refresca su marcador cada minuto y borra su propio marcador, y ningún otro, cuando se detiene. La recolección toma el bloqueo creando `.gc.lock`, que también funciona en NFS, y rompe un bloqueo con más de 5 minutos, y lo dice en el registro. Solo toca nombres que crea gitbox, así que el resto de archivos de la raíz del servidor se quedan.
 
 ## Desinstalar
 
 **Desinstalar servidor**, en la ventana del remoto o junto al remoto en Ajustes, desconecta y quita el servidor del host. Si otra ventana sigue usando el servidor allí, GitboxApp pregunta otra vez antes.
 
-Solo borra lo que puso gitbox: las carpetas de build, los registros de build de `logs/`, `.gc.lock/` y los archivos temporales de subida. Quita `logs/` y después la raíz del servidor solo cuando están vacías. Un archivo que yo mismo puse en la raíz del servidor se queda, y también la raíz que lo contiene. Los repositorios y el `gitbox.json` del host no se tocan.
+Antes detiene el daemon de cada build. Solo borra lo que puso gitbox: las carpetas de build, los registros de build de `logs/`, `.gc.lock/` y los archivos temporales de subida. Quita `logs/` y después la raíz del servidor solo cuando están vacías. Un archivo que yo mismo puse en la raíz del servidor se queda, y también la raíz que lo contiene. Los repositorios y el `gitbox.json` del host no se tocan.
 
 **Quitar** en Ajustes solo olvida el remoto en este ordenador.
 
@@ -215,9 +237,10 @@ Solo borra lo que puso gitbox: las carpetas de build, los registros de build de 
 
 - cada paso con su código de salida y su duración, y el tamaño del banner de inicio de sesión como `[banner: N bytes]`;
 - las decisiones de instalación, el hash del archivo subido y el pin;
-- lo que `ssh` y el servidor imprimen en stderr.
+- lo que `ssh` y el servidor imprimen en stderr;
+- si el host arrancó su daemon o se unió al que ya estaba en marcha, cuántos eventos perdidos trajo una reconexión, y cuándo el host sirve la sesión sin el daemon.
 
-**Copiar registro** lo copia, y también puedo seleccionar y copiar cualquier parte del registro o del informe del diagnóstico, que se desplazan juntos. **Diagnosticar** ejecuta `gitbox-server --doctor` en el host en un comando aparte, verificado como un arranque, y muestra el build del servidor, la versión de git, la ruta de la configuración y si esa carpeta permite escribir y ejecutar programas. Para cada raíz de clonado de la configuración del host, también muestra si el servidor puede leerla, y nombra la causa cuando no puede: la carpeta no existe, la protección de privacidad de macOS la bloquea (consulta [Hosts macOS](#hosts-macos)), los permisos la rechazan, o no se puede leer.
+**Copiar registro** lo copia, y también puedo seleccionar y copiar cualquier parte del registro o del informe del diagnóstico, que se desplazan juntos. **Diagnosticar** ejecuta `gitbox-server --doctor` en el host en un comando aparte, verificado como un arranque, y muestra el build del servidor, la versión de git, la ruta de la configuración y si esa carpeta permite escribir y ejecutar programas. Para cada raíz de clonado de la configuración del host, también muestra si el servidor puede leerla, y nombra la causa cuando no puede: la carpeta no existe, la protección de privacidad de macOS la bloquea (consulta [Hosts macOS](#hosts-macos)), los permisos la rechazan, o no se puede leer. También muestra el daemon de este build: si su carpeta de estado es segura, si está en marcha y por qué la última sesión funcionó sin él, si alguna lo hizo.
 
 En el host, el servidor también escribe `<root>/logs/<build>.log`, que rota a 1 MiB y guarda tres archivos anteriores.
 

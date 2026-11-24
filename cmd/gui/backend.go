@@ -21,6 +21,9 @@ type Backend interface {
 	Init(ctx context.Context)
 	Close()
 	RunFleetCheck(context.Context, string) error
+	// The fleet checks a host's daemon runs on its own (#247).
+	SetFleetSchedule(interval string) error
+	FleetSchedule() []ScheduledTaskDTO
 
 	// The REMOTE and MIXED entry points of classification.go, with the
 	// signatures of their Wails-bound methods on *App.

@@ -48,13 +48,15 @@ PATH="$FAKE_SSH_BIN:$PATH" HOME="$FAKE_SSH_HOME" exec /bin/sh -c "$*"
 `
 
 // fakeServer stands in for gitbox-server: --version logs that it ran,
-// serve echoes its input after a greeting.
+// serve and proxy echo their input after a greeting. args.log keeps how it
+// was started.
 const fakeServer = `#!/bin/sh
 echo ran >> "$HOME/ran.log"
+echo "$*" >> "$HOME/args.log"
 case "$1" in
   --version) echo "v1 test"; exit 0 ;;
   --doctor) echo '{"version":"v1"}'; exit 0 ;;
-  serve) printf 'SERVED\n'; exec cat ;;
+  serve|proxy) printf 'SERVED\n'; exec cat ;;
 esac
 exit 2
 `

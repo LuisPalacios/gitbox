@@ -227,6 +227,21 @@ var backendOnlyClass = map[string]methodInfo{
 	// window: the host resolves the folder, this computer opens it (#243).
 	"AccountFolder": {classRemote, "P6", false},
 	"RunFleetCheck": {classRemote, "scheduler", false},
+	// The interval and state of the fleet checks a host's daemon runs
+	// while no window is connected (#247). Setting the interval changes
+	// only the daemon's memory, and the same value twice changes nothing.
+	"SetFleetSchedule": {classRemote, "P10", false},
+	"FleetSchedule":    {classRemote, "P10", false},
+}
+
+// rememberedMethod reports whether a host remembers a call of method by
+// its request id and answers a repeat with the first outcome: every
+// mutation (#294), and the fleet checks, whose repeat after a reconnect
+// joins the run the first attempt started instead of starting another
+// (#247).
+func rememberedMethod(method string) bool {
+	info, ok := classOf(method)
+	return ok && (info.Mutating || method == "RunFleetCheck")
 }
 
 // classOf is the classification of a Backend method, bound or not.

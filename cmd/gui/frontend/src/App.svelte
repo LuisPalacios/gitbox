@@ -1508,13 +1508,10 @@
     if (clearsOnReconnect(remoteState?.state, s.state)) reloadError = '';
     remoteState = s;
     if (s.state !== 'connected') {
-      if (wasConnected) {
-        events.reset();
-        completion.clear();
-        fetchOperations.clear();
-        fetchOperation = '';
-        mirrorDiscoveryDone = '';
-      }
+      // The window keeps what it shows until it knows whether the next
+      // connection resumes the host's daemon (#247): the events it missed
+      // then arrive through the same router, before the connected state.
+      if (wasConnected && fetchingAll) fetchCrossedReconnect = true;
       if (wasConnected && currentStream) {
         statusPass++;
         retireStream();
@@ -1523,15 +1520,39 @@
       return;
     }
     if (wasConnected || remoteLoading) return;
-    // Each connection, the first one and every reconnect, loads the host's
-    // data again.
     remoteLoading = true;
+    // A connection that resumed the host's daemon with every event the
+    // window missed keeps the view, the rows and the work in flight; the
+    // window reads the config and the status again, and starts no fetch
+    // and no reconcile (#247).
+    if (remoteLoaded && s.resumed) {
+      try {
+        await reloadFromDisk();
+        const refreshed = nextStatus(30_000);
+        await bridge.refreshStatus();
+        await refreshed;
+      } catch (e) {
+        console.error(e);
+      } finally {
+        remoteLoading = false;
+      }
+      return;
+    }
+    // Any other connection, the first one and a reconnect that could not
+    // resume, loads the host's data again; a reconnect keeps the view.
+    if (remoteLoaded) {
+      events.reset();
+      completion.clear();
+      fetchOperations.clear();
+      fetchOperation = '';
+      mirrorDiscoveryDone = '';
+    }
     try {
       remoteWindow.set(true);
       remoteTextHost.set(s.alias);
       setRemoteWindow(true, $t('remote.readOnlyTip'));
-      // Work that was in flight when the connection dropped ended with it;
-      // its rows come back from the host's status.
+      // What the host did meanwhile is not all known: its rows come back
+      // from the host's status.
       syncing = false;
       pullRunID = null;
       pullRunOperation = '';
@@ -1642,14 +1663,34 @@
     }
   }
 
+  // fetchAllEnded closes the fetch-all run the window shows.
+  function fetchAllEnded(error?: string) {
+    fetchOperation = '';
+    fetchOperations.clear();
+    fetchingAll = false;
+    fetchCrossedReconnect = false;
+    fetchingRepos = {};
+    finishFetch(error);
+    const now = new Date();
+    lastFetchTime = error ? $t('app.fetchAllError', { error })
+      : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  // A remote window's run that crossed a reconnect (#247): the call waits
+  // for the host's run, and when the host's fetch:alldone did not reach
+  // the window, the answer ends the run instead.
+  let fetchCrossedReconnect = false;
+
   // runFetchAll fetches every clone. A manual run (the top-bar button)
   // always leaves a result card, also when it joins a run already going.
   async function runFetchAll(manual = false) {
     if (manual) fetchManual = true;
     if (fetchingAll) return;
     fetchingAll = true;
+    fetchCrossedReconnect = false;
     try {
       if (await bridge.runTask('fetch-all') === 'already-running') return;
+      if (fetchCrossedReconnect && fetchingAll) fetchAllEnded();
     } catch (e) {
       lastFetchTime = $t('app.fetchAllError', { error: errorText(e) });
       if (fetchingAll) finishFetch(errorText(e));
@@ -1733,7 +1774,9 @@
     collapsedSources = new Set(collapsed?.sources || []);
     collapsedRepos = new Set(collapsed?.repos || []);
     sidebarCollapsed = !!collapsed?.sidebar;
-    view = collapsed?.view || 'attention';
+    // A remote window keeps its view across reconnects: the host's config
+    // does not hold it.
+    if (!(windowMode === 'remote' && remoteLoaded)) view = collapsed?.view || 'attention';
     languageChoice = normalizeLanguage(cfg.global?.language);
     languageStore.set(languageChoice);
     configPath = snapshot.configPath;
@@ -2250,14 +2293,7 @@
 
     onEvent('fetch:alldone', (data, meta) => {
       if (fetchOperation && fetchOperation !== meta.operationID) return;
-      fetchOperation = '';
-      fetchOperations.clear();
-      fetchingAll = false;
-      fetchingRepos = {};
-      finishFetch(data?.error);
-      const now = new Date();
-      lastFetchTime = data?.error ? $t('app.fetchAllError', { error: data.error })
-        : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      fetchAllEnded(data?.error);
     });
 
     onEvent('credentials:updated', (statuses) => {
@@ -2468,6 +2504,7 @@
       {:else}
         <span>{$t('remote.offline', { alias: remoteState.alias })}</span>
         {#if remoteState.state === 'connecting' && remoteState.waiting}<span class="remote-waiting" role="status"><span aria-hidden="true">&#9888;</span> {$t(`remote.waiting.${remoteState.waiting}`)}</span>{/if}
+        {#if remoteState.state === 'connecting' && remoteState.attempt}<span class="remote-attempt">{$t('remote.reconnecting', { attempt: remoteState.attempt, attempts: remoteState.attempts ?? remoteState.attempt })}</span>{/if}
         <button class="remote-reconnect" disabled={remoteState.state === 'connecting' || remoteState.state === 'installing'}
           on:click={() => bridge.remoteReconnect().catch(console.error)}>{$t('remote.reconnect')}</button>
       {/if}

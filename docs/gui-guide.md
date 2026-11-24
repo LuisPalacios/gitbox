@@ -562,7 +562,7 @@ On the destination machine, configure its clone roots and choose **Import recipe
 Remote mode manages the repositories of another computer over SSH. It is off by default: the `--experimental-remote` flag or `"experimental_remote": true` in `global` turns it on, and then Settings shows **Remotes**.
 
 - **Add** — type the `ssh_config` alias of the host and, if the home folder there does not allow programs to run, a server folder. Gitbox checks the alias with `ssh -G`, which catches a broken ssh config but not an unknown host.
-- **Connect** — opens the remote in a window of its own, titled `gitbox · <alias>`. The first connection installs `gitbox-server` on the host. Until the server answers, the window shows the connection, with **Disconnect**, **Show log** and **Uninstall server**.
+- **Connect** — opens the remote in a window of its own, titled `gitbox · <alias>`. The first connection installs `gitbox-server` on the host. Until the server answers, the window shows the connection, with **Disconnect**, **Show log** and **Uninstall server**. When the link drops, for example when I close the laptop lid, the host keeps running its work and the window connects again by itself, up to three times, then shows what finished meanwhile (see [When the connection drops during a long action](remote-mode.md#when-the-connection-drops-during-a-long-action)).
 - **Uninstall** — removes the server from the host, after a confirmation, and asks again when another window still uses it.
 - **Editor** — the editor this remote opens folders in: **Auto**, or one of the configured editors that open remote folders, such as VS Code.
 - **Remove** — forgets the remote on this computer.

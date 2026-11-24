@@ -68,6 +68,15 @@ type RemoteStateDTO struct {
 	// Editor is the editor chosen for this remote in its entry, empty for
 	// Auto: the window then enables only that editor (#287).
 	Editor string `json:"editor,omitempty"`
+	// Attempt and Attempts say, while connecting again after the link to
+	// the host's daemon dropped, which attempt this is (#247).
+	Attempt  int `json:"attempt,omitempty"`
+	Attempts int `json:"attempts,omitempty"`
+	// Resumed says, once connected, that the connection resumed the
+	// host's daemon where the last one left, with every event it missed:
+	// the window keeps what it shows and refreshes status instead of
+	// reloading everything (#247).
+	Resumed bool `json:"resumed,omitempty"`
 }
 
 // RemoteResultDTO is the outcome of a remote action. Empty Error means it
@@ -166,10 +175,12 @@ type remoteSession struct {
 	probe  remote.Probe // what the host said before the server started
 	gen    int          // each connect and disconnect starts a new generation
 	cancel context.CancelFunc
+	// policy paces the attempts after the link to a daemon dropped.
+	policy remote.ReconnectPolicy
 }
 
 func newRemoteSession(a *App, alias string) *remoteSession {
-	s := &remoteSession{a: a, alias: alias, clientID: newClientID(), dial: dialSSH}
+	s := &remoteSession{a: a, alias: alias, clientID: newClientID(), dial: dialSSH, policy: remote.DefaultReconnect}
 	s.log = remote.NewLog(func(line string) { emit(a.newOperation(), "remote:log", userText(line)) })
 	s.backend = newRemoteBackend(a, s.log)
 	s.backend.onTruncate = s.noteTruncated
@@ -189,6 +200,8 @@ func (a *App) remoteOptions(alias, clientID string, log *remote.Log) (remote.Opt
 		ServerDir: entry.ServerDir, ClientID: clientID, Version: version, Commit: commit,
 		Target: serverTarget, Log: log,
 		ControlDir: filepath.Join(config.ConfigRoot(), config.V2ConfigDir),
+		// Every session goes through the host's daemon (#247).
+		Daemon: true,
 	}
 	return o, nil
 }
@@ -293,18 +306,28 @@ func (s *remoteSession) start() {
 
 func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen int) {
 	defer cancel()
-	fail := func(err error) {
-		code, hint, detail := remoteFailure(err)
-		s.log.Printf("connect: failed: %s (%s)", detail, code)
-		s.set(gen, func(st *RemoteStateDTO) {
-			*st = RemoteStateDTO{State: remoteFailed, Code: code, Hint: hint, Detail: detail, Alias: s.alias}
-		})
+	if err := s.connectOnce(ctx, gen); err != nil {
+		s.fail(gen, "connect: failed", err)
 	}
+}
+
+// fail reports a connection that failed or ended, with what says why.
+func (s *remoteSession) fail(gen int, what string, err error) {
+	code, hint, detail := remoteFailure(err)
+	s.log.Printf("%s: %s (%s)", what, detail, code)
+	s.set(gen, func(st *RemoteStateDTO) {
+		*st = RemoteStateDTO{State: remoteFailed, Code: code, Hint: hint, Detail: detail, Alias: s.alias}
+	})
+}
+
+// connectOnce starts the server, attaches the backend and watches the
+// connection. A stale gen means a disconnect came meanwhile: the new
+// connection is closed, and that is no failure.
+func (s *remoteSession) connectOnce(ctx context.Context, gen int) error {
 	s.log.Printf("connect: %s, client %s, build %s", s.alias, s.clientID, formatAppVersion(version, commit))
 	o, err := s.a.remoteOptions(s.alias, s.clientID, s.log)
 	if err != nil {
-		fail(err)
-		return
+		return err
 	}
 	o.OnInstall = func() { s.set(gen, func(st *RemoteStateDTO) { st.State = remoteInstalling; st.Waiting = "" }) }
 	o.OnSlowLogin = func(agent string) {
@@ -316,8 +339,7 @@ func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen 
 	}
 	conn, err := s.dial(ctx, s.alias, o)
 	if err != nil {
-		fail(err)
-		return
+		return err
 	}
 	// The handshake is bounded by the same deadline.
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
@@ -329,15 +351,14 @@ func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen 
 		if err == nil {
 			err = &remote.Error{Code: remote.CodeSSHTimeout, Detail: "the server did not answer in time"}
 		}
-		fail(err)
-		return
+		return err
 	}
 	s.mu.Lock()
 	if gen != s.gen {
 		s.mu.Unlock()
 		s.backend.detach()
 		_ = conn.Close()
-		return
+		return nil
 	}
 	s.conn = conn
 	s.probe = remote.Probe{}
@@ -348,43 +369,155 @@ func (s *remoteSession) run(ctx context.Context, cancel context.CancelFunc, gen 
 	s.backend.Init(ctx)
 	hello := s.backend.Hello()
 	s.log.Printf("connect: connected to %s %s/%s, build %s", s.alias, userText(hello.OS), userText(hello.Arch), s.backend.ServerVersion())
+	s.logSession(hello)
+	outcome, had := s.backend.resumeOutcome()
 	s.set(gen, func(st *RemoteStateDTO) {
 		*st = RemoteStateDTO{State: remoteConnected, Alias: s.alias,
-			ServerOS: userText(hello.OS), ServerArch: userText(hello.Arch), ServerVersion: s.backend.ServerVersion()}
+			ServerOS: userText(hello.OS), ServerArch: userText(hello.Arch), ServerVersion: s.backend.ServerVersion(),
+			Resumed: had && outcome.Resumed && !outcome.Gap}
 	})
+	s.a.syncTaskInterval()
 	go s.watch(gen, conn)
+	return nil
+}
+
+// logSession says in the connection log how the host serves this session
+// (#247): through its daemon, resumed or not, or in a process of its own.
+func (s *remoteSession) logSession(hello rpc.Hello) {
+	switch {
+	case hello.Fallback != "":
+		s.log.Printf("connect: the host serves this session without the daemon (%s): work stops if the link drops", userText(hello.Fallback))
+		return
+	case hello.Daemon == nil:
+		return
+	case hello.Daemon.Resumed:
+		s.log.Printf("connect: joined the host's daemon")
+	default:
+		s.log.Printf("connect: the host started its daemon")
+	}
+	switch outcome, had := s.backend.resumeOutcome(); {
+	case outcome.Resumed && outcome.Gap:
+		s.log.Printf("connect: resumed with %d missed events; older ones were no longer kept, and the window reloads everything", outcome.Replayed)
+	case outcome.Resumed:
+		s.log.Printf("connect: resumed with %d missed events", outcome.Replayed)
+	case had:
+		s.log.Printf("connect: the host's daemon restarted; what it did meanwhile is not replayed, and the window reloads everything")
+	}
+}
+
+// hostSchedules reports whether the host's daemon runs the fleet checks of
+// this window (#247): the window is connected to one.
+func (s *remoteSession) hostSchedules() bool {
+	return s.connected() && s.backend.isPersistent()
+}
+
+// pushSchedule sends the periodic_sync preference to the host's daemon.
+func (s *remoteSession) pushSchedule(interval string) {
+	if err := s.backend.SetFleetSchedule(interval); err != nil {
+		s.log.Printf("schedule: the host did not take the interval: %s", userMsg(err))
+	}
 }
 
 // watch turns the end of a connection that nobody closed into a failure.
+// The end is the ssh session ending, or the link dying: its reader ended,
+// or the heartbeat declared it dead. After the link to a daemon dropped it
+// first connects again, up to the policy's attempts: the daemon kept
+// running what the window started, and the new connection gets what the
+// window missed.
 func (s *remoteSession) watch(gen int, conn remoteConn) {
-	var linkDead <-chan struct{}
-	if c := s.backend.current(); c != nil {
-		linkDead = c.Done()
-	}
+	linkDead := s.backend.linkDone()
 	select {
 	case <-conn.Done():
 	case <-linkDead:
 	}
+	// From here until the next connection to a daemon the window has none,
+	// and its calls wait for the next one instead of failing. A Disconnect
+	// that came first wins: it moved to another generation.
+	daemon := s.backend.isPersistent()
 	s.mu.Lock()
 	current := gen == s.gen
 	if current {
 		s.conn = nil
+		if daemon {
+			s.backend.setReconnecting(true)
+		}
 	}
 	s.mu.Unlock()
 	if !current {
 		return
 	}
-	err := conn.Err()
-	if err == nil {
-		err = &remoteError{remoteServerCrashed, "the server ended the connection"}
+	if !daemon {
+		err := endError(conn, linkEndGrace)
+		s.backend.detach()
+		_ = conn.Close()
+		s.backend.markLost()
+		s.fail(gen, "connect: the connection ended", err)
+		return
 	}
-	s.backend.detach()
-	_ = conn.Close()
-	code, hint, detail := remoteFailure(err)
-	s.log.Printf("connect: the connection ended: %s (%s)", detail, code)
+	// The window says so at once, before it lets the connection go and
+	// waits for the first attempt.
+	attempts := s.policy.Attempts()
 	s.set(gen, func(st *RemoteStateDTO) {
-		*st = RemoteStateDTO{State: remoteFailed, Code: code, Hint: hint, Detail: detail, Alias: s.alias}
+		*st = RemoteStateDTO{State: remoteConnecting, Alias: s.alias, Attempt: 1, Attempts: attempts}
 	})
+	// A link the heartbeat declared dead may still have its ssh running:
+	// closing it may wait for ssh to end, which must not delay the attempts.
+	go func() { _ = conn.Close() }()
+	s.backend.detach()
+	code, _, detail := remoteFailure(endError(conn, 0))
+	s.log.Printf("connect: the link dropped: %s (%s); connecting again", detail, code)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.mu.Lock()
+	if gen != s.gen {
+		s.mu.Unlock()
+		return
+	}
+	s.cancel = cancel
+	s.mu.Unlock()
+	err := s.policy.Run(ctx, func(ctx context.Context, n int) error {
+		if n > 1 {
+			s.set(gen, func(st *RemoteStateDTO) {
+				*st = RemoteStateDTO{State: remoteConnecting, Alias: s.alias, Attempt: n, Attempts: attempts}
+			})
+		}
+		actx, acancel := context.WithTimeout(ctx, remoteConnectTimeout)
+		defer acancel()
+		err := s.connectOnce(actx, gen)
+		if err != nil {
+			s.log.Printf("connect: attempt %d of %d failed: %s", n, attempts, userMsg(err))
+		}
+		return err
+	})
+	s.mu.Lock()
+	stale := gen != s.gen
+	s.mu.Unlock()
+	if err == nil || stale {
+		return
+	}
+	s.backend.markLost()
+	s.fail(gen, "connect: gave up connecting again", err)
+}
+
+// linkEndGrace is how long the end of a link waits for its ssh session to
+// end too, before it counts as a host that stopped answering.
+const linkEndGrace = 2 * time.Second
+
+// endError is why a connection ended, waiting up to wait for its session
+// to end. The session's own error is meaningful only once it ended; a link
+// that died while its ssh still runs stopped answering.
+func endError(conn remoteConn, wait time.Duration) error {
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-conn.Done():
+	case <-timer.C:
+		return &remote.Error{Code: remote.CodeSSHTimeout, Detail: "the host stopped answering"}
+	}
+	if err := conn.Err(); err != nil {
+		return err
+	}
+	return &remoteError{remoteServerCrashed, "the server ended the connection"}
 }
 
 // disconnect ends the connection, or the connect under way.
@@ -398,6 +531,7 @@ func (s *remoteSession) disconnect() {
 	if cancel != nil {
 		cancel()
 	}
+	s.backend.setReconnecting(false)
 	s.backend.detach()
 	if conn != nil {
 		_ = conn.Close()
@@ -541,6 +675,13 @@ func (a *App) RemoteRunDoctor() RemoteDoctorDTO {
 	for _, r := range report.Roots {
 		s.log.Printf("doctor: root %s: %s", r.Path, r.State)
 	}
+	if d := report.Daemon; d != nil {
+		fallback := d.LastFallback
+		if fallback == "" {
+			fallback = "none"
+		}
+		s.log.Printf("doctor: daemon state %s, running %v, last fallback %s", d.State, d.Running, fallback)
+	}
 	return RemoteDoctorDTO{Report: &report}
 }
 
@@ -563,6 +704,14 @@ func (r *serverDoctorReport) sanitize() {
 		r.Roots[i].Path = userText(r.Roots[i].Path)
 		if !slices.Contains(doctorRootStates, r.Roots[i].State) {
 			r.Roots[i].State = doctorRootUnreadable
+		}
+	}
+	if d := r.Daemon; d != nil {
+		if !slices.Contains(doctorDaemonStates, d.State) {
+			d.State = doctorDaemonUnsafe
+		}
+		if !slices.Contains(fallbackReasons, d.LastFallback) {
+			d.LastFallback = ""
 		}
 	}
 }

@@ -1701,6 +1701,22 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class doctorDaemon {
+	    state: string;
+	    running: boolean;
+	    lastFallback?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new doctorDaemon(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.running = source["running"];
+	        this.lastFallback = source["lastFallback"];
+	    }
+	}
 	export class doctorRoot {
 	    path: string;
 	    state: string;
@@ -1727,6 +1743,7 @@ export namespace main {
 	    gitVersion: string;
 	    credentialFindings: credential.Finding[];
 	    roots?: doctorRoot[];
+	    daemon?: doctorDaemon;
 	
 	    static createFrom(source: any = {}) {
 	        return new serverDoctorReport(source);
@@ -1745,6 +1762,7 @@ export namespace main {
 	        this.gitVersion = source["gitVersion"];
 	        this.credentialFindings = this.convertValues(source["credentialFindings"], credential.Finding);
 	        this.roots = this.convertValues(source["roots"], doctorRoot);
+	        this.daemon = this.convertValues(source["daemon"], doctorDaemon);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1862,6 +1880,9 @@ export namespace main {
 	    waiting?: string;
 	    remoteEditors: string[];
 	    editor?: string;
+	    attempt?: number;
+	    attempts?: number;
+	    resumed?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new RemoteStateDTO(source);
@@ -1881,6 +1902,9 @@ export namespace main {
 	        this.waiting = source["waiting"];
 	        this.remoteEditors = source["remoteEditors"];
 	        this.editor = source["editor"];
+	        this.attempt = source["attempt"];
+	        this.attempts = source["attempts"];
+	        this.resumed = source["resumed"];
 	    }
 	}
 	export class RemoteUninstallDTO {
@@ -2329,6 +2353,7 @@ export namespace main {
 	
 	
 	
+
 
 
 }

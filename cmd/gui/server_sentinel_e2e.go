@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The e2e sentinel exists only in the server that scripts/remote-it.sh
@@ -29,4 +30,13 @@ func init() {
 	}
 	defer f.Close()
 	fmt.Fprintf(f, "%d %s\n", os.Getpid(), strings.Join(os.Args[1:], " "))
+}
+
+// The sshd tests set the daemon's fleet interval to a minute (#247); a
+// production server takes only the intervals a window offers.
+func init() {
+	testFleetInterval = func(v string) (time.Duration, bool) {
+		d, err := time.ParseDuration(v)
+		return d, err == nil && d >= 10*time.Second
+	}
 }
