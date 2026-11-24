@@ -4,6 +4,14 @@ Esta guía cubre cómo compilar Gitbox desde el código fuente, comprobar un cam
 
 ---
 
+## Cómo informar de un error
+
+Incluye los pasos para reproducir el problema, qué esperabas y qué ocurrió en una incidencia de GitHub. Si puedes reproducirlo en una ventana local, abre **Ajustes → Comprobación del sistema → Ejecutar → Exportar diagnóstico**, revisa la vista previa y adjunta tú el JSON guardado. [Incidencias de GitHub](https://github.com/LuisPalacios/gitbox/issues)
+
+El archivo incluye las versiones de la aplicación y de Git, el sistema operativo y la arquitectura, recuentos agregados de la configuración y hasta 1.000 registros de operaciones de la última hora de esta sesión. Los identificadores de repositorio de los registros de error son los primeros ocho bytes del hash SHA-256 de la ruta local, en hexadecimal. El estado del planificador y los tiempos de arranque ayudan a localizar demoras. Comparte el archivo de diagnóstico y mantén en privado tu archivo de configuración, tus credenciales y la salida sin procesar de Git.
+
+---
+
 ## Requisitos previos
 
 - **Go** 1.26+ — [instalar](https://go.dev/doc/install)

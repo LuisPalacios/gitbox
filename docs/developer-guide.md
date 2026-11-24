@@ -4,6 +4,14 @@ This guide covers building Gitbox from source, checking a change, extending prov
 
 ---
 
+## How to report a bug
+
+Include the steps to reproduce the problem, what you expected and what happened in a GitHub issue. If you can reproduce it in a local window, open **Settings → System check → Run → Export diagnostics**, review the preview, and attach the saved JSON yourself. [GitHub issues](https://github.com/LuisPalacios/gitbox/issues)
+
+The bundle includes the app and Git versions, operating system and architecture, aggregate configuration counts, and up to 1,000 operation records from the last hour of this session. Repository IDs in error records are the first eight bytes of the SHA-256 hash of the local path, in hex. Scheduler state and startup timings help locate delays. Share the diagnostics bundle and keep your config file, credentials and raw Git output private.
+
+---
+
 ## Prerequisites
 
 - **Go** 1.26+ — [install](https://go.dev/doc/install)

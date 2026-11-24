@@ -93,6 +93,8 @@ export function DoctorPrecheck(arg1:string):Promise<main.DoctorPrecheckDTO>;
 
 export function DoctorRun():Promise<main.DoctorReport>;
 
+export function ExportDiagnostics(arg1:string):Promise<boolean>;
+
 export function ExportRecipe(arg1:string):Promise<boolean>;
 
 export function FetchAllRepos():Promise<void>;
@@ -216,6 +218,8 @@ export function PickFolder(arg1:string):Promise<string>;
 export function PreflightMove(arg1:main.MoveRequestDTO):Promise<main.MovePreflightDTO>;
 
 export function PreviewClonePath(arg1:string,arg2:string):Promise<string>;
+
+export function PreviewDiagnostics():Promise<string>;
 
 export function PreviewRecipeExport():Promise<string>;
 

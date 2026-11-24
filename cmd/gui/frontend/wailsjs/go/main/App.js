@@ -174,6 +174,10 @@ export function DoctorRun() {
   return window['go']['main']['App']['DoctorRun']();
 }
 
+export function ExportDiagnostics(arg1) {
+  return window['go']['main']['App']['ExportDiagnostics'](arg1);
+}
+
 export function ExportRecipe(arg1) {
   return window['go']['main']['App']['ExportRecipe'](arg1);
 }
@@ -420,6 +424,10 @@ export function PreflightMove(arg1) {
 
 export function PreviewClonePath(arg1, arg2) {
   return window['go']['main']['App']['PreviewClonePath'](arg1, arg2);
+}
+
+export function PreviewDiagnostics() {
+  return window['go']['main']['App']['PreviewDiagnostics']();
 }
 
 export function PreviewRecipeExport() {

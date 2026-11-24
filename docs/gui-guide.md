@@ -517,6 +517,8 @@ Click the **gear icon** to open the settings panel:
 
 In Advanced mode, **Settings → System check → Run** also shows the elapsed milliseconds from opening the application to each observed startup stage, including the first repository row, the first status, the complete status pass and the first scheduled fleet network task.
 
+In a local window, choose **Settings → System check → Run → Export diagnostics**. Review the JSON preview, then select **Save JSON…** to choose a file on this computer. Gitbox saves the preview exactly as shown. The bundle includes versions, configuration counts, recent operation codes and timings, fetch queue depth, scheduler state, and startup timings. Gitbox identifies repositories in error records with short hashes of their local paths. You can attach the saved file to a bug report.
+
 At startup, Gitbox checks credential permissions without reading token contents. If it detects exposure, a warning appears above the dashboard, including Compact view, and opens System check. The audit reports problems and unverifiable permissions; it never repairs them automatically. See [Credential file permissions](credentials.md#credential-file-permissions).
 
 The add-account and change-credential flows run the same tool check: if you pick the `gcm` credential type on a machine without Git Credential Manager, a yellow banner shows the install command instead of a cryptic authentication failure later on.

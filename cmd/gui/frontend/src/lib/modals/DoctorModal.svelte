@@ -7,6 +7,51 @@
   import type { CredentialFinding } from '../types';
   import { dismiss } from '../dismiss';
   import { t } from '../i18n';
+  import { remoteWindow } from '../stores';
+
+  let showDiagnostics = false;
+  let diagnosticsLoading = false;
+  let diagnosticsSaving = false;
+  let diagnosticsSaved = false;
+  let diagnosticsDocument = '';
+  let diagnosticsError: 'doctor.diagnostics.previewError' | 'doctor.diagnostics.saveError' | null = null;
+
+  function closeDoctorModal() {
+    showDoctorModal = false;
+    doctorGeneration++;
+  }
+
+  async function openDiagnostics() {
+    const generation = ++doctorGeneration;
+    showDiagnostics = true;
+    diagnosticsLoading = true;
+    diagnosticsSaved = false;
+    diagnosticsDocument = '';
+    diagnosticsError = null;
+    try {
+      const document = await bridge.previewDiagnostics();
+      if (generation === doctorGeneration) diagnosticsDocument = document;
+    } catch {
+      if (generation === doctorGeneration) diagnosticsError = 'doctor.diagnostics.previewError';
+    } finally {
+      if (generation === doctorGeneration) diagnosticsLoading = false;
+    }
+  }
+
+  async function exportDiagnostics() {
+    const generation = doctorGeneration;
+    diagnosticsSaving = true;
+    diagnosticsSaved = false;
+    diagnosticsError = null;
+    try {
+      const saved = await bridge.exportDiagnostics(diagnosticsDocument);
+      if (generation === doctorGeneration) diagnosticsSaved = saved;
+    } catch {
+      if (generation === doctorGeneration) diagnosticsError = 'doctor.diagnostics.saveError';
+    } finally {
+      if (generation === doctorGeneration) diagnosticsSaving = false;
+    }
+  }
 
   // One-line result shown next to the Run button in Settings.
   export let advanced = false;
@@ -24,6 +69,8 @@
   export async function openDoctorModal() {
     const generation = ++doctorGeneration;
     showDoctorModal = true;
+    showDiagnostics = false;
+    diagnosticsSaving = false;
     doctorLoading = true;
     doctorReport = null;
     try {
@@ -51,14 +98,24 @@
 </script>
 
 {#if showDoctorModal}
-  <div class="overlay" use:dismiss={() => showDoctorModal = false} transition:fade={{ duration: 120 }}>
-    <div class="modal modal-doctor" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
+  <div class="overlay" use:dismiss={closeDoctorModal} transition:fade={{ duration: 120 }}>
+    <div class="modal modal-doctor" role="dialog" aria-modal="true" aria-labelledby="doctor-heading" transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>{$t('settings.systemCheck')}</h3>
-        <button class="btn-x" on:click={() => showDoctorModal = false}>&#10005;</button>
+        <h3 id="doctor-heading">{$t(showDiagnostics ? 'doctor.diagnostics.title' : 'settings.systemCheck')}</h3>
+        <button class="btn-x" on:click={closeDoctorModal}>&#10005;</button>
       </div>
       <div class="modal-body">
-        {#if doctorLoading}
+        {#if showDiagnostics}
+          <p class="diagnostics-help">{$t('doctor.diagnostics.description')}</p>
+          {#if diagnosticsLoading}
+            <div class="loading"><div class="spinner"></div><span>{$t('doctor.diagnostics.preparing')}</span></div>
+          {/if}
+          {#if diagnosticsDocument}
+            <textarea class="diagnostics-json" readonly value={diagnosticsDocument} aria-label={$t('doctor.diagnostics.title')}></textarea>
+          {/if}
+          {#if diagnosticsError}<p class="doctor-err" role="alert">{$t(diagnosticsError)}</p>{/if}
+          {#if diagnosticsSaved}<p class="doctor-ok" role="status">{$t('doctor.diagnostics.saved')}</p>{/if}
+        {:else if doctorLoading}
           <div class="loading"><div class="spinner"></div><span>{$t('doctor.probing')}</span></div>
         {:else if doctorReport}
           <p class="doctor-summary">
@@ -145,8 +202,16 @@
         {/if}
       </div>
       <div class="modal-foot">
-        <button class="btn-cancel" on:click={() => showDoctorModal = false}>{$t('common.close')}</button>
-        <button class="btn-add" on:click={openDoctorModal} disabled={doctorLoading}>{$t('common.recheck')}</button>
+        {#if showDiagnostics}
+          <button class="btn-cancel" on:click={() => { doctorGeneration++; showDiagnostics = false; }} disabled={diagnosticsSaving}>{$t('doctor.diagnostics.back')}</button>
+          <button class="btn-add" on:click={exportDiagnostics} disabled={!diagnosticsDocument || diagnosticsSaving}>{$t('doctor.diagnostics.save')}</button>
+        {:else}
+          {#if !$remoteWindow}
+            <button class="btn-cancel" on:click={openDiagnostics} disabled={doctorLoading}>{$t('doctor.diagnostics.export')}</button>
+          {/if}
+          <button class="btn-cancel" on:click={closeDoctorModal}>{$t('common.close')}</button>
+          <button class="btn-add" on:click={openDoctorModal} disabled={doctorLoading}>{$t('common.recheck')}</button>
+        {/if}
       </div>
     </div>
   </div>
@@ -155,6 +220,21 @@
 <style>
   .modal-doctor { width: 680px; max-height: 80vh; display: flex; flex-direction: column; }
   .modal-doctor .modal-body { overflow-y: auto; }
+  .diagnostics-help { margin: 0 0 12px; font-size: 13px; }
+  .diagnostics-json {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 260px;
+    height: 42vh;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace;
+    white-space: pre;
+    resize: vertical;
+  }
   .doctor-summary { margin: 0 0 12px; font-size: 12px; }
   .doctor-ok { color: #86efac; font-weight: 600; }
   .doctor-err { color: #fca5a5; font-weight: 600; }

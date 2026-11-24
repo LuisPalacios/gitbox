@@ -61,7 +61,7 @@ func TestUpstreamProbe_BoundedConcurrencyAndSharedAccount(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	finished := make(chan []upstreamProbeResult, 1)
-	go func() { finished <- runUpstreamProbe(ctx, cfg, resolve, time.Second) }()
+	go func() { finished <- (&App{}).runUpstreamProbe(ctx, cfg, resolve, time.Second) }()
 	for range probeConcurrency {
 		select {
 		case <-started:
@@ -167,7 +167,7 @@ func TestUpstreamProbe_CancellationAndErrorsPreserveGoneState(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), budget)
 			defer cancel()
 			start := time.Now()
-			results := runUpstreamProbe(ctx, cfg, probeTestToken, requestTimeout)
+			results := (&App{}).runUpstreamProbe(ctx, cfg, probeTestToken, requestTimeout)
 			t.Logf("12 upstreams: elapsed=%s requests=%d request timeout=%s sweep budget=%s", time.Since(start), requests.Load(), requestTimeout, budget)
 			if len(results) != 0 || app.applyUpstreamProbe(cfg, results, nil) {
 				t.Fatalf("unconfirmed response changed state: %+v", results)
@@ -195,7 +195,7 @@ func TestUpstreamProbe_CredentialLookupSharesSweepDeadline(t *testing.T) {
 		<-ctx.Done()
 		return "", "", ctx.Err()
 	}
-	results := runUpstreamProbe(ctx, probeTestConfig(srv.URL, 4), resolve, time.Second)
+	results := (&App{}).runUpstreamProbe(ctx, probeTestConfig(srv.URL, 4), resolve, time.Second)
 	if len(results) != 0 || requests.Load() != 0 || ctx.Err() == nil {
 		t.Fatalf("credential cancellation should stop HTTP: results=%d requests=%d error=%v", len(results), requests.Load(), ctx.Err())
 	}
@@ -251,7 +251,7 @@ func TestUpstreamProbe_DefinitiveResultsRestoreAndMark(t *testing.T) {
 	defer srv.Close()
 	cfg := probeTestConfig(srv.URL, 2)
 	app := &App{cfg: cfg, upstreamGone: map[string]bool{"source-a/org/repo-1": true}}
-	results := runUpstreamProbe(context.Background(), cfg, probeTestToken, time.Second)
+	results := (&App{}).runUpstreamProbe(context.Background(), cfg, probeTestToken, time.Second)
 	if !app.applyUpstreamProbe(cfg, results, nil) {
 		t.Fatal("confirmed provider results did not change marks")
 	}
