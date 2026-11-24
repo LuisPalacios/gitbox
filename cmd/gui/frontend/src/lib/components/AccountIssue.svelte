@@ -25,7 +25,7 @@
   }
 </script>
 
-<ErrorExplanation {info} {simple} scopes={guide?.scopes || ''} actions={{
+<ErrorExplanation {info} {simple} {accountKey} scopes={guide?.scopes || ''} actions={{
   retry: () => fixCredential(accountKey, 'retry'),
   credential: () => fixCredential(accountKey, 'change'),
   token: guide?.creationURL ? () => void openExternal(guide?.creationURL || '') : undefined,

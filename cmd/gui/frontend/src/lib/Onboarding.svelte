@@ -518,7 +518,7 @@
         <input class="ob-input ob-full" id="ob-token" type="password" bind:this={tokenInput} bind:value={token} />
         {#if connectError}<p class="ob-error">{connectError}</p>{/if}
         {#if connectProblem}
-          <ErrorExplanation info={connectProblem} {simple} {busy} scopes={tokenScopes} actions={{
+          <ErrorExplanation info={connectProblem} {simple} {busy} {accountKey} scopes={tokenScopes} actions={{
             retry: verifyToken,
             credential: () => tokenInput?.focus(),
             token: tokenURL ? () => void openExternal(tokenURL) : undefined,
@@ -537,7 +537,7 @@
       {#if listing}
         <div class="ob-wait"><div class="ob-spinner"></div><span>{$t('onboard.projectsChecking')}</span></div>
       {:else if listProblem}
-        <ErrorExplanation info={listProblem} {simple} scopes={tokenScopes} actions={{ retry: listRepos, credential: reopenCredential, token: tokenURL ? openTokenPage : undefined }} />
+        <ErrorExplanation info={listProblem} {simple} {accountKey} scopes={tokenScopes} actions={{ retry: listRepos, credential: reopenCredential, token: tokenURL ? openTokenPage : undefined }} />
         <div class="ob-links"><button class="ob-link" on:click={skip}>{$t('onboard.skip')}</button></div>
       {:else if repos.length === 0}
         <p class="ob-desc">{$t('onboard.projectsNone')}</p>

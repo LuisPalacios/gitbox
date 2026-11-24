@@ -155,6 +155,17 @@ func (a *App) confirmReachable(ctx context.Context, addr string) bool {
 	return a.connect(ctx, addr) // unlocks g.mu
 }
 
+// recheckDownServer lets an explicit Retry probe only its account's server.
+func (a *App) recheckDownServer(ctx context.Context, addr string) {
+	g := &a.network
+	g.mu.Lock()
+	if !g.down[addr] {
+		g.mu.Unlock()
+		return
+	}
+	a.connect(ctx, addr)
+}
+
 // connect runs the connect to addr, or joins the one in progress, and
 // records the answer. The caller holds g.mu; connect releases it.
 func (a *App) connect(ctx context.Context, addr string) bool {
@@ -182,8 +193,10 @@ func (a *App) connect(ctx context.Context, addr string) bool {
 	delete(g.flights, addr)
 	f.ok = err == nil
 	var stopped []*networkOp
+	recovered := err == nil && g.down[addr]
 	switch {
 	case err == nil:
+		delete(g.down, addr)
 		if g.fresh == nil {
 			g.fresh = make(map[string]time.Time)
 		}
@@ -200,6 +213,9 @@ func (a *App) connect(ctx context.Context, addr string) bool {
 	}
 	g.mu.Unlock()
 	close(f.done)
+	if recovered {
+		a.publishNetworkState()
+	}
 	if err != nil && !cancelled {
 		// The server is gone: stop what is in flight against it, tell the
 		// window and start watching for its return.

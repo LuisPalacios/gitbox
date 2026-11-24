@@ -32,17 +32,18 @@
   {:else}
   {@const repoKey = `${rowSourceKey}/${repoName}`}
   {@const state = $repoStates[repoKey] || { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
-  {@const accountStatus = credentialStatuses[$sources[rowSourceKey]?.account]?.status}
+  {@const accountKey = $sources[rowSourceKey]?.account}
+  {@const accountStatus = credentialStatuses[accountKey]?.status}
   {@const issue = repoIssue(state)}
   <RepoRow {...shared} sourceKey={groupSource || rowSourceKey} {rowSourceKey} {repoName} {depth} {childCount} {descendants} {placeholders}
     rowAccountKey={$sources[rowSourceKey]?.account || rowSourceKey} {repoKey}
     isContainer={!!$sources[rowSourceKey]?.repos[repoName]?.container} {state} rowOpensDetail={opensDetail(state.status)}
     {showAccount} parentLabel={parentLabels[repoKey] || ''} {fadeHealthy} />
   {#if expandedRepo === repoKey}
-    <RepoDetail simple={shared.simple} {state} {repoDetail} {detailLoading} actions={repoActions(rowSourceKey, repoName, state, true, accountStatus)}
+    <RepoDetail simple={shared.simple} {state} {repoDetail} {detailLoading} {accountKey} actions={repoActions(rowSourceKey, repoName, state, true, accountStatus)}
       issueActions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} />
   {:else if showIssues && issue}
-    <div class="row-explanation"><ErrorExplanation info={issue} simple={shared.simple} actions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} /></div>
+    <div class="row-explanation"><ErrorExplanation info={issue} simple={shared.simple} {accountKey} actions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} /></div>
   {/if}
   {/if}
 {/each}

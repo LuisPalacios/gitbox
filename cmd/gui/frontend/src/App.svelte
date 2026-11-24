@@ -485,14 +485,14 @@
   // notAttempted handles a pull or clone the backend stopped for lack of a
   // server: the row goes back to what it was instead of turning into an
   // error.
-  function notAttempted(key: string) {
+  function notAttempted(key: string, data: { code?: string; error?: string }, operation: "clone" | "pull") {
     repoStates.update((s) => {
       if (s[key]) s[key] = {
         ...s[key],
         status: statusBeforeSync[key] || s[key].status,
         progress: 0,
         problem: { code: data.code, detail: data.error },
-        failedOperation: s[key].status === 'cloning' ? 'clone' : 'pull',
+        failedOperation: operation,
       };
       return { ...s };
     });
@@ -2057,7 +2057,7 @@
       const key = `${data.source}/${data.repo}`;
       const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !data.skipped);
       if (!checked.accept) return;
-      if (data.skipped) { notAttempted(key); return; }
+      if (data.skipped) { notAttempted(key, data, "clone"); return; }
       repoStates.update((s) => {
         if (s[key]) {
           s[key] = {
@@ -2088,7 +2088,7 @@
       const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !skipped && !data.unchanged);
       if (!checked.accept) return;
       updateRepairWarning(data.source, data.repo, data.repairWarnings);
-      if (skipped === true) { notAttempted(key); return; }
+      if (skipped === true) { notAttempted(key, data, "pull"); return; }
       const reason = skipped ? skipped as PullSkipReason : undefined;
       repoStates.update((s) => {
         const row = s[key];

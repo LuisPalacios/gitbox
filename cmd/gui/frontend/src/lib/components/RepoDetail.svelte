@@ -17,6 +17,7 @@
   export let detailLoading: boolean;
   export let actions: ErrorActions;
   export let issueActions: ErrorActions;
+  export let accountKey: string | undefined = undefined;
   $: issue = repoDetail?.upstreamGone ? { code: "repo.upstream_gone" } : repoIssue(state);
 
   $: sc = (s: string) => statusColor(s, $themeStore);
@@ -33,12 +34,12 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex (I make the scrollable region reachable by keyboard.) -->
 <div class="repo-detail" role="region" aria-label={$t('detail.title')} tabindex="0" aria-busy={detailLoading} transition:slide={{ duration: 150 }}>
   {#if issue}
-    <ErrorExplanation info={issue} {simple} actions={issueActions} />
+    <ErrorExplanation info={issue} {simple} {accountKey} actions={issueActions} />
   {/if}
   {#if detailLoading}
     <span class="detail-loading">{$t('detail.loading')}</span>
   {:else if repoDetail?.problem || repoDetail?.error}
-    {#if !issue}<ErrorExplanation info={errorInfo(repoDetail.problem, repoDetail.error)} {simple} {actions} />{/if}
+    {#if !issue}<ErrorExplanation info={errorInfo(repoDetail.problem, repoDetail.error)} {simple} {accountKey} {actions} />{/if}
   {:else if repoDetail}
     {#if !simple}
     <div class="detail-header">
@@ -55,7 +56,7 @@
       <div class="detail-section-title">{$t(simple ? 'detail.incomingSimple' : 'detail.incoming')} <span class="sbadge" style="color:{sc('behind')}">{repoDetail.incoming.length}</span></div>
       <p class="detail-freshness">{$t('detail.incomingFreshness')}</p>
       {#if repoDetail.incomingError || repoDetail.incomingProblem}
-        <ErrorExplanation info={errorInfo(repoDetail.incomingProblem, repoDetail.incomingError)} {simple} {actions} />
+        <ErrorExplanation info={errorInfo(repoDetail.incomingProblem, repoDetail.incomingError)} {simple} {accountKey} {actions} />
       {:else if repoDetail.incoming.length === 0}
         <p class="detail-clean">{$t('detail.noIncoming')}</p>
       {:else}

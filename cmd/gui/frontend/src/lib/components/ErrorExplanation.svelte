@@ -1,5 +1,6 @@
 <script lang="ts">
   import { t } from '../i18n';
+  import { bridge } from '../bridge';
   import { statusClock } from '../stores';
   import { errorAction, explain } from '../explain';
   import type { ErrorActions, ErrorInfo } from '../explain';
@@ -9,8 +10,23 @@
   export let actions: ErrorActions = {};
   export let scopes = '';
   export let busy = false;
+  export let accountKey: string | undefined = undefined;
+  let checkingConnection = false;
   $: message = explain(info.code);
   $: action = errorAction(info, actions, $statusClock);
+
+  async function activate() {
+    const action = errorAction(info, actions, Date.now());
+    if (!action || checkingConnection) return;
+    const run = actions[action.kind];
+    if (accountKey && action.kind === 'retry' && (info.code === 'git.offline' || info.code === 'provider.offline')) {
+      checkingConnection = true;
+      try { await bridge.runTask(`retry-connection/${accountKey}`); }
+      catch { /* The original operation reports its own failure. */ }
+      finally { checkingConnection = false; }
+    }
+    await run?.();
+  }
 </script>
 
 <div class="explanation" aria-live="polite">
@@ -20,7 +36,7 @@
     <p>{$t('error.requiredScopes', { scopes })}</p>
   {/if}
   {#if action}
-    <button type="button" class="text-btn" disabled={busy} on:click={() => { if (errorAction(info, actions, Date.now())) actions[action.kind]?.(); }}>{$t(action.labelKey)}</button>
+    <button type="button" class="text-btn" disabled={busy || checkingConnection} on:click={activate}>{$t(action.labelKey)}</button>
   {/if}
   {#if !simple && message.unknown && info.detail}
     <details>

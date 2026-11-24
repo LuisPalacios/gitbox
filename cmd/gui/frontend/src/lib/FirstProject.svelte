@@ -159,7 +159,7 @@
       {/if}
     {/if}
   {:else if listProblem}
-    <ErrorExplanation info={listProblem} {simple} scopes={tokenScopes} actions={{ retry: () => list(route), credential: reopenCredential, token: openTokenPage }} />
+    <ErrorExplanation info={listProblem} {simple} {accountKey} scopes={tokenScopes} actions={{ retry: () => list(route), credential: reopenCredential, token: openTokenPage }} />
   {:else if !error}
     <p>{route === 'adopt' ? $t('onboard.noLocalProjects') : $t('onboard.projectsNone')}</p>
   {/if}
