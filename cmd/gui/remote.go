@@ -538,6 +538,9 @@ func (a *App) RemoteRunDoctor() RemoteDoctorDTO {
 	s.log.Printf("doctor: %s %s/%s, git %q, home %s", report.Version, report.OS, report.Arch, report.GitVersion, report.Home)
 	s.log.Printf("doctor: config %s, folder writable %v, programs can run %v, %d credential findings",
 		report.ConfigPath, report.ConfigDirWritable, report.ConfigDirExec, len(report.CredentialFindings))
+	for _, r := range report.Roots {
+		s.log.Printf("doctor: root %s: %s", r.Path, r.State)
+	}
 	return RemoteDoctorDTO{Report: &report}
 }
 
@@ -552,6 +555,15 @@ func (r *serverDoctorReport) sanitize() {
 	data, err := json.Marshal(r.CredentialFindings)
 	if err != nil || len(data) > 64<<10 {
 		r.CredentialFindings = nil
+	}
+	if len(r.Roots) > 100 {
+		r.Roots = r.Roots[:100]
+	}
+	for i := range r.Roots {
+		r.Roots[i].Path = userText(r.Roots[i].Path)
+		if !slices.Contains(doctorRootStates, r.Roots[i].State) {
+			r.Roots[i].State = doctorRootUnreadable
+		}
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 
 // Probe is what the host said about itself.
 type Probe struct {
-	// OS and Arch are Go's names for the host: "linux", "amd64".
+	// OS and Arch are Go's names for the host: "linux", "darwin", "arm64".
 	OS, Arch string
 	// RawOS and RawArch are what uname printed.
 	RawOS, RawArch string
@@ -16,14 +16,15 @@ type Probe struct {
 	// user.
 	Shell, Home string
 	// Libc is the first line of ldd --version, for diagnostics only: the
-	// server is static, so musl hosts work too.
+	// server is static, so musl hosts work too. It is empty on a host with
+	// no ldd, such as macOS.
 	Libc string
 	// Banner is how many bytes the login shell printed before the answer.
 	Banner int
 }
 
 // probeScript prints the facts after the marker, each one NUL-terminated.
-const probeScript = `printf "\0GBX\0%s\0%s\0%s\0%s\0%s\0" "$(uname -s)" "$(uname -m)" "$SHELL" "$HOME" "$(ldd --version 2>&1 | head -n 1)"`
+const probeScript = `printf "\0GBX\0%s\0%s\0%s\0%s\0%s\0" "$(uname -s)" "$(uname -m)" "$SHELL" "$HOME" "$(command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | head -n 1)"`
 
 // probe asks the host for its operating system, architecture, shell and
 // home in one exec.
@@ -65,7 +66,7 @@ func (p *Probe) resolve(alias string) error {
 	case os == "Linux":
 		p.OS = "linux"
 	case os == "Darwin":
-		return newError(CodeUnsupportedOS, "%s runs macOS, supported from a later version", alias)
+		p.OS = "darwin"
 	case strings.HasPrefix(os, "MINGW"), strings.HasPrefix(os, "MSYS"), strings.HasPrefix(os, "CYGWIN"):
 		return newError(CodeUnsupportedOS, "%s runs Windows, supported from a later version", alias)
 	default:

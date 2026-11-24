@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -265,6 +269,87 @@ func TestProbeDir(t *testing.T) {
 	missing := filepath.Join(dir, "a", "b", "c")
 	if got := nearestDir(missing); got != dir {
 		t.Errorf("nearestDir(%s) = %s, want %s", missing, got, dir)
+	}
+}
+
+// The doctor reads one entry of each clone root of the host's config and
+// says why it cannot, naming macOS privacy protection (TCC) apart from
+// ordinary permissions (#245). It changes nothing on disk.
+func TestDoctorRoots(t *testing.T) {
+	var readable, missing string
+	path := seedConfig(t, "gitbox.json", func(c *config.Config) {
+		dir := filepath.Dir(c.Global.Roots[0])
+		readable, missing = filepath.Join(dir, "git"), filepath.Join(dir, "gone")
+		c.Global.Roots = []string{readable, missing}
+	})
+	if err := os.Mkdir(readable, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := serverDoctor(path)
+	want := []doctorRoot{{readable, doctorRootOK}, {missing, doctorRootMissing}}
+	if !reflect.DeepEqual(report.Roots, want) {
+		t.Errorf("roots = %+v, want %+v", report.Roots, want)
+	}
+	if after, _ := os.ReadFile(path); !bytes.Equal(after, before) {
+		t.Error("the doctor changed the config")
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Error("the doctor created the missing root")
+	}
+	if got := serverDoctor(filepath.Join(t.TempDir(), "gitbox.json")).Roots; got != nil {
+		t.Errorf("roots with no config = %+v, want none", got)
+	}
+
+	if runtime.GOOS != "windows" {
+		closed := filepath.Join(t.TempDir(), "closed")
+		if err := os.Mkdir(closed, 0o000); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(closed, 0o700) })
+		if got := rootState(readOneEntry(closed), runtime.GOOS); got != doctorRootDenied && os.Geteuid() != 0 {
+			t.Errorf("a folder with mode 000 reads %q, want %q", got, doctorRootDenied)
+		}
+	}
+}
+
+func TestRootState(t *testing.T) {
+	pathErr := func(errno syscall.Errno) error { return &fs.PathError{Op: "open", Path: "/r", Err: errno} }
+	for _, tc := range []struct {
+		err  error
+		goos string
+		want string
+	}{
+		{nil, "darwin", doctorRootOK},
+		{pathErr(syscall.ENOENT), "darwin", doctorRootMissing},
+		{pathErr(syscall.EPERM), "darwin", doctorRootTCC},
+		{pathErr(syscall.EPERM), "linux", doctorRootDenied},
+		{pathErr(syscall.EACCES), "darwin", doctorRootDenied},
+		{pathErr(syscall.EIO), "darwin", doctorRootUnreadable},
+	} {
+		if got := rootState(tc.err, tc.goos); got != tc.want {
+			t.Errorf("rootState(%v, %s) = %q, want %q", tc.err, tc.goos, got, tc.want)
+		}
+	}
+}
+
+// A client keeps at most 100 roots from a host, scrubs their paths and
+// turns a state it does not know into unreadable.
+func TestDoctorReportSanitizeRoots(t *testing.T) {
+	r := serverDoctorReport{}
+	for i := range 120 {
+		r.Roots = append(r.Roots, doctorRoot{Path: fmt.Sprintf("/r/%d", i), State: doctorRootOK})
+	}
+	r.Roots[0] = doctorRoot{Path: "/r/\x1b[31mred", State: "<script>"}
+	r.sanitize()
+	if len(r.Roots) != 100 {
+		t.Errorf("%d roots kept, want 100", len(r.Roots))
+	}
+	if r.Roots[0].State != doctorRootUnreadable || strings.ContainsRune(r.Roots[0].Path, 0x1b) {
+		t.Errorf("first root = %+v, want a scrubbed path and state unreadable", r.Roots[0])
 	}
 }
 

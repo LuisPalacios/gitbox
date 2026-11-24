@@ -3,9 +3,13 @@ package remote
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -107,7 +111,7 @@ func TestProbeResolve(t *testing.T) {
 		{"Linux", "arm64", "linux", "arm64", ""},
 		{"Linux", "riscv64", "", "", CodeUnsupportedArch},
 		{"Linux", "armv7l", "", "", CodeUnsupportedArch},
-		{"Darwin", "arm64", "", "", CodeUnsupportedOS},
+		{"Darwin", "arm64", "darwin", "arm64", ""},
 		{"MINGW64_NT-10.0-26300", "x86_64", "", "", CodeUnsupportedOS},
 		{"MSYS_NT-10.0", "x86_64", "", "", CodeUnsupportedOS},
 		{"CYGWIN_NT-10.0", "x86_64", "", "", CodeUnsupportedOS},
@@ -248,4 +252,106 @@ func TestLogRing(t *testing.T) {
 	}
 	var nilLog *Log
 	nilLog.Printf("ignored")
+}
+
+// TestProbeDarwin feeds the probe the answer of a macOS host (#245),
+// recorded over ssh from an Apple silicon Mac whose login shell is zsh and
+// which has no ldd (the home renamed). The fake ssh prints it as the
+// banner, so the probe reads it before the local script's own answer. Then
+// a Dial against a fake host that reports Darwin asks for the darwin/arm64
+// server and installs it.
+func TestProbeDarwin(t *testing.T) {
+	f := newFake(t, fakeServer)
+	banner := filepath.Join(t.TempDir(), "banner")
+	recorded := "\x00GBX\x00Darwin\x00arm64\x00/bin/zsh\x00/Users/me\x00\x00"
+	if err := os.WriteFile(banner, []byte(recorded), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FAKE_SSH_BANNER", banner)
+	r, err := newRunner("mac", f.opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := r.probe(ctx(t))
+	want := Probe{OS: "darwin", Arch: "arm64", RawOS: "Darwin", RawArch: "arm64", Shell: "/bin/zsh", Home: "/Users/me"}
+	if err != nil || p != want {
+		t.Fatalf("probe = %+v, %v; want %+v", p, err, want)
+	}
+
+	t.Setenv("FAKE_SSH_BANNER", "")
+	t.Setenv("FAKE_UNAME_S", "Darwin")
+	t.Setenv("FAKE_UNAME_M", "arm64")
+	var asked []string
+	target := f.opts.Target
+	f.opts.Target = func(goos, goarch string) (Target, error) {
+		asked = append(asked, goos+"/"+goarch)
+		return target(goos, goarch)
+	}
+	s, err := Dial(ctx(t), "mac", f.opts)
+	if err != nil {
+		t.Fatalf("Dial: %v\n%s", err, strings.Join(f.log.Lines(), "\n"))
+	}
+	echo(t, s)
+	_ = s.Close()
+	if p := s.Probe(); p.OS != "darwin" || p.Arch != "arm64" {
+		t.Errorf("probe = %+v", p)
+	}
+	if len(asked) == 0 || slices.ContainsFunc(asked, func(a string) bool { return a != "darwin/arm64" }) {
+		t.Errorf("targets asked for: %v, want darwin/arm64", asked)
+	}
+	if _, err := os.Stat(f.server); err != nil {
+		t.Errorf("the darwin server was not installed: %v", err)
+	}
+}
+
+// TestHashToolSelection runs gbxhash with a PATH that holds only the
+// tools of each case (#245). Each shim prints its name in place of the
+// hash, so the line shows which tool ran: shasum first, then sha256sum,
+// then openssl, and 127 when the host has none.
+func TestHashToolSelection(t *testing.T) {
+	requireSh(t)
+	shims := map[string]string{
+		"shasum":    `[ "$1 $2" = "-a 256" ] || exit 9; echo "shasum $3"`,
+		"sha256sum": `echo "sha256sum $1"`,
+		"openssl":   `[ "$1 $2 $3" = "dgst -sha256 -r" ] || exit 9; echo "openssl *$4"`,
+	}
+	for _, tc := range []struct {
+		tools []string
+		want  string
+		code  int
+	}{
+		{[]string{"shasum", "sha256sum", "openssl"}, "shasum f", 0},
+		{[]string{"sha256sum", "openssl"}, "sha256sum f", 0},
+		{[]string{"openssl"}, "openssl *f", 0},
+		{nil, "", 127},
+	} {
+		bin := t.TempDir()
+		for _, tool := range tc.tools {
+			if err := os.WriteFile(filepath.Join(bin, tool), []byte("#!/bin/sh\n"+shims[tool]+"\n"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command("/bin/sh", "-c", hashFunc+`gbxhash f`)
+		cmd.Env = []string{"PATH=" + bin}
+		out, err := cmd.Output()
+		code := 0
+		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
+			code = ee.ExitCode()
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.TrimSpace(string(out)); got != tc.want || code != tc.code {
+			t.Errorf("with %v: printed %q, exit %d; want %q, exit %d", tc.tools, got, code, tc.want, tc.code)
+		}
+	}
+	// The real tools agree with each other on a real file.
+	file := filepath.Join(t.TempDir(), "f")
+	if err := os.WriteFile(file, []byte("gitbox"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte("gitbox"))
+	out, err := exec.Command("/bin/sh", "-c", hashFunc+`gbxhash "$1"`, "sh", file).Output()
+	if err != nil || !strings.HasPrefix(string(out), hex.EncodeToString(sum[:])+" ") {
+		t.Errorf("gbxhash on this host printed %q, %v; want the SHA-256 first", out, err)
+	}
 }

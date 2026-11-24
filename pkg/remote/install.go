@@ -91,10 +91,11 @@ if [ "$real" = / ] || [ "$real" = "$h" ]; then printf "\0GBX\0refused\0"; exit 0
 `
 
 // hashFunc defines gbxhash, which prints "<hex> ..." for a file with the
-// first hash tool the host has, and returns 127 when it has none.
+// first hash tool the host has, and returns 127 when it has none. shasum
+// comes first: every macOS release has it, and sha256sum only recent ones.
 const hashFunc = `
-gbxhash() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1";
-elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1";
+gbxhash() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1";
+elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1";
 elif command -v openssl >/dev/null 2>&1; then openssl dgst -sha256 -r "$1";
 else return 127; fi; };
 `
@@ -194,7 +195,7 @@ func (r *runner) install(ctx context.Context, l layout, build string, t Target) 
 	case "mismatch", "missing":
 		return newError(CodeHashMismatch, "the server uploaded to %s does not match its pin and was deleted", r.alias)
 	case "nohash":
-		return newError(CodeNoHashTool, "%s has none of sha256sum, shasum or openssl to verify the server", r.alias)
+		return newError(CodeNoHashTool, "%s has none of shasum, sha256sum or openssl to verify the server", r.alias)
 	case "noexec":
 		return newError(CodeNoexec, "%s cannot run programs from %s (mounted noexec); set server_dir to a folder that allows it", r.alias, dir)
 	case "runfail":

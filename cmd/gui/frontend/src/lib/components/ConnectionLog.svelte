@@ -77,6 +77,10 @@
       </dd>
       <dt>{$t('remote.doctor.credentials')}</dt>
       <dd>{$t('remote.doctor.findings', { n: report.credentialFindings?.length ?? 0 })}</dd>
+      {#each report.roots ?? [] as root}
+        <dt>{$t('remote.doctor.root')}</dt>
+        <dd class:doctor-bad={root.state !== 'ok'}><span translate="no">{root.path}</span>: {$t(`remote.doctor.root.${root.state}`)}</dd>
+      {/each}
     </dl>
   {/if}
 
