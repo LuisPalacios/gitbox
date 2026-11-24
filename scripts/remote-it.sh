@@ -38,10 +38,12 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
 echo ">> fakeforge linux/amd64"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o "$out/fakeforge" ./test/fakeforge
 
+# The daemon tests of #247 wait minutes for the daemon's own fetch runs,
+# beyond go test's default of 10 minutes for the whole battery.
 echo ">> go test -race -tags sshd_integration ./pkg/remote/"
 GITBOX_IT_SERVER="$out/gitbox-server" \
 GITBOX_IT_FAKEFORGE="$out/fakeforge" \
 GITBOX_IT_VERSION="$VERSION" \
 GITBOX_IT_COMMIT="$COMMIT" \
 GITBOX_IT_IMAGE=gitbox-sshd \
-    go test -race -count=1 -v -tags sshd_integration -run "${GITBOX_IT_RUN:-.}" ./pkg/remote/
+    go test -race -count=1 -v -timeout 30m -tags sshd_integration -run "${GITBOX_IT_RUN:-.}" ./pkg/remote/

@@ -270,7 +270,10 @@ func startContainer(t *testing.T, o ctOpts) *container {
 	}
 	t.Cleanup(func() {
 		pids := q(c.dir + "/bg.pids")
-		_, _ = hostRun("if [ -f "+pids+" ]; then kill $(cat "+pids+") 2>/dev/null; fi; "+reset+"; rm -rf "+q(c.dir), nil)
+		// A daemon a test started (#247) outlives its sessions: stop it
+		// before its folder goes, or it would run on for its idle time.
+		daemons := "for p in " + q(c.serverRoot()) + "/*/state/daemon.pid; do [ -f \"$p\" ] && kill $(cat \"$p\") 2>/dev/null; done; sleep 1; "
+		_, _ = hostRun("if [ -f "+pids+" ]; then kill $(cat "+pids+") 2>/dev/null; fi; "+daemons+reset+"; rm -rf "+q(c.dir), nil)
 	})
 	return c
 }
