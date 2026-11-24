@@ -257,6 +257,9 @@ export interface RemoteState {
   // which attempt this is (#247).
   attempt?: number;
   attempts?: number;
+  // Once connected: the connection resumed the host's daemon with every
+  // event the window missed, so the window keeps what it shows (#247).
+  resumed?: boolean;
 }
 
 export interface RemoteResult {
