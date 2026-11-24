@@ -1104,8 +1104,14 @@
 
   // ── Delete mode ──
   let deleteMode = false;
+  let folderDeleteFailures: Record<string, string> = {};
+  function setFolderDeleteFailure(key: string, message: string) {
+    if (message) folderDeleteFailures[key] = message;
+    else delete folderDeleteFailures[key];
+    folderDeleteFailures = { ...folderDeleteFailures };
+  }
   let deleteCloneDialog: DeleteCloneModal;
-  const askDelete = (sourceKey: string, repoKey: string, status: string) => deleteCloneDialog.askDelete(sourceKey, repoKey, status);
+  const askDelete = (sourceKey: string, repoKey: string, status: string, removeFolder = false) => deleteCloneDialog.askDelete(sourceKey, repoKey, status, removeFolder);
 
   // ── Edit account ──
   let editAccountDialog: EditAccountModal;
@@ -1577,7 +1583,7 @@
   // every repo view (RowProps in RepoRow.svelte).
   let rowProps: RowProps;
   $: rowProps = {
-    simple, deleteMode, fetchingRepos, collapsedRepos, workspaceChoices,
+    simple, deleteMode, folderDeleteFailures, fetchingRepos, collapsedRepos, workspaceChoices,
     revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
     expandedRepo, repoDetail, detailLoading,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
@@ -2382,7 +2388,7 @@
     {:else if currentView === 'all'}
       <!-- ── ALL REPOS ── -->
       <RepoList {treeRows} {collapsedSources} {credStatuses} {actionMenuAccount} {rowProps}
-        {toggleSourceCollapsed} {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
+        {toggleSourceCollapsed} {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
     {:else if currentView === 'mirrors'}
       <!-- ── MIRRORS ── -->
       <MirrorsTab bind:expandedCard {deleteMode} {mirrorDiscoverLoading} {mirrorDiscoverProgress} {mirrorChecking} {mirrorSettingUp}
@@ -2420,7 +2426,7 @@
   <EditAccountModal bind:this={editAccountDialog} {reloadFromDisk} />
 
   <!-- ── DELETE CONFIRMATION MODAL ── -->
-  <DeleteCloneModal bind:this={deleteCloneDialog} bind:expandedRepo bind:repoDetail bind:deleteMode {reloadFromDisk} />
+  <DeleteCloneModal bind:this={deleteCloneDialog} bind:expandedRepo bind:repoDetail bind:deleteMode {simple} {reloadFromDisk} {setFolderDeleteFailure} />
 
   <!-- ── SWEEP CONFIRM MODAL ── -->
   <SweepModal bind:this={sweepDialog} {closeActionMenu} />
@@ -2439,7 +2445,7 @@
   <CredentialModal bind:this={credentialDialog} {simple} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses {credTokenGuide} {credTokenScopes} {sshKeyCopied} {serverOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── DELETE ACCOUNT MODAL ── -->
-  <DeleteAccountModal bind:this={deleteAccountDialog} bind:reloadError bind:deleteMode {reloadFromDisk} />
+  <DeleteAccountModal bind:this={deleteAccountDialog} bind:deleteMode {simple} {reloadFromDisk} />
 
   <!-- ── CHANGE FOLDER MODAL ── -->
   <RootsModal bind:this={rootsDialog} {reloadFromDisk} {runReconcile} />

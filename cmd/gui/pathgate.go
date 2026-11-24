@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"sync"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -65,6 +67,25 @@ func (g *pathGate) acquire(ctx context.Context, path string) (func(), error) {
 		return nil, err
 	}
 	return unlock, nil
+}
+
+var errCloneTransferActive = errors.New("a Git operation is still using the clone or a folder within it")
+
+// The deletion caller holds a.mu and maintenanceMu. A new transfer cannot
+// pass its config check until deletion finishes. Refuse existing transfers
+// without waiting on their gate while holding either lock.
+func (a *App) refuseBusyDeletion(path string) error {
+	g := &a.repairPaths
+	target := pathkey.Compare(path)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for active := range g.entries {
+		rel, err := filepath.Rel(target, active)
+		if err == nil && filepath.IsLocal(rel) {
+			return fmt.Errorf("%s: %w", path, errCloneTransferActive)
+		}
+	}
+	return nil
 }
 
 var errCloneSettingsChanged = errors.New("repository settings changed during refresh")

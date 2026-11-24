@@ -85,7 +85,7 @@ func mutationRows(root, firstRoot string) []mutationRow {
 		{name: "AddAccount to delete", call: func(b Backend, _ mutationSide) (any, error) {
 			return none(b.AddAccount(acct("fifth", "https://fifth.example.invalid")))
 		}},
-		{name: "DeleteAccount", call: func(b Backend, _ mutationSide) (any, error) { return none(b.DeleteAccount("fifth")) }},
+		{name: "DeleteAccount", call: func(b Backend, _ mutationSide) (any, error) { return b.DeleteAccount("fifth", false) }},
 		{name: "AddDiscoveredRepos", call: func(b Backend, _ mutationSide) (any, error) {
 			return none(b.AddDiscoveredRepos("acct", []string{"org/new"}))
 		}},
@@ -157,7 +157,7 @@ func mutationRows(root, firstRoot string) []mutationRow {
 		{name: "CredentialSetupSSH missing account", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialSetupSSH("nobody"), nil }},
 		{name: "CredentialSSHAgentReport missing account", call: func(b Backend, _ mutationSide) (any, error) { return b.CredentialSSHAgentReport("nobody"), nil }},
 		{name: "DeleteAccount ssh", call: func(b Backend, s mutationSide) (any, error) {
-			if err := b.DeleteAccount("sshacct"); err != nil {
+			if _, err := b.DeleteAccount("sshacct", false); err != nil {
 				return nil, err
 			}
 			// The key went with the account (#244).

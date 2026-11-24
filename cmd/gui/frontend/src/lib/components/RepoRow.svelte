@@ -7,6 +7,7 @@
   export interface RowProps {
     simple: boolean;
     deleteMode: boolean;
+    folderDeleteFailures: Record<string, string>;
     fetchingRepos: Record<string, boolean>;
     collapsedRepos: Set<string>;
     // Containers ("source/repo") whose root holds several .code-workspace
@@ -22,7 +23,7 @@
     repoDetail: RepoDetailView | null;
     detailLoading: boolean;
     activateRepoRow: (sourceKey: string, repoName: string, status: string) => void;
-    askDelete: (sourceKey: string, repoKey: string, status: string) => void;
+    askDelete: (sourceKey: string, repoKey: string, status: string, removeFolder?: boolean) => void;
     syncRepo: (sourceKey: string, repoKey: string) => void;
     cloneRepo: (sourceKey: string, repoKey: string) => void;
     fetchRepo: (sourceKey: string, repoKey: string) => void;
@@ -88,6 +89,7 @@
   // Shared with the whole list (RowProps; the detail fields go to RepoTree).
   export let simple: boolean;
   export let deleteMode: boolean;
+  export let folderDeleteFailures: Record<string, string> = {};
   export let fetchingRepos: Record<string, boolean>;
   export let collapsedRepos: Set<string>;
   export let workspaceChoices: Set<string>;
@@ -98,7 +100,7 @@
   export let actionMenuRepo: string | null;
   export let openPRPopover: string | null;
   export let activateRepoRow: (sourceKey: string, repoName: string, status: string) => void;
-  export let askDelete: (sourceKey: string, repoKey: string, status: string) => void;
+  export let askDelete: (sourceKey: string, repoKey: string, status: string, removeFolder?: boolean) => void;
   export let syncRepo: (sourceKey: string, repoKey: string) => void;
   export let cloneRepo: (sourceKey: string, repoKey: string) => void;
   export let fetchRepo: (sourceKey: string, repoKey: string) => void;
@@ -384,9 +386,12 @@
   aria-disabled={!rowOpensDetail}
   on:click={() => activateRepoRow(rowSourceKey, repoName, state.status)}
   on:keydown={onActivateKey(() => activateRepoRow(rowSourceKey, repoName, state.status))}>
+  {#if folderDeleteFailures[repoKey]}
+    <span class="folder-delete-failure" title={folderDeleteFailures[repoKey]}>{$t('deleteClone.failed')}</span>
+  {/if}
   {#if rowSourceKey !== sourceKey && !showAccount}<span class="container-badge" title={rowSourceKey}>{rowAccountKey}</span>{/if}
   {#if deleteMode}
-    <button use:ro={'deleteRepo'} class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title={$t('row.delete', { name: repoName })} aria-label={$t('row.delete', { name: repoName })}><UIIcon name="x" /></button>
+    <button use:ro={'stopTrackingRepo'} class="icon-btn icon-btn-danger btn-delete-x" on:click|stopPropagation={() => askDelete(rowSourceKey, repoName, state.status)} title={$t('row.stopTracking', { name: repoName })} aria-label={$t('row.stopTracking', { name: repoName })}><UIIcon name="x" /></button>
   {/if}
   {#if simple}
     <!-- Simple row (issue #124): dot, short name, one sentence, one button, ⋯ -->
@@ -428,28 +433,26 @@
         {@render quickLaunch(repoKey)}
       {/if}
     {/if}
-    {#if kind !== 'online'}
-      <div class="action-menu-container">
-        <button class="icon-btn btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')} aria-label={$t('repo.actions')} aria-haspopup="menu"><UIIcon name="dots" /></button>
-        {#if actionMenuRepo === repoKey}
-          <div transition:fade={{ duration: 80 }}>
-            <LauncherMenu
-              kind="repo"
-              editors={configEditors}
-              profiles={[]}
-              aiHarnesses={configAIHarnesses}
-              {revealLabel}
-              browserLabelOverride={$t('simple.openWeb')}
-              onOpenBrowser={() => openRepoInBrowser(rowSourceKey, repoName)}
-              onOpenFolder={() => openRepoInExplorer(repoKey)}
-              onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
-              onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
-              onDelete={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status); }}
-            />
-          </div>
-        {/if}
-      </div>
-    {/if}
+        <div class="action-menu-container">
+      <button class="icon-btn btn-kebab" on:click|stopPropagation={() => toggleActionMenu(repoKey)} title={$t('repo.actions')} aria-label={$t('repo.actions')} aria-haspopup="menu"><UIIcon name="dots" /></button>
+      {#if actionMenuRepo === repoKey}
+        <div transition:fade={{ duration: 80 }}>
+          <LauncherMenu
+            kind="repo"
+            editors={kind === 'online' ? [] : configEditors}
+            profiles={[]}
+            aiHarnesses={kind === 'online' ? [] : configAIHarnesses}
+            {revealLabel}
+            browserLabelOverride={$t('simple.openWeb')}
+            onOpenBrowser={() => openRepoInBrowser(rowSourceKey, repoName)}
+            onOpenFolder={kind === 'online' ? null : () => openRepoInExplorer(repoKey)}
+            onOpenApp={(cmd) => openRepoInApp(repoKey, cmd)}
+            onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
+            onDelete={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status); }}
+          />
+        </div>
+      {/if}
+    </div>
   {:else}
   {#if childCount > 0}{@render foldChevron()}{:else}<span class="dot" class:spinning={busy} style="color: {sc(presentation.colour)}">{rowGlyph(state.status, busy)}</span>{/if}
   {#if childCount > 0 && !rowOpensDetail}
@@ -526,6 +529,7 @@
               onRescanContainer={() => { closeActionMenu(); rescanContainer(); }}
               onChooseWorkspace={wsFile || wsPending ? () => { closeActionMenu(); chooseWorkspace(rowSourceKey, repoName); } : null}
               onDelete={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status); }}
+              onDeleteFolder={() => { closeActionMenu(); askDelete(rowSourceKey, repoName, state.status, true); }}
             />
           </div>
         {/if}
@@ -546,6 +550,7 @@
 {/if}
 
 <style>
+  .folder-delete-failure { color: var(--status-error); font-size: 11px; }
   .repair-warning { display: flex; align-items: flex-start; gap: 12px; padding: 2px 6px 8px; font-size: 12px; color: var(--text-primary); }
   .repair-warning ul { margin: 3px 0 0; padding-left: 16px; overflow-wrap: anywhere; }
   .repair-warning button { margin-left: auto; flex: none; }

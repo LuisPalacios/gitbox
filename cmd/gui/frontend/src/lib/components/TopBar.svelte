@@ -112,7 +112,7 @@
       <span class="icon-spin" class:spinning={fetchingAll}><UIIcon name="fetch" /></span>
     </button>
     {#if !simple}
-    <button class="icon-btn" use:ro={['deleteRepo']} class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title={deleteMode ? $t('top.exitDeleteMode') : $t('top.deleteMode')}><UIIcon name="trash" /></button>
+    <button class="icon-btn" use:ro={['stopTrackingRepo']} class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title={deleteMode ? $t('top.exitDeleteMode') : $t('top.deleteMode')}><UIIcon name="trash" /></button>
     <button class="icon-btn" use:ro={'setViewMode'} on:click={toggleViewMode} title={$t('top.compactView')}><UIIcon name="compact" /></button>
     <button class="icon-btn" on:click={cycleTheme} title={$t('top.themeTip', { name: $t(`theme.${themeChoice}`) })}><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
     {/if}

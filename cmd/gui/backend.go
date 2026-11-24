@@ -49,10 +49,11 @@ type Backend interface {
 	CredentialSetupSSH(accountKey string) CredentialSetupResult
 	CredentialStoreToken(accountKey, token string) CredentialSetupResult
 	CredentialVerify(key string) CredentialStatus
-	DeleteAccount(accountKey string) error
+	DeleteAccount(accountKey string, removeFolders bool) ([]string, error)
 	DeleteMirrorGroup(key string) error
 	DeleteMirrorRepo(mirrorKey, repoKey string) error
-	DeleteRepo(sourceKey, repoKey string) error
+	DeleteRepoFolder(sourceKey, repoKey string) error
+	StopTrackingRepo(sourceKey, repoKey string) error
 	DiscardAccount(accountKey string) error
 	Discover(accountKey string)
 	DiscoverMirrors()
@@ -217,15 +218,18 @@ func (b localBackend) CredentialStoreToken(accountKey, token string) CredentialS
 func (b localBackend) CredentialVerify(key string) CredentialStatus {
 	return b.a.credentialVerifyLocal(key)
 }
-func (b localBackend) DeleteAccount(accountKey string) error {
-	return b.a.deleteAccountLocal(accountKey)
+func (b localBackend) DeleteAccount(accountKey string, removeFolders bool) ([]string, error) {
+	return b.a.deleteAccountLocal(accountKey, removeFolders)
 }
 func (b localBackend) DeleteMirrorGroup(key string) error { return b.a.deleteMirrorGroupLocal(key) }
 func (b localBackend) DeleteMirrorRepo(mirrorKey, repoKey string) error {
 	return b.a.deleteMirrorRepoLocal(mirrorKey, repoKey)
 }
-func (b localBackend) DeleteRepo(sourceKey, repoKey string) error {
-	return b.a.deleteRepoLocal(sourceKey, repoKey)
+func (b localBackend) DeleteRepoFolder(sourceKey, repoKey string) error {
+	return b.a.deleteRepoFolderLocal(sourceKey, repoKey)
+}
+func (b localBackend) StopTrackingRepo(sourceKey, repoKey string) error {
+	return b.a.stopTrackingRepoLocal(sourceKey, repoKey)
 }
 func (b localBackend) DiscardAccount(accountKey string) error {
 	return b.a.discardAccountLocal(accountKey)

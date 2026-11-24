@@ -106,7 +106,10 @@ func TestSchedule_DeleteDuringClone(t *testing.T) {
 
 		a.CloneRepo(source, repo, "")
 		<-clone.Entered
-		err := a.DeleteRepo(source, repo)
+		if err := a.DeleteRepoFolder(source, repo); !errors.Is(err, errCloneTransferActive) {
+			t.Fatalf("deleting an active clone destination must return busy: %v", err)
+		}
+		err := a.StopTrackingRepo(source, repo)
 		clone.Release()
 		a.refreshWG.Wait()
 		if err != nil {
@@ -122,8 +125,8 @@ func TestSchedule_DeleteDuringClone(t *testing.T) {
 		if _, exists := a.cfg.Sources[source].Repos[repo]; exists {
 			t.Fatal("clone completion restored the deleted repository in memory")
 		}
-		if !git.IsRepo(dest) {
-			t.Fatal("clone completion removed the Git transfer its caller no longer owns")
+		if !git.IsRepo(dest) || !saved.IsIgnoredClone(dest) {
+			t.Fatal("clone completion did not preserve the ignored Git transfer")
 		}
 		if done := events.named("clone:done"); len(done) != 1 {
 			t.Fatalf("clone completion events = %d, want 1", len(done))
@@ -177,6 +180,12 @@ func TestSchedule_FetchDoesNotChangeUpstreamAfterCredentialSwitchOrCancel(t *tes
 				done := make(chan error, 1)
 				go func() { done <- a.performFetch(a.newOperation(), snapshot, source, repo, path, nil) }()
 				<-fetch.Entered
+				if err := a.DeleteRepoFolder(source, repo); !errors.Is(err, errCloneTransferActive) {
+					t.Fatalf("deleting a clone being fetched must return busy: %v", err)
+				}
+				if _, err := a.DeleteAccount(account, true); !errors.Is(err, errCloneTransferActive) {
+					t.Fatalf("account folder deletion during fetch must return busy: %v", err)
+				}
 				var credentialChange chan error
 				if tc.switchCredential {
 					if !a.maintenanceMu.TryLock() {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/ops"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
@@ -277,6 +278,34 @@ func TestPlan_SkipsIgnoredClones(t *testing.T) {
 	res := planAndApply(t, cfg)
 	if len(res.Ignored) != 1 || len(res.Unmatched) != 0 || res.Ignored[0].Reason != ReasonHostOnly {
 		t.Errorf("ignored=%+v unmatched=%v", res.Ignored, reasons(res))
+	}
+}
+
+func TestPlan_ReportsStoppedCloneOutsideRoots(t *testing.T) {
+	cfg := testConfig(t.TempDir())
+	outside := t.TempDir()
+	path := filepath.Join(outside, "clone")
+	initRepo(t, path, "https://github.com/me/first.git")
+	initRepo(t, filepath.Join(outside, "unrelated"), "https://github.com/me/unrelated.git")
+	if err := cfg.AddRepo("github-me", "me/first", config.Repo{CloneFolder: path}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ops.StopTrackingRepo(cfg, "github-me", "me/first"); err != nil {
+		t.Fatal(err)
+	}
+	// Legacy configs can contain an alias or a folder that is offline.
+	cfg.Global.IgnoredClones = append(cfg.Global.IgnoredClones, path+string(filepath.Separator), filepath.Join(outside, "offline"))
+
+	res := planAndApply(t, cfg)
+	if len(res.Ignored) != 1 || !config.SameRoot(res.Ignored[0].Path, path) ||
+		len(res.Unmatched) != 0 || len(res.Adopt) != 0 {
+		t.Fatalf("expected only the existing ignored clone: %+v", res)
+	}
+	if !cfg.IgnoreClone(res.Ignored[0].Path, false) || cfg.IsIgnoredClone(path) {
+		t.Fatal("the returned path did not clear the ignore")
+	}
+	if _, tracked := cfg.Sources["github-me"].Repos["me/first"]; tracked || !git.IsRepo(path) {
+		t.Fatal("stopping tracking changed the clone or re-added its config entry")
 	}
 }
 

@@ -102,8 +102,8 @@ func (r *RemoteBackend) CredentialStoreToken(accountKey, token string) Credentia
 func (r *RemoteBackend) CredentialVerify(key string) CredentialStatus {
 	return remoteValue[CredentialStatus](r, "CredentialVerify", key)
 }
-func (r *RemoteBackend) DeleteAccount(accountKey string) error {
-	return r.callErr("DeleteAccount", accountKey)
+func (r *RemoteBackend) DeleteAccount(accountKey string, removeFolders bool) ([]string, error) {
+	return remoteCall[[]string](r, "DeleteAccount", accountKey, removeFolders)
 }
 func (r *RemoteBackend) DeleteMirrorGroup(key string) error {
 	return r.callErr("DeleteMirrorGroup", key)
@@ -111,8 +111,11 @@ func (r *RemoteBackend) DeleteMirrorGroup(key string) error {
 func (r *RemoteBackend) DeleteMirrorRepo(mirrorKey, repoKey string) error {
 	return r.callErr("DeleteMirrorRepo", mirrorKey, repoKey)
 }
-func (r *RemoteBackend) DeleteRepo(sourceKey, repoKey string) error {
-	return r.callErr("DeleteRepo", sourceKey, repoKey)
+func (r *RemoteBackend) DeleteRepoFolder(sourceKey, repoKey string) error {
+	return r.callErr("DeleteRepoFolder", sourceKey, repoKey)
+}
+func (r *RemoteBackend) StopTrackingRepo(sourceKey, repoKey string) error {
+	return r.callErr("StopTrackingRepo", sourceKey, repoKey)
 }
 func (r *RemoteBackend) DiscardAccount(accountKey string) error {
 	return r.callErr("DiscardAccount", accountKey)

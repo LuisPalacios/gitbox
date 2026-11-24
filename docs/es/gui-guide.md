@@ -125,7 +125,7 @@ En Simple, cada proyecto muestra lo que Gitbox ha observado y cuándo hay que ac
 
 Cuando una fila con **Actualización disponible**, **Solo en línea** o **Necesita ayuda** muestra un resultado conocido del servidor, indica cuándo lo comprobó Gitbox. Pasa el ratón sobre ese texto para ver la fecha y la hora de la comprobación.
 
-Los nombres se muestran sin el prefijo de la organización; pasa el ratón sobre un nombre para verlo completo. Las filas mantienen los tres [botones de lanzamiento](#acciones-de-clones), y el menú ⋯ ofrece Abrir en la web, la carpeta, los editores, los AI harnesses y **Borrar de este ordenador…**.
+Los nombres se muestran sin el prefijo de la organización; pasa el ratón sobre un nombre para verlo completo. Las filas mantienen los tres [botones de lanzamiento](#acciones-de-clones), y el menú ⋯ ofrece Abrir en la web, la carpeta, los editores, los AI harnesses y **Dejar de mostrar este proyecto**.
 
 Simple oculta el resto: la vista Mirrors, el modo borrar, los botones de vista compacta y de tema (el tema sigue en Ajustes), las insignias de contenedor y de rama, los conteos por delante, por detrás y de cambios, y el botón de fetch de cada fila. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta muestra **Hay que revisar la conexión** cuando no se puede llegar al servidor y **Reconectar** cuando una credencial falla. Ajustes oculta las filas Configuración, PR / revisiones, Gitignore global y Terminales. La vista compacta es igual en los dos modos.
 
@@ -286,10 +286,10 @@ Junto a ellos, el **menú ⋯** es una lista plana por secciones, sin submenús:
 1. **Abrir** — **Ir al repo** abre el repo en el proveedor, y **Mostrar en Finder** (el Explorador, o el gestor de archivos en Linux) abre su carpeta.
 2. **Abrir con** — cada AI harness y editor, y después el perfil de terminal predeterminado y los marcados como Preferido, cada uno con su logo. La herramienta que usa el botón de lanzamiento propio de la fila lleva una etiqueta **predeterminado**.
 3. **Mantenimiento** (Avanzado) — **Limpiar ramas**, **Mover repositorio…**, **Marcar como contenedor multi-repo** o **Desmarcar como contenedor multi-repo**, **Elegir workspace…** en un contenedor con archivos de workspace, y **Volver a buscar clones anidados**.
-4. **Borrar de este ordenador…** — en los dos modos.
+4. **Dejar de mostrar este proyecto** en cualquiera de los dos modos. **Eliminar carpeta del clon…** también aparece en Avanzado.
 
 <p align="center">
-  <img src="../../assets/screenshot-menu.png" alt="El menú ⋯ de un clon: Abrir, Abrir con cada AI harness, editor y terminal, Mantenimiento y Borrar de este ordenador" width="560" />
+  <img src="../../assets/screenshot-menu.png" alt="El menú ⋯ de un clon: Abrir, Abrir con cada AI harness, editor y terminal, Mantenimiento y las opciones para dejar de gestionar o eliminar el clon" width="560" />
 </p>
 
 El editor y el AI harness predeterminados son las primeras entradas de `global.editors` y `global.ai_harnesses` en `gitbox.json`; reordena esos arrays para cambiarlos, y el menú sigue el orden de la config. La terminal predeterminada es el perfil marcado como Predeterminado en **Ajustes → Terminales → Gestor** (consulta [Editores y perfiles de terminal](#editores-y-perfiles-de-terminal)).
@@ -403,7 +403,13 @@ Los dos lados necesitan los scopes de token que se listan en [Scopes de token po
 
 ### Eliminar repos y cuentas
 
-Haz clic en el **icono de papelera** de la barra superior para entrar en el modo borrar. Aparecen botones ✕ rojos en la tarjeta de cuenta de la vista de una cuenta, en las tarjetas de grupo mirror y en las filas de repo; haz clic en uno para quitar ese elemento. Eliminar una cuenta también elimina sus carpetas de clones locales, su archivo de token guardado y su clave SSH con su entrada `Host`. Haz clic de nuevo en el icono de papelera para salir del modo borrar.
+Abre el menú ⋯ del proyecto y elige **Dejar de mostrar este proyecto** en cualquiera de los dos modos. Gitbox quita el proyecto de su lista y conserva la carpeta y su contenido en el disco. Para volver a gestionar el clon, abre **Clones sin ubicar**, selecciona **Mostrar ignorados** y deja de ignorarlo.
+
+En Avanzado, el mismo menú ofrece **Eliminar carpeta del clon…**. Confirma la eliminación permanente para quitar tanto la carpeta como la entrada del proyecto. Gitbox conserva la entrada y muestra el error si no puede verificar o eliminar la carpeta. Un clon que contiene otro repo de Git o tiene árboles de trabajo vinculados debe gestionarse por separado. En Avanzado, el **icono de papelera** de la barra superior también muestra los controles para quitar proyectos, cuentas y mirrors.
+
+En el menú ⋯ de la cuenta, elige **Eliminar cuenta** y escribe su nombre. La confirmación enumera los sources, proyectos y mirrors afectados. Gitbox elimina la cuenta, su token guardado y su clave SSH con su entrada `Host`, y conserva por defecto las carpetas de sus clones en el disco. En Avanzado, marca **Eliminar también del disco las carpetas de los clones gestionados** y confirma para eliminar también esas carpetas. Si alguna carpeta no se puede eliminar, Gitbox enumera los errores y conserva la cuenta para que puedas resolverlos y volver a intentarlo. Es posible que ya haya eliminado algunas carpetas.
+
+En una ventana remota, estas acciones afectan a la cuenta, las entradas de los proyectos y las carpetas de los clones del host conectado.
 
 ## Mirrors
 

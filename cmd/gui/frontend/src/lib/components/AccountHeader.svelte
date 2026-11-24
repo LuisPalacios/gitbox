@@ -55,7 +55,7 @@
     <span class="right">
       <span class="provider">{providerLabel(acct.provider)}</span>
       <AccountMenu {accountKey} credStatus={cred.status} {actionMenuAccount} {rowProps}
-        {toggleAccountMenu} {closeAccountMenu} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
+        {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
     </span>
   </div>
   <div class="line">

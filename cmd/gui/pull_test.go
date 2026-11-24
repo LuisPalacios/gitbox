@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+
 	"fmt"
 	"net/url"
 	"os"
@@ -372,6 +374,11 @@ func TestPullAll_SerializesTransferWithFetchAll(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				a, events := refreshTestApp(t, 1)
 				defer a.stopRefresh()
+				a.cfgPath = filepath.Join(a.cfg.DefaultRoot(), "gitbox.json")
+				a.cfgLoaded = true
+				if err := config.Save(a.cfg, a.cfgPath); err != nil {
+					t.Fatal(err)
+				}
 				release := make(chan struct{})
 				var pullEntered, fetchEntered bool
 				a.refreshHooks.pull = func(context.Context, string) error {
@@ -400,6 +407,9 @@ func TestPullAll_SerializesTransferWithFetchAll(t *testing.T) {
 				}
 				synctest.Wait()
 				earlyPull, earlyFetch := pullEntered, fetchEntered
+				if err := a.DeleteRepoFolder("source-a", "org/repo-0"); !errors.Is(err, errCloneTransferActive) {
+					t.Errorf("delete during %s = %v, want busy", first, err)
+				}
 				close(release)
 				synctest.Wait()
 				if earlyPull != (first == "pull") || earlyFetch != (first == "fetch") {

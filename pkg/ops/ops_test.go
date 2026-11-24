@@ -364,8 +364,8 @@ func TestDeleteAccount_RemovesClonesAndCascades(t *testing.T) {
 		t.Fatalf("CountClonedRepos = %d, want 1", CountClonedRepos(cfg, "gh"))
 	}
 
-	if err := DeleteAccount(cfg, "gh"); err != nil {
-		t.Fatalf("DeleteAccount: %v", err)
+	if _, errs := DeleteAccount(cfg, "gh", true); len(errs) != 0 {
+		t.Fatalf("DeleteAccount: %v", errs)
 	}
 	if _, err := os.Stat(clone); err == nil {
 		t.Error("clone folder still on disk")
@@ -376,7 +376,7 @@ func TestDeleteAccount_RemovesClonesAndCascades(t *testing.T) {
 	if _, ok := cfg.Sources["gh"]; ok {
 		t.Error("source still in config")
 	}
-	if err := DeleteAccount(cfg, "gh"); err == nil {
+	if _, errs := DeleteAccount(cfg, "gh", true); len(errs) == 0 {
 		t.Error("expected error deleting a missing account")
 	}
 }
@@ -394,8 +394,8 @@ func TestDeleteAccount_RemovesTheTokenFile(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := DeleteAccount(cfg, "tok"); err != nil {
-		t.Fatalf("DeleteAccount: %v", err)
+	if _, errs := DeleteAccount(cfg, "tok", false); len(errs) != 0 {
+		t.Fatalf("DeleteAccount: %v", errs)
 	}
 	if _, err := os.Stat(credential.CredentialFilePath("tok")); !os.IsNotExist(err) {
 		t.Errorf("the deleted account's credential file is still on disk: %v", err)
@@ -407,12 +407,12 @@ func TestDeleteAccount_RemovesTheTokenFile(t *testing.T) {
 	if err := AddAccount(cfg, "nofile", testAccount("token")); err != nil {
 		t.Fatal(err)
 	}
-	if err := DeleteAccount(cfg, "nofile"); err != nil {
-		t.Fatalf("DeleteAccount without a file: %v", err)
+	if _, errs := DeleteAccount(cfg, "nofile", false); len(errs) != 0 {
+		t.Fatalf("DeleteAccount without a file: %v", errs)
 	}
 }
 
-func TestDeleteRepo(t *testing.T) {
+func TestDeleteRepoClone(t *testing.T) {
 	_, cfg := isolate(t)
 	if err := AddAccount(cfg, "gh", testAccount("gcm")); err != nil {
 		t.Fatal(err)
@@ -422,7 +422,7 @@ func TestDeleteRepo(t *testing.T) {
 	}
 	clone := makeClone(t, cfg, "gh", "alice/repo", "https://alice@github.com/alice/repo.git")
 
-	if err := DeleteRepo(cfg, "gh", "alice/repo"); err != nil {
+	if err := DeleteRepoClone(cfg, "gh", "alice/repo"); err != nil {
 		t.Fatalf("DeleteRepo: %v", err)
 	}
 	if _, err := os.Stat(clone); err == nil {
@@ -703,12 +703,12 @@ func TestRenameAndDeleteAccount_AcrossRoots(t *testing.T) {
 		}
 	}
 
-	if err := DeleteAccount(cfg, "new"); err != nil {
-		t.Fatal(err)
+	if _, errs := DeleteAccount(cfg, "new", true); len(errs) != 0 {
+		t.Fatal(errs)
 	}
-	for _, dir := range []string{filepath.Join(cfg.Global.Roots[0], "new"), filepath.Join(second, "new")} {
-		if _, err := os.Stat(dir); !os.IsNotExist(err) {
-			t.Errorf("%s survived the delete", dir)
+	for _, clone := range moved {
+		if _, err := os.Stat(clone); !os.IsNotExist(err) {
+			t.Errorf("%s survived the delete", clone)
 		}
 	}
 }

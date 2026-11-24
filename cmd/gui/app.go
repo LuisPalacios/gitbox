@@ -1928,12 +1928,9 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	var release func()
 	if run != "" {
 		release, err = a.fetches.acquire(ctx, fetchHostname(account.URL))
-		if err == nil && !a.sameRefreshRepo(expected, sourceKey, repoKey) {
-			err = errCloneSettingsChanged
-		}
 	}
 	if err == nil {
-		err = plan.Run(ctx, func(p git.CloneProgress) {
+		err = a.transferClone(ctx, cfg, sourceKey, repoKey, plan, func(p git.CloneProgress) {
 			emit(op, "clone:progress", cloneProgressDTO{Run: run, Source: sourceKey, Repo: repoKey, Phase: p.Phase, Percent: p.Percent})
 		})
 	}
@@ -1969,6 +1966,20 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	if err == nil {
 		a.publishCompletionStatus(ctx, op, cfg, sourceKey, repoKey, plan.Dest)
 	}
+}
+
+// Protect the destination only during the transfer; repair acquires the
+// same gate separately. A queued clone rechecks that it is still tracked.
+func (a *App) transferClone(ctx context.Context, cfg *config.Config, source, repo string, plan ops.ClonePlan, progress func(git.CloneProgress)) error {
+	unlock, err := a.repairPaths.acquire(ctx, plan.Dest)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if !a.sameRefreshRepo(cfg, source, repo) {
+		return errCloneSettingsChanged
+	}
+	return plan.Run(ctx, progress)
 }
 
 // failedCloneError reports a remaining destination without changing it. A path
@@ -2734,22 +2745,71 @@ func (a *App) credentialSSHAgentReportLocal(accountKey string) SSHAgentReportDTO
 
 // ─── Delete ───────────────────────────────────────────────────
 
-// DeleteRepo removes a repo from the config and deletes its local folder.
-func (a *App) DeleteRepo(sourceKey, repoKey string) error {
-	return a.be().DeleteRepo(sourceKey, repoKey)
+// StopTrackingRepo forgets a repo and leaves its folder intact.
+func (a *App) StopTrackingRepo(sourceKey, repoKey string) error {
+	return a.be().StopTrackingRepo(sourceKey, repoKey)
 }
 
-// deleteRepoLocal is the local backend's DeleteRepo.
-func (a *App) deleteRepoLocal(sourceKey, repoKey string) error {
+// DeleteRepoFolder deletes the clone folder when the Advanced window confirms.
+func (a *App) DeleteRepoFolder(sourceKey, repoKey string) error {
+	if a.GetUIMode() == uiModeSimple {
+		return errDeleteFoldersAdvanced
+	}
+	return a.be().DeleteRepoFolder(sourceKey, repoKey)
+}
+
+var errDeleteFoldersAdvanced = errors.New("deleting clone folders requires Advanced mode")
+
+func (a *App) stopTrackingRepoLocal(sourceKey, repoKey string) error {
+	return a.changeRepoTracking(sourceKey, repoKey, ops.StopTrackingRepo)
+}
+
+func (a *App) deleteRepoFolderLocal(sourceKey, repoKey string) error {
+	return a.changeRepoTracking(sourceKey, repoKey, func(cfg *config.Config, source, repo string) error {
+		if r, ok := cfg.Sources[source].Repos[repo]; ok {
+			if err := a.refuseBusyDeletion(status.RepoPath(cfg, source, repo, r)); err != nil {
+				return err
+			}
+		}
+		return ops.DeleteRepoClone(cfg, source, repo)
+	})
+}
+
+func (a *App) changeRepoTracking(sourceKey, repoKey string, change func(*config.Config, string, string) error) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if err := ops.DeleteRepo(a.cfg, sourceKey, repoKey); err != nil {
+	return a.saveDeletion(func(cfg *config.Config) error { return change(cfg, sourceKey, repoKey) })
+}
+
+// saveDeletion checks the disk revision before any filesystem changes
+// and keeps the config lock until the resulting config has been saved.
+// The caller holds a.mu and a.maintenanceMu.
+func (a *App) saveDeletion(change func(*config.Config) error) error {
+	if err := a.saveRefused(); err != nil {
 		return err
 	}
-	return a.saveConfig()
+	next, err := a.cfg.Clone()
+	if err != nil {
+		return err
+	}
+	base, err := a.cfgBase.Save(next, a.cfgPath, func(onDisk *config.Config) error {
+		if onDisk != nil {
+			config.PreserveClientPrefs(next, onDisk)
+		}
+		return change(next)
+	})
+	if err != nil {
+		if isConfigChanged(err) {
+			a.reloadAfterConflict()
+		}
+		return err
+	}
+	*a.cfg = *next
+	a.setRevision(base)
+	return nil
 }
 
 // AccountDeletionImpactDTO describes what a DeleteAccount call would remove.
@@ -2791,12 +2851,16 @@ func (a *App) accountDeletionImpactLocal(accountKey string) AccountDeletionImpac
 	return dto
 }
 
-// DeleteAccount removes an account, every source and mirror that references
-// it, and all its local clone folders (see ops.DeleteAccount).
-func (a *App) DeleteAccount(accountKey string) error { return a.be().DeleteAccount(accountKey) }
+// DeleteAccount removes the account and credentials. The Advanced window
+// may explicitly opt in to removing tracked clone folders as well.
+func (a *App) DeleteAccount(accountKey string, removeFolders bool) ([]string, error) {
+	if removeFolders && a.GetUIMode() == uiModeSimple {
+		return nil, errDeleteFoldersAdvanced
+	}
+	return a.be().DeleteAccount(accountKey, removeFolders)
+}
 
-// deleteAccountLocal is the local backend's DeleteAccount.
-func (a *App) deleteAccountLocal(accountKey string) error {
+func (a *App) deleteAccountLocal(accountKey string, removeFolders bool) ([]string, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
 	a.invalidateCredential(accountKey)
@@ -2804,11 +2868,34 @@ func (a *App) deleteAccountLocal(accountKey string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if err := ops.DeleteAccount(a.cfg, accountKey); err != nil {
-		return err
+	var failures []string
+	err := a.saveDeletion(func(cfg *config.Config) error {
+		if removeFolders {
+			for _, source := range cfg.AccountDeletionImpact(accountKey).Sources {
+				for repo, r := range cfg.Sources[source].Repos {
+					if err := a.refuseBusyDeletion(status.RepoPath(cfg, source, repo, r)); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		_, errs := ops.DeleteAccount(cfg, accountKey, removeFolders)
+		for _, err := range errs {
+			if _, ok := errors.AsType[*ops.CloneFolderError](err); !ok {
+				return err
+			}
+			failures = append(failures, userMsg(err))
+		}
+		return errors.Join(errs...)
+	})
+	if len(failures) != 0 {
+		return failures, nil
+	}
+	if err != nil {
+		return nil, err
 	}
 	delete(a.prs.cache, accountKey)
-	return a.saveConfig()
+	return []string{}, nil
 }
 
 // ChangeCredentialType removes the account's current credential artifacts,
