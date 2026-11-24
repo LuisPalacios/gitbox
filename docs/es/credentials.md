@@ -193,6 +193,8 @@ Puedes verificar las credenciales en cualquier momento:
 - Elige **Cambiar credencial…** en el menú ⋯ de la cuenta para abrir el modal Cambiar credencial. Su panel Estado actual muestra el estado real de la credencial principal y del token de API, con el mensaje de error subyacente (si lo hay).
 - Haz clic en **Volver a comprobar** en ese panel para ejecutar de nuevo la verificación.
 
+En Avanzado, también puedo abrir [¿Por qué esta cuenta?](gui-guide.md#por-qué-esta-cuenta) desde los detalles de un clon. Muestra la cadena de gestores tras el último reinicio con un valor vacío de Git y la ubicación del archivo de credenciales si coincide el gestor de tokens. La prueba muestra las rutas y horas de verificación de credenciales del equipo que aloja el clon y oculta el contenido de las credenciales, los comandos arbitrarios de los gestores y las credenciales de las URL. Al abrir el panel, Gitbox lee los ajustes de Git locales y usa el resultado de verificación que ya tiene la sesión. Para volver a verificar la credencial, uso **Corregir credencial** y **Volver a comprobar**.
+
 ## Herramientas ausentes en el host
 
 Los tipos de credencial dependen de binarios externos que pueden faltar en la máquina actual: GCM necesita `git-credential-manager`; SSH necesita `ssh`, `ssh-keygen` y `ssh-add`. Gitbox los comprueba antes de iniciar una configuración:

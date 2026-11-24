@@ -119,6 +119,8 @@ export function GetConfigLoadError():Promise<string>;
 
 export function GetConfigPath():Promise<string>;
 
+export function GetIdentityProof(arg1:string,arg2:string):Promise<main.IdentityProofDTO>;
+
 export function GetLanguage():Promise<string>;
 
 export function GetMirrorStatus(arg1:string):Promise<void>;
@@ -209,6 +211,8 @@ export function OpenProfile(arg1:string,arg2:string):Promise<void>;
 
 export function OpenRecipeImport():Promise<main.RecipeFile>;
 
+export function OpenRepoConfigInEditor(arg1:string,arg2:string):Promise<void>;
+
 export function OpenRepoInBrowser(arg1:string,arg2:string,arg3:boolean):Promise<main.ExternalOpenDTO>;
 
 export function OpenTerminalsManagerWindow():Promise<void>;
@@ -270,6 +274,8 @@ export function RemoveRoot(arg1:string,arg2:boolean):Promise<main.RemoveRootDTO>
 export function RenameAccount(arg1:string,arg2:string):Promise<void>;
 
 export function RepairConfig():Promise<main.ConfigRepairResult>;
+
+export function RepairRepoIdentity(arg1:string,arg2:string):Promise<void>;
 
 export function RepoNesting():Promise<Record<string, string>>;
 

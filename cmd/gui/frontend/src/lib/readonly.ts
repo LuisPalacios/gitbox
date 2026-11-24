@@ -9,16 +9,16 @@
 // The calls a remote window refuses. Every mutation is served since #244
 // (the config mutations since #294, the repository mutations since #295,
 // the token credentials since #242, whose host refuses GCM itself, and the
-// SSH keys since #244), so what is left are the three
+// SSH keys since #244), so what is left are the
 // launches with no remote equivalent (the file manager, the account folder
-// and the host's config file: the Go side refuses them with
+// and the host's config files: the Go side refuses them with
 // not_available_remote), and autostart and the compact view, which a
 // remote window keeps off. The editor, terminal and AI harness launches
 // open the host's folders over ssh (#243), and the harness refresh is a
 // read. Every other call is a read, a served mutation or a client
 // preference.
 export const READ_ONLY_BLOCKED: ReadonlySet<string> = new Set([
-  'openAccountFolder', 'openFileInEditor', 'openInExplorer',
+  'openAccountFolder', 'openFileInEditor', 'openInExplorer', 'openRepoConfigInEditor',
   'setAutostart', 'setViewMode',
 ]);
 

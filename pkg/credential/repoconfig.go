@@ -36,7 +36,7 @@ func ConfigureRepoCredentialFromSnapshot(repoPath string, acct config.Account, a
 	if err := validateCredentialType(credType); err != nil {
 		return err
 	}
-	wantHelpers := []string{""}
+	wantHelpers := RepoHelpers(accountKey, credType, globalCfg)
 	host := strings.TrimSuffix(acct.URL, "/")
 	section := fmt.Sprintf("credential.%s", host)
 	want := map[string]string{}
@@ -47,18 +47,10 @@ func ConfigureRepoCredentialFromSnapshot(repoPath string, acct config.Account, a
 		if err := WriteCredentialFile(credFile, acct, accountKey); err != nil {
 			return fmt.Errorf("writing credential file: %w", err)
 		}
-		wantHelpers = append(wantHelpers, StoreHelper(credFile))
 	case "gcm":
-		helper := "manager"
-		if globalCfg.CredentialGCM != nil {
-			if globalCfg.CredentialGCM.Helper != "" {
-				helper = globalCfg.CredentialGCM.Helper
-			}
-			if globalCfg.CredentialGCM.CredentialStore != "" {
-				want["credential.credentialStore"] = globalCfg.CredentialGCM.CredentialStore
-			}
+		if gcm := globalCfg.CredentialGCM; gcm != nil && gcm.CredentialStore != "" {
+			want["credential.credentialStore"] = gcm.CredentialStore
 		}
-		wantHelpers = append(wantHelpers, helper)
 		want[section+".username"] = acct.Username
 		want[section+".useHttpPath"] = "false"
 		if acct.GCM != nil && acct.GCM.Provider != "" {
@@ -72,15 +64,8 @@ func ConfigureRepoCredentialFromSnapshot(repoPath string, acct config.Account, a
 	// An empty helper clears the inherited chain. Compare the effective suffix
 	// as well as direct local entries, so an included helper cannot silently
 	// restore another account's credential provider after our cancellation.
-	effective := snapshot.All("credential.helper")
-	lastEmpty := -1
-	for i, helper := range effective {
-		if helper == "" {
-			lastEmpty = i
-		}
-	}
 	changed := false
-	if !slices.Equal(snapshot.LocalAll("credential.helper"), wantHelpers) || lastEmpty < 0 || !slices.Equal(effective[lastEmpty:], wantHelpers) {
+	if !slices.Equal(snapshot.LocalAll("credential.helper"), wantHelpers) || !slices.Equal(EffectiveHelperChain(snapshot.All("credential.helper")), wantHelpers) {
 		if err := git.ConfigUnsetAll(repoPath, "credential.helper"); err != nil {
 			return fmt.Errorf("clearing credential.helper: %w", err)
 		}
@@ -119,14 +104,7 @@ func ConfigureRepoCredentialFromSnapshot(repoPath string, acct config.Account, a
 		if err != nil {
 			return fmt.Errorf("validating credential config: %w", err)
 		}
-		helpers := after.All("credential.helper")
-		lastEmpty := -1
-		for i, helper := range helpers {
-			if helper == "" {
-				lastEmpty = i
-			}
-		}
-		if lastEmpty < 0 || !slices.Equal(helpers[lastEmpty:], wantHelpers) {
+		if !slices.Equal(EffectiveHelperChain(after.All("credential.helper")), wantHelpers) {
 			return fmt.Errorf("credential.helper is overridden by included or worktree config")
 		}
 		for key, value := range want {
@@ -136,6 +114,31 @@ func ConfigureRepoCredentialFromSnapshot(repoPath string, acct config.Account, a
 		}
 	}
 	return nil
+}
+
+// RepoHelpers describes the helper reset and helper configured for a clone.
+func RepoHelpers(accountKey, credType string, global config.GlobalConfig) []string {
+	switch credType {
+	case "token":
+		return []string{"", StoreHelper(CredentialFilePath(accountKey))}
+	case "gcm":
+		if gcm := global.CredentialGCM; gcm != nil && gcm.Helper != "" {
+			return []string{"", gcm.Helper}
+		}
+		return []string{"", "manager"}
+	default:
+		return []string{""}
+	}
+}
+
+// EffectiveHelperChain retains the final reset and helpers Git tries after it.
+func EffectiveHelperChain(helpers []string) []string {
+	for i, helper := range slices.Backward(helpers) {
+		if helper == "" {
+			return helpers[i:]
+		}
+	}
+	return helpers
 }
 
 func validateCredentialType(credType string) error {

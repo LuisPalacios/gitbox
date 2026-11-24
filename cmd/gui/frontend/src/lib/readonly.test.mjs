@@ -15,7 +15,7 @@ const mutating = [...classification.matchAll(/^\t"(\w+)":\s+\{class\w+, "\w+", t
 const server = await readFile(new URL('../../../server.go', import.meta.url), 'utf8');
 const servedBlock = server.slice(server.indexOf('var servedMethods = []string{'));
 const served = new Set([...servedBlock.slice(0, servedBlock.indexOf('\n}\n')).matchAll(/^\t"(\w+)",$/gm)].map((m) => lower(m[1])));
-const UNAVAILABLE = ['openInExplorer', 'openAccountFolder', 'openFileInEditor'];
+const UNAVAILABLE = ['openInExplorer', 'openAccountFolder', 'openFileInEditor', 'openRepoConfigInEditor'];
 const REMOTE_OFF = ['setAutostart', 'setViewMode'];
 
 test('I block a blocked call in a remote window and let it through otherwise', async () => {

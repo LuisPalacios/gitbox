@@ -223,6 +223,22 @@ export interface GitignoreInstalled { backupPath: string; setExcludesfile: boole
 // A newer release, as the update:available event reports it.
 export interface UpdateInfo { available: boolean; current: string; latest: string; url: string; selfUpdate: boolean }
 
+// Display-safe evidence from the host that owns the clone.
+export interface IdentityProof {
+  account: string;
+  server: string;
+  username: string;
+  nameSource: string;
+  emailSource: string;
+  originURL: string;
+  helperChain: string[];
+  credentialFile?: string;
+  overrides: { scope: string; key: string; value: string }[];
+  lastVerified?: string;
+  verdict: string;
+  reason?: string;
+}
+
 // Frontend-only view of one clone's detail panel (GetRepoDetail).
 export interface RepoDetailView {
   branch: string;

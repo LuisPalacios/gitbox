@@ -228,6 +228,8 @@ func repoMutationRows() []contractRow {
 		}, call: func(b Backend) (any, error) { b.PullAll("contract"); return nil, nil }},
 		{name: "PullRepo", terminal: checkoutTerminal("pull:done"), call: func(b Backend) (any, error) { b.PullRepo("acct", "org/repo"); return nil, nil }},
 		{name: "PullRepo unknown repo", terminal: checkoutTerminal("pull:done"), call: func(b Backend) (any, error) { b.PullRepo("acct", "org/none"); return nil, nil }},
+		{name: "RepairRepoIdentity", call: func(b Backend) (any, error) { return none(b.RepairRepoIdentity("acct", "org/repo")) }},
+		{name: "RepairRepoIdentity again", call: func(b Backend) (any, error) { return none(b.RepairRepoIdentity("acct", "org/repo")) }},
 		{name: "ConfirmSweep", call: func(b Backend) (any, error) {
 			return b.ConfirmSweep("acct", "org/repo", b.PreviewSweep("acct", "org/repo")), nil
 		}},

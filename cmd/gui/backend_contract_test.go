@@ -283,6 +283,7 @@ func contractRows(clone string, revision uint64) []contractRow {
 		{name: "PreviewClonePath", call: func(b Backend) (any, error) { return b.PreviewClonePath("acct", "org/repo") }},
 		{name: "ValidateRemotePath", call: func(b Backend) (any, error) { return b.ValidateRemotePath(os.TempDir()), nil }},
 		startupStatusContract(revision),
+		{name: "GetIdentityProof", call: func(b Backend) (any, error) { return b.GetIdentityProof("acct", "org/repo") }},
 		{name: "GetAllStatus", call: func(b Backend) (any, error) { return b.GetAllStatus(), nil }},
 		// The status pass and the upstream probe each publish the statuses.
 		{name: "RefreshStatus", call: func(b Backend) (any, error) { b.RefreshStatus(); return nil, nil }, until: []string{"status:updated"},

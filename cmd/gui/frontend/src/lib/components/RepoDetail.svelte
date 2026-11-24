@@ -5,11 +5,12 @@
   import { derivePresentation } from '../presentation';
   import { statusColor, countBadge } from '../status';
   import { t } from '../i18n';
+  import IdentityProof from './IdentityProof.svelte';
   import Rich from '../Rich.svelte';
   import ErrorExplanation from './ErrorExplanation.svelte';
   import { errorInfo, repoIssue } from '../explain';
   import type { ErrorActions } from '../explain';
-  import type { RepoState, RepoDetailView } from '../types';
+  import type { CredentialStatus, RepoState, RepoDetailView } from '../types';
 
   export let simple: boolean;
   export let state: RepoState;
@@ -19,6 +20,13 @@
   export let issueActions: ErrorActions;
   export let accountKey: string | undefined = undefined;
   $: issue = repoDetail?.upstreamGone ? { code: "repo.upstream_gone" } : repoIssue(state);
+  export let source: string;
+  export let repo: string;
+  export let credentialStatus: CredentialStatus | undefined;
+  export let onFixCredential: () => void;
+
+  let selected: 'changes' | 'identity' | undefined;
+  $: tab = selected ?? (state.status === 'clean' ? 'identity' : 'changes');
 
   $: sc = (s: string) => statusColor(s, $themeStore);
 
@@ -32,11 +40,22 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex (I make the scrollable region reachable by keyboard.) -->
-<div class="repo-detail" role="region" aria-label={$t('detail.title')} tabindex="0" aria-busy={detailLoading} transition:slide={{ duration: 150 }}>
-  {#if issue}
+<div class="repo-detail" class:proof-panel={!simple && tab === 'identity'} role="region" aria-label={$t('detail.title')} tabindex="0" aria-busy={detailLoading} transition:slide={{ duration: 150 }}>
+  {#if !simple}
+    <div class="detail-tabs" aria-label={$t('detail.title')}>
+      <button type="button" aria-pressed={tab === 'changes'} on:click={() => selected = 'changes'}>{$t('proof.changes')}</button>
+      <button type="button" aria-pressed={tab === 'identity'} on:click={() => selected = 'identity'}>{$t('proof.tab')}</button>
+    </div>
+  {/if}
+  {#if simple || tab === 'identity'}
+    <IdentityProof {simple} {source} {repo} {credentialStatus} {onFixCredential} />
+  {/if}
+  {#if (simple || tab === 'changes') && issue}
     <ErrorExplanation info={issue} {simple} {accountKey} actions={issueActions} />
   {/if}
-  {#if detailLoading}
+  {#if !simple && tab === 'identity'}
+    <!-- The identity read is independent of commit and file details. -->
+  {:else if detailLoading}
     <span class="detail-loading">{$t('detail.loading')}</span>
   {:else if repoDetail?.problem || repoDetail?.error}
     {#if !issue}<ErrorExplanation info={errorInfo(repoDetail.problem, repoDetail.error)} {simple} {accountKey} {actions} />{/if}
@@ -97,16 +116,27 @@
         <span class="detail-clean">{$t('detail.upToDate')}</span>
       {/if}
     {/if}
+  {:else if state.status === 'clean' && !simple}
+    <span class="detail-clean">{$t('detail.upToDate')}</span>
   {/if}
 </div>
 
 <style>
+  .detail-tabs { display: flex; gap: 5px; margin: 0 0 8px; }
+  .detail-tabs button {
+    background: transparent; color: var(--text-secondary); border: 1px solid transparent;
+    border-radius: 4px; padding: 3px 8px; font: inherit; cursor: pointer;
+  }
+  .detail-tabs button[aria-pressed="true"] {
+    background: var(--bg-hover); color: var(--text-primary); border-color: var(--border);
+  }
   .sbadge { font-size: 11px; font-weight: 600; white-space: nowrap; }
   .repo-detail {
     margin: 0 0 2px 0; padding: 8px 16px 10px 30px;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
     max-height: 180px; overflow-y: auto; font-size: 12px;
   }
+  .proof-panel { max-height: 350px; }
   .detail-loading,
   .detail-clean {
     color: var(--text-muted); font-style: italic;

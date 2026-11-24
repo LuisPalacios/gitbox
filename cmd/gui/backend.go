@@ -77,6 +77,8 @@ type Backend interface {
 	GetPRsForRepo(sourceKey, repoKey string) PRSummaryDTO
 	GetPeriodicSync() string
 	GetRepoDetail(sourceKey, repoKey string) RepoDetail
+	GetIdentityProof(source, repo string) (IdentityProofDTO, error)
+	RepairRepoIdentity(source, repo string) error
 	GetStartupSnapshot() (StartupSnapshot, error)
 	GetTokenGuide(accountKey string) TokenGuideInfo
 	IgnoreClone(path string, ignore bool) error
@@ -401,4 +403,12 @@ func selectBackend(a *App, experimentalRemote bool) Backend {
 		return a.remote.backend
 	}
 	return localBackend{a}
+}
+
+func (b localBackend) GetIdentityProof(source, repo string) (IdentityProofDTO, error) {
+	return b.a.getIdentityProofLocal(source, repo), nil
+}
+
+func (b localBackend) RepairRepoIdentity(source, repo string) error {
+	return b.a.repairRepoIdentityLocal(source, repo)
 }

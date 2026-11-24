@@ -131,6 +131,14 @@ Simple oculta el resto: la vista Mirrors, el modo borrar, los botones de vista c
 
 Con los indicadores de PR activados, Simple muestra **Revisión pendiente** cuando alguien te pide una revisión. Haz clic en el texto para ver las solicitudes. Avanzado muestra insignias con los conteos de tus PR abiertos (📝) y de los PR que esperan tu revisión (👀).
 
+### ¿Por qué esta cuenta?
+
+En Avanzado, hago clic en un proyecto clonado, incluso si su árbol de trabajo está limpio, y selecciono **¿Por qué esta cuenta?**. El panel muestra la cuenta, el servidor y el nombre de usuario configurados, el origen del nombre y el correo de autor previstos, la URL de descarga resuelta y los gestores de credenciales que aplica Git. Identifica los ajustes en conflicto y oculta sus valores. En Simple, los detalles del proyecto muestran una frase sobre la cuenta o indican que requiere atención.
+
+**Seguro** significa que los ajustes de Git comprobados coinciden y que la sesión actual verificó la credencial en las últimas 24 horas. **Aviso** significa que Gitbox no tiene ninguna verificación satisfactoria reciente, que la última verificación falló o que el token caduca en 14 días o menos. **Inseguro** significa que los ajustes comprobados entran en conflicto o que Gitbox no pudo leerlos. El panel lee la configuración en el equipo que aloja el clon.
+
+Uso **Reparar** para aplicar el mantenimiento habitual del clon, **Corregir credencial** para abrir los ajustes de credenciales de la cuenta o **Abrir la configuración de Git** para editar la configuración compartida de Git del clon local. En una ventana remota edito el archivo en el equipo que aloja el clon. Selecciono **Actualizar prueba** después de hacer una edición manual.
+
 ### Vista completa
 
 La vista completa muestra la barra superior, la barra lateral, la vista seleccionada y el footer de resumen. La barra superior contiene los anillos de salud y los botones Pull de todo, Fetch de todo, Modo borrar, Vista compacta, tema, Simple/Avanzado y Ajustes; el logo de GitBox del extremo izquierdo pliega la barra lateral. El footer de resumen siempre muestra los conteos de repos y de mirrors.
