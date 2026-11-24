@@ -2,7 +2,7 @@
   import { acceptStatusBatch, applyRepairReports, statusPaintQueue } from './lib/status';
   import { completionStatuses, hasConfiguredRepo } from './lib/events';
   import type { EventMetadata, EventPayloads } from './lib/dto.generated';
-  import { onMount, tick } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
   import { backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
@@ -1690,6 +1690,7 @@
   // ── Lifecycle ──
   async function initDashboard() {
     const snapshot = await bridge.getStartupSnapshot();
+    if (lifetime.signal.aborted) return;
     const cfg = snapshot.config;
     themeChoice = themeChoiceOf(cfg.global?.theme);
     applyTheme();
@@ -1845,6 +1846,25 @@
     }
   }
 
+  const lifetime = new AbortController();
+  const eventSubscriptions: (() => void)[] = [];
+  let focusTimer: ReturnType<typeof setTimeout> | undefined;
+  const onEvent: typeof events.on = (name, handler, stale) => {
+    const off = events.on(name, handler, stale);
+    eventSubscriptions.push(off);
+    return off;
+  };
+  onDestroy(() => {
+    lifetime.abort();
+    for (const off of eventSubscriptions) off();
+    clearTimeout(focusTimer);
+    clearTimeout(fetchProgressTimer);
+    rowObserver?.disconnect();
+    reloadGeneration++;
+    statusPass++;
+    retireStream();
+  });
+
   onMount(async () => {
     markStartup('mount');
     // Load the window mode before anything else — the terminals sub-process
@@ -1858,6 +1878,8 @@
         windowMode = 'remote';
       }
     } catch { /* fall back to main mode */ }
+
+    if (lifetime.signal.aborted) return;
 
     if (windowMode === 'remote') {
       // Language and UI mode are client preferences, so they are here
@@ -1886,6 +1908,7 @@
       try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
       TerminalsModal = (await import('./lib/TerminalsModal.svelte')).default;
       await hydrate();
+      if (lifetime.signal.aborted) return;
       markStartup('finished');
       // The parent uses HideWindowOnClose, so a "second open" of the
       // Manager just re-shows this same hidden window. Re-hydrate the
@@ -1895,8 +1918,8 @@
       // OnSecondInstanceLaunch hook after running SyncProfiles —
       // listen for that explicitly so we pick the refresh up even if
       // the focus event timing is flaky on Linux/Windows.
-      window.addEventListener('focus', () => { hydrate(); });
-      events.on('profiles:reloaded', () => { hydrate(); });
+      window.addEventListener('focus', () => { hydrate(); }, { signal: lifetime.signal });
+      onEvent('profiles:reloaded', () => { hydrate(); });
       // The Wails subprocess starts hidden so the user never sees a
       // dark-empty-webview flash before Svelte mounts. Reveal the
       // window only after Svelte has flushed the DOM AND the browser
@@ -1915,17 +1938,17 @@
       return;
     }
 
+    if (lifetime.signal.aborted) return;
     applyTheme();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (themeChoice === 'system') applyTheme();
-    });
+    }, { signal: lifetime.signal });
 
     // Re-read config when the window regains focus (picks up external edits),
     // and ask the Go side to re-probe AI harnesses (throttled there) so a
     // tool installed or removed while we were in the background shows up.
-    let focusTimer: ReturnType<typeof setTimeout> | null = null;
     let lostFocus = false;
-    window.addEventListener('blur', () => { lostFocus = true; });
+    window.addEventListener('blur', () => { lostFocus = true; }, { signal: lifetime.signal });
     // A remote window does the same on the host (#295), only while it is
     // connected and not still syncing after a reconnect.
     window.addEventListener('focus', () => {
@@ -1937,27 +1960,27 @@
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => reloadFromDisk().then(() => { runReconcile(); }, () => {}), 300);
       bridge.refreshAIHarnesses().catch(() => {});
-    });
+    }, { signal: lifetime.signal });
 
     // ── Event listeners (always registered) ──
     // Background harness detection changed global.ai_harnesses and saved
     // it; swap the list in the store without a full config reload.
-    events.on('harnesses:updated', (list) => {
+    onEvent('harnesses:updated', (list) => {
       configStore.update((c) => c ? { ...c, global: { ...c.global, ai_harnesses: list || [] } } : c);
     });
 
-    events.on('tools:updated', () => {
+    onEvent('tools:updated', () => {
       bridge.getConfig().then(cfg => configStore.update(current => current ? { ...current, global: { ...current.global, editors: cfg.global.editors, terminal_apps: cfg.global.terminal_apps, shells: cfg.global.shells, terminal_profiles: cfg.global.terminal_profiles } } : current)).catch(console.error);
     });
 
-    events.on('reconcile:done', (res) => {
+    onEvent('reconcile:done', (res) => {
       // The coalesced background retry has no caller to apply its result.
       if (res?.background) {
         void applyReconcile(res).catch(console.error);
       } else if (res?.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
     });
 
-    events.on('status:batch', async (batch) => {
+    onEvent('status:batch', async (batch) => {
       const stream = currentStream;
       if (!stream || stream.full || batch.passID !== stream.id) return;
       if (acceptStatusBatch(batch, stream.id, $configStore?.revision)) {
@@ -1999,7 +2022,7 @@
         void initDashboard().catch(console.error);
       }
     });
-    events.on('status:updated', (results) => {
+    onEvent('status:updated', (results) => {
       currentStream?.paint.flush();
       statusGeneration++;
       applyStatusResults((results || []).filter(row => configuredRepo(row.source, row.repo)));
@@ -2027,8 +2050,8 @@
       pullRunOperation = '';
       finishPull();
     };
-    events.on('pull:allstart', startPullRun, startPullRun);
-    events.on('pull:alldone', finishPullRun, finishPullRun);
+    onEvent('pull:allstart', startPullRun, startPullRun);
+    onEvent('pull:alldone', finishPullRun, finishPullRun);
 
     const noteClone = (data: EventPayloads['clone:done'], meta: EventMetadata) => {
       if (pullRun && data.run === pullRunID) {
@@ -2043,7 +2066,7 @@
     };
 
     for (const name of ['clone:start', 'pull:start'] as const) {
-      events.on(name, (data, meta) => {
+      onEvent(name, (data, meta) => {
         const key = repoKey(data);
         if (configuredRepo(data.source, data.repo) && completion.start(key, meta.operationID)) {
           markSyncStart(key, name === 'clone:start' ? 'cloning' : 'syncing');
@@ -2051,7 +2074,7 @@
       });
     }
 
-    events.on('clone:progress', (data, meta) => {
+    onEvent('clone:progress', (data, meta) => {
       if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
       if (!completion.start(key, meta.operationID)) return;
@@ -2063,7 +2086,7 @@
       });
     });
 
-    events.on('clone:done', (data, meta) => {
+    onEvent('clone:done', (data, meta) => {
       noteClone(data, meta);
       if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
@@ -2092,7 +2115,7 @@
       if ('row' in checked && checked.row) publishCompletionRow(checked.row);
     }, noteClone);
 
-    events.on('pull:done', (data, meta) => {
+    onEvent('pull:done', (data, meta) => {
       notePull(data, meta);
       if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
@@ -2136,14 +2159,14 @@
       if ('row' in checked && checked.row) publishCompletionRow(checked.row);
     }, notePull);
 
-    events.on('status:one', (row, meta) => {
+    onEvent('status:one', (row, meta) => {
       if (!configuredRepo(row.source, row.repo)) return;
       const key = `${row.source}/${row.repo}`;
       const result = completion.status(key, meta.operationID, row);
       if (result && $repoStates[key]?.status === 'pending') publishCompletionRow(result);
     });
 
-    events.on('fetch:start', (data, meta) => {
+    onEvent('fetch:start', (data, meta) => {
       if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
       fetchOperations.set(key, meta.operationID);
@@ -2151,7 +2174,7 @@
       fetchingRepos = fetchingRepos;
     });
 
-    events.on('fetch:done', (data, meta) => {
+    onEvent('fetch:done', (data, meta) => {
       if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
       const active = fetchOperations.get(key);
@@ -2179,18 +2202,18 @@
       if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });
 
-    events.on('network:state', (data) => {
+    onEvent('network:state', (data) => {
       networkDown = data?.offline ? (data.hosts || []) : [];
     });
 
-    events.on('fetch:allstart', (_, meta) => {
+    onEvent('fetch:allstart', (_, meta) => {
       fetchOperation = meta.operationID;
       fetchingAll = true;
       clearFetchFailNotice();
       if (!fetchRun) fetchRun = startFetch(Object.keys($repoStates).filter((k) => !['not cloned', 'root offline'].includes(statusOfKey(k))), accountOfKey, statusOfKey);
     });
 
-    events.on('fetch:alldone', (data, meta) => {
+    onEvent('fetch:alldone', (data, meta) => {
       if (fetchOperation && fetchOperation !== meta.operationID) return;
       fetchOperation = '';
       fetchOperations.clear();
@@ -2202,14 +2225,14 @@
         : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     });
 
-    events.on('credentials:updated', (statuses) => {
+    onEvent('credentials:updated', (statuses) => {
       credentialGeneration++;
       credStatuses = Object.fromEntries(Object.entries(statuses || {}).filter(([key]) => !!$configStore?.accounts[key]));
     });
 
-    events.on('discover:done', (data) => discoverDialog?.onDone(data));
+    onEvent('discover:done', (data) => discoverDialog?.onDone(data));
 
-    events.on('mirror:status', (results) => {
+    onEvent('mirror:status', (results) => {
       if (results) {
         applyMirrorStatusResults(results.filter(row => !!$configStore?.mirrors[row.mirrorKey]?.repos?.[row.repoKey]));
         // Clear checking flag for the mirror group.
@@ -2219,12 +2242,12 @@
       }
     });
 
-    events.on('mirror:discover:progress', (data, meta) => {
+    onEvent('mirror:discover:progress', (data, meta) => {
       if (mirrorDiscoveryDone && BigInt(meta.operationID) <= BigInt(mirrorDiscoveryDone)) return;
       mirrorDiscoverProgress = data;
     });
 
-    events.on('mirror:discover:done', (data, meta) => {
+    onEvent('mirror:discover:done', (data, meta) => {
       mirrorDiscoveryDone = meta.operationID;
       mirrorDiscoverLoading = false;
       mirrorDiscoverProgress = null;
@@ -2236,7 +2259,7 @@
       }
     });
 
-    events.on('mirror:setup:done', async (data) => {
+    onEvent('mirror:setup:done', async (data) => {
       mirrorSetupResultModal = data;
       // Clear the per-row spinner. The Go side now emits the mirrorKey too
       // (issue #59) so we can key off ${mirrorKey}/${repoKey} directly.
@@ -2249,28 +2272,28 @@
       checkAllMirrorStatus();
     });
 
-    events.on('update:available', (info) => {
+    onEvent('update:available', (info) => {
       if (info?.latest !== updateDismissed) updateInfo = info;
     });
 
-    events.on('update:recoveryExpired', () => { rollbackVersion = ''; });
-    events.on('update:progress', (msg: string) => {
+    onEvent('update:recoveryExpired', () => { rollbackVersion = ''; });
+    onEvent('update:progress', (msg: string) => {
       updateProgress = msg;
     });
 
     // Installed and the new version is starting: the backend quits next.
-    events.on('update:restarting', (latest: string) => {
+    onEvent('update:restarting', (latest: string) => {
       updateProgress = $t('app.restarting', { version: latest });
     });
 
     // Installed, but the new version could not be started automatically.
-    events.on('update:done', () => {
+    onEvent('update:done', () => {
       updateApplying = false;
       updateProgress = '';
       updateDone = true;
     });
 
-    events.on('update:quit', (latest: string) => {
+    onEvent('update:quit', (latest: string) => {
       // The elevated helper has verified the release and waits for this
       // process to exit before it can replace the executable.
       updateProgress = $t('app.restarting', { version: latest });
@@ -2278,24 +2301,26 @@
       setTimeout(() => Quit(), 1500);
     });
 
-    events.on('pr:refreshed', (upd) => {
+    onEvent('pr:refreshed', (upd) => {
       if ($configStore?.accounts[upd.accountKey]) applyPRUpdate(upd);
     });
 
-    events.on('move:progress', (p) => moveDialog.onProgress(p));
+    onEvent('move:progress', (p) => moveDialog.onProgress(p));
 
-    events.on('move:done', (r) => moveDialog.onDone(r));
+    onEvent('move:done', (r) => moveDialog.onDone(r));
 
     if (windowMode === 'remote') {
-      events.on('remote:state', (st) => { void onRemoteState(st as RemoteState); });
+      onEvent('remote:state', (st) => { void onRemoteState(st as RemoteState); });
       try { await onRemoteState(await bridge.remoteInfo()); } catch (e) { console.error(e); }
       return;
     }
     try { rollbackVersion = await bridge.checkUpdateRecovery(false); }
     catch { pushNotice('error', $t('app.rollbackFailed')); }
+    if (lifetime.signal.aborted) return;
     await startMain();
     // Let the first frame paint before confirmation and backup cleanup.
-    if (!rollbackVersion) requestAnimationFrame(() => setTimeout(() => {
+    if (!rollbackVersion && !lifetime.signal.aborted) requestAnimationFrame(() => setTimeout(() => {
+      if (lifetime.signal.aborted) return;
       bridge.checkUpdateRecovery(true).catch(() => pushNotice('error', $t('app.rollbackFailed')));
     }, 0));
   });
@@ -2309,6 +2334,7 @@
     // which caused GitboxApp to "flash and exit" on mac with a malformed
     // config. The modal stays mounted until the user clicks a button.
     const loadError = await bridge.getConfigLoadError();
+    if (lifetime.signal.aborted) return;
     if (loadError) {
       cfgLoadErrorMsg = loadError;
       // Populate configPath and the backup list before showing the screen
@@ -2325,6 +2351,7 @@
 
     // Check first run — show onboarding if no folder configured.
     firstRun = await bridge.isFirstRun();
+    if (lifetime.signal.aborted) return;
     if (firstRun) {
       events.snapshot(0, () => 0);
       markStartup('finished');

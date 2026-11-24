@@ -29,6 +29,8 @@
   export let openCredChange: (accountKey: string, currentType: string) => void;
   export let rowProps: RowProps;
 
+  let menuButton: HTMLButtonElement;
+
   $: ({ simple, revealLabel, configEditors, configProfiles, configAIHarnesses } = rowProps);
 
   async function openAccountInExplorer() {
@@ -66,7 +68,11 @@
   // ro names the calls each one ends in, for a remote window (lib/ro.ts).
   function accountItems(simple: boolean, credStatus: string | undefined) {
     const credType = $accounts[accountKey]?.default_credential_type || 'gcm';
-    const cred = () => { closeAccountMenu(); openCredChange(accountKey, credType); };
+    const cred = () => {
+      menuButton.focus();
+      closeAccountMenu();
+      openCredChange(accountKey, credType);
+    };
     // The dialog opens on any host; its own buttons name the setup each one
     // runs, so a remote window dims only the SSH key setup it refuses (#242).
     const credCalls: CallName[] = ['changeCredentialType', 'credentialStoreToken'];
@@ -79,7 +85,7 @@
 </script>
 
 <div class="action-menu-container account-menu">
-  <button class="icon-btn btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title={$t('account.actions')} aria-label={$t('account.actions')} aria-haspopup="menu"><UIIcon name="dots" /></button>
+  <button bind:this={menuButton} class="icon-btn btn-kebab" on:click|stopPropagation={() => toggleAccountMenu(accountKey)} title={$t('account.actions')} aria-label={$t('account.actions')} aria-haspopup="menu"><UIIcon name="dots" /></button>
   {#if actionMenuAccount === accountKey}
     <div transition:fade={{ duration: 80 }}>
       <LauncherMenu

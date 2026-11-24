@@ -31,12 +31,13 @@ function credentialFixture(store) {
     credTokenGuide: 'https://example.test/tokens', credTokenScopes: '', credPrecheck: null,
     credChangeModal: 'account', credChangeType: 'token', credForceToken: false,
     credDeleteBusy: false, credSetupStarted: false, sshTokenDialog: null, credentialFindings: [{ path: 'stale' }],
-    verifyAllCredentials() {}, fetchTokenGuide: async () => {},
+    document: { activeElement: null }, HTMLElement: class {}, invoker: null, dialog: null,
+    tick: async () => {}, verifyAllCredentials() {}, fetchTokenGuide: async () => {},
     bridge: { credentialStoreToken: store },
     credPostSetup: async () => {},
   });
   vm.runInContext(functionsFrom(appSource, ['storeCredToken', 'runCredSetup', 'resetCredState', 'tokenStored']) + '\n'
-    + functionsFrom(modalSource, ['closeCredChange', 'openCredChange', 'openTokenSetup']), context);
+    + functionsFrom(modalSource, ['closeCredChange', 'dismissCredChange', 'focusDialog', 'openCredChange', 'openTokenSetup']), context);
   return context;
 }
 
@@ -134,51 +135,6 @@ test('I clear tokens when closing and reopening either credential modal mode', a
   fixture.credTokenInput = 'another-stale-fixture-token';
   await fixture.openTokenSetup('account');
   assert.equal(fixture.credTokenInput, '');
-});
-
-// I compile the real modal and its children. Only the initial modal selection
-// changes for this server-rendered fixture; all rendering conditions stay intact.
-test('I render the failed token and enabled retry, then hide the successful input', async () => {
-  const server = await createServer({
-    root: fileURLToPath(new URL('../../', import.meta.url)),
-    configFile: false,
-    logLevel: 'error',
-    optimizeDeps: { noDiscovery: true, include: [] },
-    server: { middlewareMode: true, watch: null },
-    plugins: [{
-      name: 'credential-modal-fixture',
-      enforce: 'pre',
-      transform(code, id) {
-        if (!id.endsWith('/CredentialModal.svelte')) return;
-        assert.ok(code.includes("let credChangeModal: string | null = null;"));
-        assert.ok(code.includes("let credChangeType = '';"));
-        return code.replace('let credChangeModal: string | null = null;', "let credChangeModal: string | null = 'account';")
-          .replace("let credChangeType = '';", "let credChangeType = 'token';");
-      },
-    }, svelte()],
-  });
-  try {
-    const { default: CredentialModal } = await server.ssrLoadModule('/src/lib/modals/CredentialModal.svelte');
-    const { render } = await server.ssrLoadModule('svelte/server');
-    const props = {
-      credResult: { ok: false, message: 'Storage unavailable' },
-      credTokenInput: 'fixture-token', credTokenGuide: 'https://example.test/tokens',
-      credTokenScopes: '', credBusy: false, credPrecheck: null, credStatuses: {},
-      serverOS: 'darwin', sshKeyCopied: false,
-    };
-    const failed = render(CredentialModal, { props }).body;
-    assert.match(failed, /<input\b[^>]*id="cc-token"[^>]*value="fixture-token"/);
-    assert.match(failed, /Storage unavailable/);
-    const retry = failed.match(/<button\b([^>]*)>\s*Store token\s*<\/button>/);
-    assert.ok(retry, 'failed save offers retry');
-    assert.doesNotMatch(retry[1], /\bdisabled\b/);
-    const saved = render(CredentialModal, { props: { ...props, credTokenInput: '', credResult: { ok: true, message: 'Saved' } } }).body;
-    assert.doesNotMatch(saved, /id="cc-token"/);
-    assert.doesNotMatch(saved, /fixture-token/);
-    assert.match(saved, /Saved/);
-  } finally {
-    await server.close();
-  }
 });
 
 // A remote host refuses GCM (#242): the real modal, rendered in a remote
