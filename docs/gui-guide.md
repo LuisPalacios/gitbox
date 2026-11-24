@@ -214,7 +214,7 @@ Needs attention (Simple: **Needs you**), clone details, the account card and the
 | Server busy, try later | I wait. Gitbox offers **Retry** when the server's reported wait ends. |
 | Changes in the clone | I use **Open in editor** to review the changes that caused Gitbox to skip the update. |
 | The branches need a merge | I use **Open terminal** to review the histories with my Git tool. |
-| The online copy can't be found | I check access first. If the provider and account support it, **Re-add online repository** opens a form to create an empty online repository. The clone stays on disk. I publish its history separately with my Git tool. |
+| The online copy can't be found | I check access first. If the provider and account support it, **Re-add online repository** opens a form to create an empty online repository. The clone stays on disk. I publish its history separately with my Git tool. I can also use **Stop tracking** in the clone menu to keep the folder and remove its entry. |
 | Drive not connected | I reconnect the drive or mount the folder. |
 | Something went wrong | In Advanced, I can use **Show details** when a diagnostic is available. |
 
