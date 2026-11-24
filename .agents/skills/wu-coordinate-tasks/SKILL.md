@@ -10,7 +10,7 @@ Use the current conversation as the supervisor and delegate one issue per worker
 ## Invocation and authority
 
 ```text
-$wu-coordinate-tasks 214 --count 3 --active none
+$wu-coordinate-tasks 214
 $wu-coordinate-tasks 214 --count 30 --concurrency 20 --active 162,170
 $wu-coordinate-tasks 214 --resume <owner>
 $wu-coordinate-tasks help
@@ -20,9 +20,13 @@ These are supervisor arguments, not shell commands. The positional container num
 
 `--count N` authorizes at most N distinct issues over the whole batch (positive integer, default 3). Freeze the selected issue IDs before dispatch. A completion, failed launch or resume never adds another issue. `--concurrency W` requests at most W simultaneous workers (integer 1–25, default the smaller of N and 25). Reject invalid arguments before reservation. For example, a count of 30 and concurrency of 20 permits up to 30 issues over time and 20 workers at once. `--count 3` still ends after at most three issues. On resume use the recorded roster and requested concurrency.
 
+For a new batch, apply the defaults for each omitted option automatically and keep every explicit value. For example, `$wu-coordinate-tasks 214` uses `--count 3 --concurrency 3 --active none`. With only `--count 30`, request 25 workers. On resume, recover the saved roster and requested concurrency first.
+
+**Always announce the effective options to the user** before selecting, reserving or dispatching, including when every option was supplied. Show the work unit, new batch or resume owner, count, requested concurrency, active exclusions and whether publication and work-unit updates are authorized for this session. For a resumed batch show the saved roster size as the count. Then proceed without asking the user to confirm default values.
+
 Before dispatch report the roster, requested concurrency, known session limit and other occupied slots (or “unknown”), and how many workers have actually launched (initially zero for a new batch). Update the actual count from harness handles on every refill. If capacity is unknown, try one launch at a time until the request is met or the harness reports saturation.
 
-- `--active none` declares no other sessions; `--active N,M` excludes those issues and their affected areas. If absent, ask once before reserving work; continue read-only discovery while waiting. Local evidence cannot reveal every external session. Investigate contradictory live worktree evidence even after a declaration.
+- `--active N,M` excludes the named issues and their affected areas. The default, `--active none`, means the user listed no additional issues. Always honor existing reservations and inspect live worktrees, branches and PRs for external work. Keep confirmed external claims on resume.
 - Starting a batch authorizes local selection, worktrees, worker plans, implementation, tests and commits for the chosen work unit's direct pending tasks. The supervisor handles ordinary `work-issue` start/plan confirmations.
 - `--publish`, or equivalent current-session instructions, authorizes push and creation/update of the selected tasks' own PRs after verification. `--update-work-unit` authorizes only minimal optional task-completion checkbox edits after verified resolution; it does not change HLR/AC or close the parent.
 - Task creation belongs to `wu-tasks`; `--create-subissues` is retired. New scope does not silently expand this batch. Report any necessary follow-up and its parent AC, then use `wu-tasks` with separate authority when requested.

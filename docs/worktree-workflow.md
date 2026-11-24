@@ -21,12 +21,12 @@ The supervisor checks dependencies, active sessions, open PRs and affected files
 In Codex I pass the work unit's issue number and declare work already underway elsewhere:
 
 ```text
-$wu-coordinate-tasks <N> --count 3 --active none
+$wu-coordinate-tasks <N>
 $wu-coordinate-tasks <N> --count 30 --concurrency 20 --active <issue-numbers>
 $wu-coordinate-tasks <N> --resume <owner>
 ```
 
-In Claude Code I replace `$wu-coordinate-tasks` with `/wu-coordinate-tasks`. There the supervisor asks me to run `/add-dir` for each new worktree before launching its worker, including later arrivals, because sibling worktrees sit outside the session's working directory. The work unit number is mandatory, including on resume: if I omit it, the supervisor asks and never infers a container or falls back to the global backlog. If I omit the active-session information, it asks once before reserving the batch. Checkboxes provide context; native relationships and live issue and PR state determine which work belongs to this unit and remains pending. I do not need to open a conversation for each worker.
+In Claude Code I replace `$wu-coordinate-tasks` with `/wu-coordinate-tasks`. There the supervisor asks me to run `/add-dir` for each new worktree before launching its worker, including later arrivals, because sibling worktrees sit outside the session's working directory. The work unit number is mandatory, including on resume: if I omit it, the supervisor asks and never infers a container or falls back to the global backlog. With only the work-unit number, the supervisor uses `--count 3 --concurrency 3 --active none`. It applies defaults to omitted options, keeps any values I supply and checks existing reservations and live work. Before starting, it always announces the effective options, including publication and work-unit update permissions. On resume it reports the saved roster size and concurrency. Checkboxes provide context; native relationships and live issue and PR state determine which work belongs to this unit and remains pending. I do not need to open a conversation for each worker.
 
 The invocation authorizes local selection, planning, implementation, verification and commits. I can explicitly authorize publication for the selected batch with `--publish`, which covers its branch pushes and PR creation or updates after checks pass. `--update-work-unit` authorizes minimal completion-checkbox updates to that container after verified resolution. I create additional tasks through `wu-tasks`; the coordinator does not create them. These options do not authorize a merge, a force push, real credential changes or remote staging. The supervisor keeps publication and questions in the main conversation; workers do not publish. Asking how the skill works does not start a batch.
 
