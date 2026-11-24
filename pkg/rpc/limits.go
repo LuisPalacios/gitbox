@@ -23,6 +23,12 @@ const (
 	// MaxRememberedRequests is how many request ids the server remembers,
 	// with their results, to answer a repeated mutation.
 	MaxRememberedRequests = 256
+	// ResultTTL is how long a persistent server keeps the outcome of a
+	// remembered request after it finished (#247).
+	ResultTTL = 10 * time.Minute
+	// MaxJournalEvents is how many events a persistent server keeps for
+	// the clients that reconnect (#247).
+	MaxJournalEvents = 1000
 	// ProgressInterval is the least time between two progress events of the
 	// same operation; the latest value wins.
 	ProgressInterval = 100 * time.Millisecond

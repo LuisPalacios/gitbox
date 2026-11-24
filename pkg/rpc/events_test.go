@@ -120,7 +120,7 @@ func TestOutbox_BoundsAndPriorities(t *testing.T) {
 		// ordinary items.
 		for i := range MaxQueuedMessages {
 			if i%4 == 0 {
-				box.event("clone:progress", fmt.Sprintf("op-%d", i), []byte("progress"))
+				box.event("clone:progress", fmt.Sprintf("op-%d", i), []byte("progress"), true)
 			} else {
 				box.put([]byte("kept"))
 			}
@@ -130,7 +130,7 @@ func TestOutbox_BoundsAndPriorities(t *testing.T) {
 		}
 
 		// Progress into a full queue is dropped, not queued and not waited for.
-		box.event("clone:progress", "op-new", []byte("progress"))
+		box.event("clone:progress", "op-new", []byte("progress"), true)
 		if len(box.queue) != MaxQueuedMessages || box.dropped != 1 {
 			t.Errorf("queue %d, dropped %d after progress into a full queue", len(box.queue), box.dropped)
 		}
@@ -205,7 +205,7 @@ func TestProgressEnvelopeClosesOnlyItsOperation(t *testing.T) {
 	box.lastProgress[first], box.lastProgress[second] = time.Now(), time.Now()
 	box.pending[first] = outItem{progress: true, name: "clone:progress", body: []byte("first progress")}
 	box.pending[second] = outItem{progress: true, name: "clone:progress", body: []byte("second progress")}
-	box.event("clone:done", key("clone:done", "1"), []byte("first done"))
+	box.event("clone:done", key("clone:done", "1"), []byte("first done"), true)
 	if len(box.queue) != 2 || string(box.queue[0].body) != "first progress" || string(box.queue[1].body) != "first done" {
 		t.Fatalf("first operation closed out of order: %v", box.queue)
 	}

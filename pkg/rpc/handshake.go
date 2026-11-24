@@ -31,6 +31,12 @@ type Hello struct {
 	OS      string `json:"os"`
 	Arch    string `json:"arch"`
 	PID     int    `json:"pid"`
+	// Daemon is set by a persistent server (#247).
+	Daemon *DaemonHello `json:"daemon,omitempty"`
+	// Fallback names, as an identifier, why a host that runs a persistent
+	// server serves this session in its own process instead (#247): the
+	// work of the session stops when its link drops.
+	Fallback string `json:"fallback,omitempty"`
 }
 
 // clientHello is the client's answer.

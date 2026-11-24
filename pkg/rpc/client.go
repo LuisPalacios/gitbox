@@ -38,7 +38,14 @@ type ClientOptions struct {
 	// server is untrusted: if its answer to such a request repeats the
 	// secret, the client removes it before anyone sees the answer.
 	SecretParams SecretParams
+	// Resume is where an earlier connection to a persistent server left
+	// (#247). When the server is that instance, Dial delivers the events
+	// the client missed before any live one.
+	Resume *ResumePoint
 }
+
+// resumeWait bounds the $/resume call of Dial.
+const resumeWait = 30 * time.Second
 
 // Client is the calling end of a connection. Everything the server sends is
 // untrusted input: frames are bounded, responses are matched to calls that
@@ -60,6 +67,14 @@ type Client struct {
 	stopOnce   sync.Once
 	deadOnce   sync.Once
 	pingClosed chan struct{}
+
+	// deliverMu orders the delivery of events: live ones from the reader,
+	// and the replay of a resume, which goes first.
+	deliverMu sync.Mutex
+	lastSeq   uint64            // the highest event number delivered
+	holding   bool              // live events wait for the replay
+	held      []json.RawMessage // what they are
+	resumed   ResumeOutcome
 }
 
 // Dial runs the handshake over in (what the server writes) and out (what it
@@ -77,15 +92,78 @@ func Dial(in io.Reader, out io.WriteCloser, opts ClientOptions) (*Client, error)
 		}
 		return nil, newError(CodeApplication, ErrCodeDisconnected, "the connection ended during the handshake")
 	}
+	if server.Daemon != nil {
+		server.Daemon.Instance = sanitizeToken(server.Daemon.Instance)
+	}
+	if server.Fallback != "" {
+		server.Fallback = sanitizeToken(server.Fallback)
+	}
 	c := &Client{
 		opts: opts, server: server, out: out,
 		pending:  make(map[int64]chan message),
 		done:     make(chan struct{}),
 		stopPing: make(chan struct{}), pingClosed: make(chan struct{}),
 	}
+	resume := opts.Resume != nil && opts.Resume.Instance != "" && server.Daemon != nil
+	c.holding = resume
 	go c.readLoop(reader)
 	go c.heartbeat()
+	if resume {
+		if err := c.resume(*opts.Resume); err != nil {
+			_ = c.Close()
+			return nil, err
+		}
+	}
 	return c, nil
+}
+
+// resume asks the server for the events after p and delivers them, then
+// the live ones that arrived meanwhile.
+func (c *Client) resume(p ResumePoint) error {
+	ctx, cancel := context.WithTimeout(context.Background(), resumeWait)
+	defer cancel()
+	raw, err := json.Marshal(resumeParams{Instance: p.Instance, After: p.After})
+	if err != nil {
+		return err
+	}
+	var res resumeResult
+	if err := c.call(ctx, "$/resume", raw, &res); err != nil {
+		return err
+	}
+	c.deliverMu.Lock()
+	defer c.deliverMu.Unlock()
+	if res.Resumed {
+		c.lastSeq = p.After
+		c.resumed = ResumeOutcome{Resumed: true, Gap: res.Gap}
+		for _, ev := range res.Events {
+			if c.deliverLocked(ev) {
+				c.resumed.Replayed++
+			}
+		}
+	}
+	for _, ev := range c.held {
+		c.deliverLocked(ev)
+	}
+	c.held, c.holding = nil, false
+	return nil
+}
+
+// Resumed says what the resume of Dial did.
+func (c *Client) Resumed() ResumeOutcome {
+	c.deliverMu.Lock()
+	defer c.deliverMu.Unlock()
+	return c.resumed
+}
+
+// ResumePoint is where this connection is now, for the next one to resume
+// from. It is the zero value unless the server is persistent.
+func (c *Client) ResumePoint() ResumePoint {
+	if c.server.Daemon == nil {
+		return ResumePoint{}
+	}
+	c.deliverMu.Lock()
+	defer c.deliverMu.Unlock()
+	return ResumePoint{Instance: c.server.Daemon.Instance, After: c.lastSeq}
 }
 
 // Server returns what the server said about itself in the handshake.
@@ -121,7 +199,11 @@ func (c *Client) Call(ctx context.Context, method string, params []any, result a
 	if err != nil {
 		return newError(CodeInvalidParams, ErrCodeInvalidParams, "the parameters cannot be encoded")
 	}
+	return c.call(ctx, method, raw, result, opts...)
+}
 
+// call is Call with the params already encoded.
+func (c *Client) call(ctx context.Context, method string, raw json.RawMessage, result any, opts ...CallOption) error {
 	c.mu.Lock()
 	if c.dead != nil {
 		err := c.dead
@@ -270,18 +352,38 @@ func (c *Client) readLoop(r *bufio.Reader) {
 }
 
 func (c *Client) deliverEvent(params json.RawMessage) {
-	if c.opts.OnEvent == nil {
+	c.deliverMu.Lock()
+	defer c.deliverMu.Unlock()
+	if c.holding {
+		if len(c.held) < MaxQueuedMessages {
+			c.held = append(c.held, params)
+		} else {
+			c.logf("dropping an event that arrived during the resume")
+		}
 		return
 	}
+	c.deliverLocked(params)
+}
+
+// deliverLocked hands one event to OnEvent and reports whether it could be
+// decoded. lastSeq keeps the highest number seen: a coalesced progress
+// event can go out after newer events, and the server never replays an
+// event that the connection got live.
+func (c *Client) deliverLocked(params json.RawMessage) bool {
 	var ev struct {
 		Name    string            `json:"name"`
 		Payload []json.RawMessage `json:"payload"`
+		Seq     uint64            `json:"seq"`
 	}
 	if err := json.Unmarshal(params, &ev); err != nil || ev.Name == "" {
 		c.logf("dropping an event that cannot be decoded")
-		return
+		return false
 	}
-	c.opts.OnEvent(ev.Name, ev.Payload)
+	c.lastSeq = max(c.lastSeq, ev.Seq)
+	if c.opts.OnEvent != nil {
+		c.opts.OnEvent(ev.Name, ev.Payload)
+	}
+	return true
 }
 
 // heartbeat checks the link every PingInterval. A ping still unanswered when

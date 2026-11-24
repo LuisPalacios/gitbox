@@ -54,13 +54,18 @@ func newOutbox() *outbox {
 func (o *outbox) put(body []byte) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.putLocked(outItem{body: body})
+	return o.putLocked(outItem{body: body}, true)
 }
 
-func (o *outbox) putLocked(item outItem) bool {
+// putLocked queues item. When the queue is full and holds no progress to
+// drop, it waits for room, or with wait unset reports false at once.
+func (o *outbox) putLocked(item outItem, wait bool) bool {
 	for len(o.queue) >= MaxQueuedMessages && !o.closed {
 		if o.evictProgressLocked() {
 			break
+		}
+		if !wait {
+			return false
 		}
 		o.space.Wait()
 	}
@@ -84,12 +89,14 @@ func (o *outbox) evictProgressLocked() bool {
 	return false
 }
 
-// event queues an event. key identifies the operation it belongs to.
-func (o *outbox) event(name, key string, body []byte) {
+// event queues an event. key identifies the operation it belongs to. An
+// event that must not be lost waits for room in a full queue; with wait
+// unset event reports false instead, and the event is not queued.
+func (o *outbox) event(name, key string, body []byte, wait bool) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.closed {
-		return
+		return true
 	}
 	if !strings.HasSuffix(name, ":progress") {
 		// An event that closes an operation must come after the last
@@ -102,14 +109,13 @@ func (o *outbox) event(name, key string, body []byte) {
 		} else {
 			o.flushPrefixLocked(eventPrefix(name))
 		}
-		o.putLocked(outItem{body: body})
-		return
+		return o.putLocked(outItem{body: body}, wait) || o.closed
 	}
 	item := outItem{body: body, progress: true, name: name}
 	since := time.Since(o.lastProgress[key])
 	if _, waiting := o.pending[key]; !waiting && since >= ProgressInterval {
 		o.sendProgressLocked(key, item)
-		return
+		return true
 	}
 	// Too soon after the last one: keep only the latest and send it when
 	// the interval is over.
@@ -120,6 +126,7 @@ func (o *outbox) event(name, key string, body []byte) {
 	if o.timers[key] == nil {
 		o.timers[key] = time.AfterFunc(ProgressInterval-since, func() { o.flush(key) })
 	}
+	return true
 }
 
 // sendProgressLocked queues a progress item, unless the queue is full: a
