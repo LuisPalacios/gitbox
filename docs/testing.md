@@ -6,7 +6,7 @@ This guide covers the test levels, the `test-gitbox.json` fixture, and the check
 
 - **Package unit tests** — the Go tests under `pkg/`. They need no setup, no network and no provider, and isolate everything with `t.TempDir()` and `t.Setenv()`. The `pkg/ops` unit tests run against a temp `XDG_CONFIG_HOME`, a temp `GIT_CONFIG_GLOBAL` and a temp SSH folder, so nothing on the host changes.
 - **GUI tests** — the Go tests under `cmd/gui/`. They call `App` methods directly, without a Wails window. They need the compiled frontend in `cmd/gui/frontend/dist`, because the package embeds it.
-- **Frontend tests** — pure Node tests in `cmd/gui/frontend/src/lib/*.test.mjs`, run with `npm test`. They need neither Wails nor credentials. The catalog test uses Go to read the codes declared in the repository.
+- **Frontend tests** — `npm test` runs pure Node tests and mounts Svelte components in jsdom. Both suites use `node --test` and need neither Wails nor credentials. The catalog test uses Go to read the codes declared in the repository.
 - **Remote mode integration tests** — `go test -tags sshd_integration ./pkg/remote/` against a containerized `sshd`, run by `scripts/remote-it.sh` on a Linux host with Docker, and `go test -tags remote_host ./pkg/remote/` against a real host, run by `scripts/remote-host-it.sh`. See [Remote mode tests](#remote-mode-tests).
 - **Scenario test** — `TestScenario_FullLifecycle` in `pkg/ops/scenario_test.go` drives the whole account lifecycle through `pkg/ops` against a real provider. It needs the fixture below, and `go test -short` skips it.
 
@@ -244,6 +244,12 @@ I run them in this order, from fastest to slowest.
 
    `--test-mode` finds `test-gitbox.json` by walking up from the current directory, writes a throwaway config to a temp directory, overrides `global.roots`, applies the same safety checks and injects the fixture tokens as environment variables. My real `~/.config/gitbox/` and clones stay untouched, and the temp directory goes away when the app exits. `./scripts/test-commands.sh` prints the launch command for each platform.
 
+### Frontend component tests
+
+I run `npm run test:dom` from `cmd/gui/frontend` to run just the component suite. The harness mounts the real dashboard with Svelte Testing Library and supplies a programmable Wails bridge and event bus. The fixtures use synthetic repositories, accounts and tokens.
+
+The suite checks Needs attention, startup event ordering, late completion after I stop tracking a project, credential token clearing and focus restoration, and view, detail selection and scroll across experience changes. At 600 px of content width, it estimates the untruncated width of Simple row labels in English and Spanish with a monospace fallback, using the row's CSS spacing and controls. I keep the packaged Wails smoke on each OS and use its native webview for actual rendering and focus checks.
+
 ### Focused regression runs
 
 - **Startup snapshot** — `go test ./cmd/gui/ -run TestStartupSnapshot` checks nesting before clones exist and detached snapshot data. `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem` measures snapshot construction, which is backend work, not visible startup time.
@@ -346,7 +352,7 @@ I launch GitboxApp on each platform with the commands `./scripts/run-commands.sh
 - [ ] In a disposable clone awaiting adoption that needs an identity repair, create an empty `.git/config.lock`. After adoption, verify that **Needs attention** shows the warning and the clone stays in its account. Remove the test lock and click **Retry repair**. Check that the warning clears and your working files keep their contents.
 - [ ] Containers: a clone with nested clones shows an outlined ▾ chevron in place of its status dot; the chevron folds everything below, the name opens available details or otherwise folds the children, and folds survive a restart
 - [ ] Workspaces: a `.code-workspace` dropped at a clone's root makes it a container on the next window focus, with its nested clones below and missing listed folders as dimmed **not cloned** rows; a second file asks which one to use; the editor button opens the workspace file in VS Code
-- [ ] Simple / Advanced: the top-bar switch (grey Simple, red Advanced) changes mode at once; Simple rows show the status dot, name, status sentence, **Update** or **Download** when needed, the AI, editor and terminal icons and ⋯; Advanced rows keep every detail and the per-row fetch button; Simple hides Mirrors, delete mode and the compact view. At content widths of 600 px and 1200 px, check the Simple status words and the age of known server results in English and Spanish, in light and dark themes.
+- [ ] Simple / Advanced: the top-bar switch (grey Simple, red Advanced) changes mode at once; Simple rows show the status dot, name, status sentence, **Update** or **Download** when needed, the AI, editor and terminal icons and ⋯; Advanced rows keep every detail and the per-row fetch button; Simple hides Mirrors, delete mode and the compact view. Check native rendering at narrow and wide content widths in light and dark themes.
 - [ ] The top-bar rings show an icon, an attention badge and a hover tooltip, and clicking a pending ring opens Needs attention (the mirror ring opens Mirrors)
 - [ ] Mirrors view shows its groups with **Discover** and **Check all** in the header; a mirror chip opens into its card and folds back on an outside click or Escape
 - [ ] Settings: System check and the Terminals Manager open; the theme follows the OS, light or dark, and survives a restart

@@ -144,7 +144,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 
 `npm test` in `cmd/gui/frontend` runs these with `node --test`; `./scripts/health.sh frontend-test` runs the same suite.
 
-- `credential-token.test.mjs` (7) — I execute the real handlers with an isolated bridge: clear saved tokens before post-setup, retain failed tokens for correction and retry, show the credential audit's findings right after a store, clear the onboarding token once stored, reset on close and reopen, and compile the real credential modal with fixture initial state to check its rendered failed input and enabled retry button, then its hidden successful input. In a remote window the real modal offers no GCM and shows a GCM account's reason with **Switch to token** (#242).
+- `credential-token.test.mjs` (6) — I execute the real handlers with an isolated bridge: clear saved tokens before post-setup, retain failed tokens for correction and retry, show the credential audit's findings right after a store, clear the onboarding token once stored, and reset on close and reopen. In a remote window the real modal offers no GCM and shows a GCM account's reason with **Switch to token** (#242).
 - `first-project.test.mjs` (2) — I check that a download only reaches the ready screen after the selected checkout appears. A failed or skipped transfer stays out of the success screen, and identity warnings stay visible.
 - `events.test.mjs` (6) — I verify the startup snapshot sequence, reconnects, delivery to renamed or deleted repos, completion ordering, delayed and duplicate terminal events across batches, and typed listeners.
 - `repo-tree.test.mjs` (8) — the clone tree: cross-source ownership, no duplicate rows, nested collapse, recovery from stale parents and cycles, alphabetical order, attention groups split by account, a container's placeholder rows.
@@ -161,6 +161,13 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `readonly.test.mjs` (7) — the read-only backstop of a remote window: a blocked call rejects without reaching the bridge, every bridge call whose Go method changes the host is served and not blocked, focus does not reconcile but re-probes the host's harnesses, and the editor, terminal and harness launches pass while the file manager, the account folder and the config file stay blocked. A failed call is decoded into a translated `WindowError` that keeps its code, a hostile code is dropped, and a local window's text passes unchanged; a disconnection starts no background call and raises no config error, and a new connection clears it.
 - `remotepath.test.mjs` (3) — the line under the host folder field for each answer of the host, which answers make the folder usable, and the 300 ms wait after typing.
 - `remotehost.test.mjs` (6) — the launchers of a remote window: outside one nothing is off; with an editor chosen for the remote only that editor stays on and the rest get its tooltip; Settings offers only the configured editors that open remote folders; editors outside the Go table of `pkg/remote/launch.go` (read by the test) are off with their tooltip, VS Code on any OS stays on; the file manager, the account folder and the config file are off; editor names match the Go side.
+
+### Frontend component tests
+
+`npm run test:dom` runs the component tests on their own. `npm test` and `./scripts/health.sh frontend-test` include them.
+
+- `dashboard.dom.test.mjs` — mounts the dashboard and drives Needs attention, clone completion buffered before the startup snapshot, pull completion after the project is removed, failed-store retry, token clearing and focus restoration in CredentialModal, and Simple/Advanced changes with a selected project and a scrolled view. It verifies that unmount unsubscribes from Wails events and stops pending hydration.
+- `repo-row.dom.test.mjs` — mounts Simple RepoRow across statuses in English and Spanish. It applies the narrow content CSS and measures the width needed for rendered labels and controls with a monospace approximation at 600 px of content width. The native Wails smoke covers the packaged app on each OS.
 
 ### Scenario (`pkg/ops/scenario_test.go`)
 

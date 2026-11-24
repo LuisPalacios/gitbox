@@ -2,6 +2,7 @@
   // Change credential (and the API-token-only variant): current status,
   // type switch, setup and delete. The credential state is shared with Add
   // account and lives in App.
+  import { tick } from 'svelte';
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
   import type { DoctorPrecheckDTO } from '../bridge';
@@ -48,7 +49,18 @@
   let credSetupStarted = false;
   let credForceToken = false; // force PAT input (for mirror fix)
 
+  let dialog: HTMLDivElement;
+  let invoker: HTMLElement | null = null;
+
+  function focusDialog() {
+    if (!credChangeModal && document.activeElement instanceof HTMLElement) {
+      invoker = document.activeElement;
+    }
+    void tick().then(() => { if (credChangeModal) dialog?.focus(); });
+  }
+
   export function openCredChange(accountKey: string, currentType: string) {
+    focusDialog();
     credChangeModal = accountKey;
     credChangeType = currentType;
     credForceToken = false;
@@ -58,6 +70,7 @@
   }
 
   export async function openTokenSetup(accountKey: string) {
+    focusDialog();
     credChangeModal = accountKey;
     credChangeType = 'token';
     credForceToken = true;
@@ -81,15 +94,26 @@
       credDeleteBusy = false;
       return;
     }
-    credDeleteBusy = false;
+    dismissCredChange();
+  }
+
+  function dismissCredChange() {
     credChangeModal = null;
+    if (invoker?.isConnected) invoker.focus();
+    invoker = null;
+    credDeleteBusy = false;
   }
 
   function closeCredChange() {
-    credChangeModal = null;
+    dismissCredChange();
     resetCredState();
-    credDeleteBusy = false;
     verifyAllCredentials();
+  }
+
+  // Clear the DOM value when the input leaves the form. After success the
+  // conditional removes it in the same flush as the bound state changes.
+  function clearTokenField(input: HTMLInputElement) {
+    return { destroy: () => { input.value = ''; } };
   }
 
   // Detect the specific pattern of "OS-level network-permission denial"
@@ -204,9 +228,9 @@
 {#if credChangeModal}
   {@const currentAcct = $accounts[credChangeModal]}
   <div class="overlay" use:dismiss={() => { if (!credBusy && !credDeleteBusy) closeCredChange(); }} transition:fade={{ duration: 120 }}>
-    <div class="modal modal-account" role="dialog" aria-modal="true" transition:slide={{ duration: 180 }}>
+    <div class="modal modal-account" role="dialog" aria-modal="true" aria-labelledby="credential-title" tabindex="-1" bind:this={dialog} transition:slide={{ duration: 180 }}>
       <div class="modal-head">
-        <h3>{credForceToken ? $t('cred.apiToken') : $t('cred.change')} &mdash; {credChangeModal}</h3>
+        <h3 id="credential-title">{credForceToken ? $t('cred.apiToken') : $t('cred.change')} &mdash; {credChangeModal}</h3>
         <button class="btn-x" on:click={closeCredChange}>&#10005;</button>
       </div>
       <div class="modal-body">
@@ -303,7 +327,7 @@
           <p class="cred-step-link"><a href={credTokenGuide} on:click|preventDefault={() => openExternal(credTokenGuide)}>{credTokenGuide}</a></p>
           <div class="form-row">
             <label class="form-label" for="cc-token">{$t('onboard.token')}</label>
-            <input class="form-input" id="cc-token" type="password" bind:value={credTokenInput} placeholder="ghp_..." translate="no" />
+            <input class="form-input" id="cc-token" type="password" use:clearTokenField bind:value={credTokenInput} placeholder="ghp_..." translate="no" />
           </div>
         {/if}
 
