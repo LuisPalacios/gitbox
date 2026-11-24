@@ -237,7 +237,7 @@ A link can come from a gitbox-server on another host, a provider API or the conf
 
 ### pkg/ops — Application operations
 
-The service layer between the GUI bindings and the lower-level packages. It holds the operations that touch several packages at once: `AddAccount`, `RenameAccount`, `DeleteAccount`, `StopTrackingRepo`, `DeleteRepoClone`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (runs `heal.Repo` on each clone), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos`, and `ProviderClient`.
+The service layer between the GUI bindings and the lower-level packages. It holds the operations that touch several packages at once: `AddAccount`, `RenameAccount`, `DeleteAccount`, `StopTrackingRepo`, `DeleteRepoClone`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (runs `heal.RepoContext` on each clone), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos`, and `ProviderClient`.
 
 Each operation works on a `*config.Config` plus the files it owns on disk (clones, SSH keys, credential files). Operations never save the config and never lock: the caller serializes access and persists afterwards. Operations that touch every clone of an account (`ReconfigureClones`) are separate, so the caller can run them after a successful save.
 
@@ -314,7 +314,7 @@ Determines the sync state of local clones relative to their upstream. States: Cl
 
 ### pkg/identity — Git identity management
 
-Manages per-repo git identity (`user.name`, `user.email`) with a resolution chain: repo-level overrides fall back to account-level values. See `pkg/identity/identity.go`. `heal.Repo` checks each clone's identity and repairs drift.
+Manages per-repo git identity (`user.name`, `user.email`) with a resolution chain: repo-level overrides fall back to account-level values. See `pkg/identity/identity.go`. `heal.RepoContext` checks each clone's identity and repairs drift.
 
 `CheckGlobalIdentity()` and `RemoveGlobalIdentity()` handle the global identity in `~/.gitconfig`. Gitbox encourages removing it, so the per-repo identity set at clone or reconfigure time is always authoritative.
 
@@ -346,7 +346,7 @@ The probe never runs `C:\Windows\System32\wsl.exe`: Windows ships that file as a
 
 ### pkg/heal — Repo .git/config self-heal
 
-`heal.Repo(cfg, sourceKey, repoKey)` idempotently reconciles a clone's `.git/config` against the account spec: `user.name`, `user.email`, the canonical `origin` URL (credential-type specific, no embedded secrets), and the credential helper. Every trigger point runs it (clone, fetch, pull, `ops.ReconfigureClones` and the GUI's periodic sync), so clones that drift out of spec are repaired silently.
+`heal.RepoContext(ctx, cfg, sourceKey, repoKey)` idempotently reconciles a clone's `.git/config` against the account spec: `user.name`, `user.email`, the canonical `origin` URL (credential-type specific, no embedded secrets), and the credential helper. Every trigger point runs it (clone, fetch, pull, `ops.ReconfigureClones` and the GUI's periodic sync), so clones that drift out of spec are repaired silently.
 
 Identity, origin and credential checks share one `git.ReadConfigSnapshot`: two Git processes read the effective config (with includes) and the direct local config. An unchanged clone causes no credential-config or credential-file writes. Changed token files use the shared credential writer, which serializes updates, prepares complete replacement files and applies the Unix file mode policy. The permission audit separately reports Windows ACL exposure and any permissions it cannot verify. If a later include or worktree config still overrides a repair, heal reports a maintenance warning and the GUI skips the fetch rather than use the wrong identity, origin or helper chain.
 

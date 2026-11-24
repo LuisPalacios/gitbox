@@ -2005,7 +2005,7 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 		result.Error = userMsg(failedCloneError(plan.Dest, err))
 		result.Code = toUserError(err).Code
 	} else {
-		// heal.Repo sets user.name/user.email, normalizes the origin
+		// heal.RepoContext sets user.name/user.email, normalizes the origin
 		// URL, and configures per-repo credential isolation. Warnings are
 		// returned instead of panicking so a partial heal (e.g. token
 		// file missing) still reports clone success.

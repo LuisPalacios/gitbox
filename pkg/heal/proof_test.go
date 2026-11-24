@@ -162,7 +162,7 @@ func TestProofMixedFleet(t *testing.T) {
 
 func TestProofWorktreeScope(t *testing.T) {
 	cfg, path := healFixture(t)
-	_ = Repo(cfg, "repos", "team/project")
+	_ = RepoContext(t.Context(), cfg, "repos", "team/project")
 	run := func(dir string, args ...string) {
 		t.Helper()
 		if _, err := git.Run(t.Context(), git.Request{Dir: dir, Args: args}); err != nil {

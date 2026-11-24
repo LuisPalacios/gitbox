@@ -1215,7 +1215,6 @@ export namespace main {
 	    }
 	}
 	
-	
 	export class OnboardingRootPreviewDTO {
 	    abs: string;
 	    exists: boolean;

@@ -94,7 +94,7 @@ func TestRepo_NotClonedSkipsCleanly(t *testing.T) {
 			},
 		},
 	}
-	r := Repo(cfg, "a", "alice/missing")
+	r := RepoContext(t.Context(), cfg, "a", "alice/missing")
 	if r.Skipped != "not cloned" {
 		t.Errorf("Skipped = %q, want %q", r.Skipped, "not cloned")
 	}
@@ -141,7 +141,7 @@ func TestRepo_FixesMissingIdentity(t *testing.T) {
 		},
 	}
 
-	r := Repo(cfg, "alice-repos", "alice/hello")
+	r := RepoContext(t.Context(), cfg, "alice-repos", "alice/hello")
 
 	// Confirm the identity lines are now present.
 	snapshot, err := git.ReadConfigSnapshot(repoDir)
@@ -197,7 +197,7 @@ func TestRepo_StripsEmbeddedTokenFromOrigin(t *testing.T) {
 		},
 	}
 
-	_ = Repo(cfg, "alice-repos", "alice/hello")
+	_ = RepoContext(t.Context(), cfg, "alice-repos", "alice/hello")
 
 	got, err := git.RemoteURL(repoDir)
 	if err != nil {
@@ -230,7 +230,7 @@ func TestRepo_UnchangedUsesTwoReadsAndNoWrites(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg := &config.Config{Global: config.GlobalConfig{Roots: []string{root}}, Accounts: map[string]config.Account{"account-a": acct}, Sources: map[string]config.Source{"repos": {Account: "account-a", Repos: map[string]config.Repo{"team/project": {}}}}}
-			first := Repo(cfg, "repos", "team/project")
+			first := RepoContext(t.Context(), cfg, "repos", "team/project")
 			if len(first.Warnings) != 0 {
 				t.Fatalf("initial repair: %+v", first)
 			}
@@ -241,7 +241,7 @@ func TestRepo_UnchangedUsesTwoReadsAndNoWrites(t *testing.T) {
 			}
 			trace := filepath.Join(root, "trace.json")
 			t.Setenv("GIT_TRACE2_EVENT", trace)
-			got := Repo(cfg, "repos", "team/project")
+			got := RepoContext(t.Context(), cfg, "repos", "team/project")
 			if got.HasWork() || got.Skipped != "" {
 				t.Fatalf("unchanged repo reported work: %+v", got)
 			}
@@ -308,7 +308,7 @@ func TestRepo_ReportsShadowedIdentity(t *testing.T) {
 	if err := git.ConfigSet(path, "include.path", included); err != nil {
 		t.Fatal(err)
 	}
-	r := Repo(cfg, "repos", "team/project")
+	r := RepoContext(t.Context(), cfg, "repos", "team/project")
 	if !strings.Contains(strings.Join(r.Warnings, " "), "identity is overridden") {
 		t.Fatalf("overridden identity was reported as repaired: %+v", r)
 	}
@@ -324,11 +324,11 @@ func TestRepo_LinkedWorktreeAndUnknownCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.Sources["repos"].Repos["team/project"] = config.Repo{CloneFolder: linked}
-	r := Repo(cfg, "repos", "team/project")
+	r := RepoContext(t.Context(), cfg, "repos", "team/project")
 	if r.Skipped != "" || len(r.Warnings) != 0 {
 		t.Fatalf("linked worktree not healed: %+v", r)
 	}
-	if r = Repo(cfg, "repos", "team/project"); r.HasWork() || r.Skipped != "" {
+	if r = RepoContext(t.Context(), cfg, "repos", "team/project"); r.HasWork() || r.Skipped != "" {
 		t.Fatalf("unchanged worktree reported drift: %+v", r)
 	}
 	configPath := filepath.Join(path, ".git", "config")
@@ -339,7 +339,7 @@ func TestRepo_LinkedWorktreeAndUnknownCredential(t *testing.T) {
 	acct := cfg.Accounts["account-a"]
 	acct.DefaultCredentialType, acct.Name = "unknown", "different name"
 	cfg.Accounts["account-a"] = acct
-	r = Repo(cfg, "repos", "team/project")
+	r = RepoContext(t.Context(), cfg, "repos", "team/project")
 	if len(r.Warnings) == 0 {
 		t.Fatal("unknown credential type accepted")
 	}
@@ -359,7 +359,7 @@ func TestRepo_FixesDriftedIdentity(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	r := Repo(cfg, "repos", "team/project")
+	r := RepoContext(t.Context(), cfg, "repos", "team/project")
 	if len(r.Warnings) != 0 {
 		t.Fatalf("identity repair failed: %+v", r)
 	}
@@ -375,7 +375,7 @@ func TestRepo_FixesDriftedIdentity(t *testing.T) {
 
 func TestRepo_TrustWarningsPreserveConfiguration(t *testing.T) {
 	cfg, path := healFixture(t)
-	_ = Repo(cfg, "repos", "team/project")
+	_ = RepoContext(t.Context(), cfg, "repos", "team/project")
 	origin := ExpectedOriginURL(cfg.Accounts["account-a"], "team/project", "ssh")
 	for _, tc := range []struct{ key, value, warning string }{
 		{"core.fsmonitor", "disabled-test-monitor", "core.fsmonitor"},
@@ -396,7 +396,7 @@ func TestRepo_TrustWarningsPreserveConfiguration(t *testing.T) {
 					t.Error(err)
 				}
 			})
-			r := Repo(cfg, "repos", "team/project")
+			r := RepoContext(t.Context(), cfg, "repos", "team/project")
 			var want []string
 			if tc.warning != "" {
 				want = []string{"git config: unsafe_config (" + tc.warning + ")"}

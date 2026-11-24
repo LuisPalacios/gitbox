@@ -239,7 +239,7 @@ Un enlace puede venir de un gitbox-server en otro host, de la API de un proveedo
 
 ### pkg/ops — operaciones de aplicación
 
-La capa de servicio entre los bindings de la GUI y los paquetes de nivel inferior. Contiene las operaciones que tocan varios paquetes a la vez: `AddAccount`, `RenameAccount`, `DeleteAccount`, `StopTrackingRepo`, `DeleteRepoClone`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (ejecuta `heal.Repo` en cada clon), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos` y `ProviderClient`.
+La capa de servicio entre los bindings de la GUI y los paquetes de nivel inferior. Contiene las operaciones que tocan varios paquetes a la vez: `AddAccount`, `RenameAccount`, `DeleteAccount`, `StopTrackingRepo`, `DeleteRepoClone`, `ChangeCredentialType`, `DeleteCredential`, `RemoveCredentialArtifacts`, `ReconfigureClones` (ejecuta `heal.RepoContext` en cada clon), `PlanClone` / `Clone`, `ListRemoteRepos`, `ListAccountOrgs`, `CreateRemoteRepo`, `AddDiscoveredRepos` y `ProviderClient`.
 
 Cada operación trabaja sobre un `*config.Config` más los archivos que posee en disco (clones, claves SSH, archivos de credenciales). Las operaciones nunca guardan la config ni toman bloqueos: quien llama serializa el acceso y persiste después. Las operaciones que tocan cada clon de una cuenta (`ReconfigureClones`) están separadas, así que quien llama puede ejecutarlas después de un guardado correcto.
 
@@ -316,7 +316,7 @@ Determina el estado de sync de los clones locales respecto a su upstream. Estado
 
 ### pkg/identity — gestión de identidad Git
 
-Gestiona la identidad git por repo (`user.name`, `user.email`) con una cadena de resolución: los overrides a nivel de repo recurren a los valores a nivel de cuenta. Consulta `pkg/identity/identity.go`. `heal.Repo` comprueba la identidad de cada clon y repara las desviaciones.
+Gestiona la identidad git por repo (`user.name`, `user.email`) con una cadena de resolución: los overrides a nivel de repo recurren a los valores a nivel de cuenta. Consulta `pkg/identity/identity.go`. `heal.RepoContext` comprueba la identidad de cada clon y repara las desviaciones.
 
 `CheckGlobalIdentity()` y `RemoveGlobalIdentity()` gestionan la identidad global de `~/.gitconfig`. Gitbox anima a eliminarla, para que la identidad por repo definida al clonar o reconfigurar sea siempre la que manda.
 
@@ -348,7 +348,7 @@ El sondeo nunca ejecuta `C:\Windows\System32\wsl.exe`: Windows trae ese archivo 
 
 ### pkg/heal — autorreparación del .git/config de un repo
 
-`heal.Repo(cfg, sourceKey, repoKey)` reconcilia de forma idempotente el `.git/config` de un clon con la especificación de la cuenta: `user.name`, `user.email`, la URL canónica de `origin` (específica del tipo de credencial, sin secretos embebidos) y el helper de credenciales. Cada punto de disparo lo ejecuta (clonado, fetch, pull, `ops.ReconfigureClones` y el sync periódico de la GUI), así que los clones que se desvían de la especificación se reparan en silencio.
+`heal.RepoContext(ctx, cfg, sourceKey, repoKey)` reconcilia de forma idempotente el `.git/config` de un clon con la especificación de la cuenta: `user.name`, `user.email`, la URL canónica de `origin` (específica del tipo de credencial, sin secretos embebidos) y el helper de credenciales. Cada punto de disparo lo ejecuta (clonado, fetch, pull, `ops.ReconfigureClones` y el sync periódico de la GUI), así que los clones que se desvían de la especificación se reparan en silencio.
 
 Las comprobaciones de identidad, origin y credenciales comparten un único `git.ReadConfigSnapshot`: dos procesos Git leen la config efectiva (con includes) y la config local directa. Un clon sin cambios no provoca escrituras en la config de credenciales ni en el archivo de credenciales. Los archivos de token modificados usan el escritor compartido de credenciales, que serializa las actualizaciones, prepara archivos de sustitución completos y aplica la política de modos de archivo Unix. La auditoría de permisos informa por separado de la exposición por ACL de Windows y de cualquier permiso que no pueda verificar. Si un include posterior o la config de un worktree sigue sobrescribiendo una reparación, heal informa de un aviso de mantenimiento y la GUI omite el fetch en lugar de usar una identidad, un origin o una cadena de helpers incorrectos.
 

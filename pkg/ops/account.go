@@ -411,7 +411,9 @@ func CountClonedRepos(cfg *config.Config, accountKey string) int {
 // origin URL and credential config match the current account settings.
 // Returns one report per clone that changed or warned.
 func ReconfigureClones(cfg *config.Config, accountKey string) []heal.Report {
-	return ReconfigureClonesWith(cfg, accountKey, heal.Repo)
+	return ReconfigureClonesWith(cfg, accountKey, func(cfg *config.Config, sourceKey, repoKey string) heal.Report {
+		return heal.RepoContext(context.Background(), cfg, sourceKey, repoKey)
+	})
 }
 
 // ReconfigureClonesWith lets a config owner serialize each repair with

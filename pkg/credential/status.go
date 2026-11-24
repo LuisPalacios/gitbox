@@ -82,12 +82,6 @@ func SSHFolder(cfg *config.Config) string {
 	return config.ExpandTilde(sshFolder)
 }
 
-// Check runs the credential verification for one account synchronously.
-// Returns a structured result with separate primary and PAT statuses.
-func Check(acct config.Account, accountKey string, cfg *config.Config) StatusResult {
-	return CheckContext(context.Background(), acct, accountKey, cfg)
-}
-
 // CheckContext verifies one account while honoring cancellation of network and
 // credential-helper operations. Cancellation reports offline instead of broken credentials.
 func CheckContext(ctx context.Context, acct config.Account, accountKey string, cfg *config.Config) StatusResult {

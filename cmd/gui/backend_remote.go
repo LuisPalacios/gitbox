@@ -517,7 +517,7 @@ type cloneProgressDTO struct {
 }
 
 // cloneDoneDTO is clone:done: the path of the new clone, or why it failed,
-// with what heal.Repo fixed or warned about, or the unreachable server
+// with what heal.RepoContext fixed or warned about, or the unreachable server
 // (unreachableDetails).
 type cloneDoneDTO struct {
 	Run      string   `json:"run,omitempty"`

@@ -120,13 +120,8 @@ type PullEvidence struct {
 	CloneObstructed bool
 }
 
-// Check determines the sync status of a single repo at the given path.
-func Check(repoPath string) RepoStatus {
-	return CheckContext(context.Background(), repoPath)
-}
-
-// CheckContext is Check that stops when ctx is cancelled. A check that was
-// cancelled reports the Error state; callers that cancelled it drop it.
+// CheckContext determines the sync status of a single repo. Cancellation
+// reports the Error state. Callers that cancelled the check drop that result.
 func CheckContext(ctx context.Context, repoPath string) RepoStatus {
 	return checkContext(ctx, repoPath, false)
 }
