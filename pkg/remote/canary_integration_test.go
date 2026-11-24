@@ -3,16 +3,19 @@
 package remote_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,15 +26,16 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
-// canaryHostConfig has two token accounts on the fake forge of the host, a
-// repository to clone and a pull mirror from the first to the second. HOME
+// canaryHostConfig has two token accounts and one account awaiting setup,
+// a repository to clone and a pull mirror on the fake forge. HOME
 // and PORT stand for the host's home and the forge's port.
 const canaryHostConfig = `{
   "version": 5,
   "global": {"roots": ["HOME/git"], "theme": "dark"},
   "accounts": {
     "acct": {"provider": "gitea", "url": "http://127.0.0.1:PORT", "username": "alice", "name": "Alice", "email": "a@example.invalid", "default_credential_type": "token"},
-    "bak": {"provider": "gitea", "url": "http://127.0.0.1:PORT", "username": "bob", "name": "Bob", "email": "b@example.invalid", "default_credential_type": "token"}
+    "bak": {"provider": "gitea", "url": "http://127.0.0.1:PORT", "username": "bob", "name": "Bob", "email": "b@example.invalid", "default_credential_type": "token"},
+    "switch": {"provider": "gitea", "url": "http://127.0.0.1:PORT", "username": "alice", "name": "Alice", "email": "a@example.invalid"}
   },
   "sources": {
     "acct": {"account": "acct", "repos": {"org/small": {}}},
@@ -74,12 +78,12 @@ func (t tapWriter) Write(p []byte) (int, error) {
 
 func (t tapWriter) Close() error { return t.w.Close() }
 
-// TestTokenCanary follows a token typed in a remote window over a real ssh
-// session to a real host (#242). It reaches the host once, in the
-// CredentialStoreToken request, lands in a 0600 file in a 0700 folder, and
-// never comes back: through a clone, a fetch, a pull, a mirror setup, a
-// credential check, a type change, a refused GCM setup and the delete, it
-// is in no answer or event, in neither end's log, in no error, and on the
+// TestTokenCanary follows tokens typed in a remote window over a real SSH
+// session. Each reaches the host once, in the designated request parameter
+// for storing a token or changing credential types. Each lands in a 0600
+// file in a 0700 folder. Neither token appears in any answer, event, log,
+// or error from clone, fetch, pull, mirror setup, credential check, type
+// change, refused GCM setup, or credential deletion, or on the
 // command line of no process of the host (sampled every 50 ms) nor of the
 // ssh this side starts. A refused GCM setup starts no git credential, and
 // its refusal names the store GCM would use on the host's OS.
@@ -93,6 +97,7 @@ func TestTokenCanary(t *testing.T) {
 		t.Fatal(err)
 	}
 	canary := "gbx-canary-" + hex.EncodeToString(raw[:])
+	switchCanary := "gbx-switch-" + hex.EncodeToString(raw[:])
 
 	c := startContainer(t, ctOpts{})
 	// A port of its own: a real host may already listen on 3000.
@@ -100,7 +105,7 @@ func TestTokenCanary(t *testing.T) {
 	tmp, home := c.scratch(), c.home()
 	forge, forgeLog, psLog := tmp+"/fakeforge", tmp+"/forge.log", tmp+"/ps.log"
 	c.install(forgeBin, forge)
-	c.writeFileAsTest(tmp+"/forge-tokens", "alice "+canary+"\nbob bak-token-value\n")
+	c.writeFileAsTest(tmp+"/forge-tokens", "alice "+canary+"\nalice "+switchCanary+"\nbob bak-token-value\n")
 	c.sh("mkdir -p " + tmp + "/forge/org && git init -q -b main " + tmp + "/w && git -C " + tmp + "/w -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one" +
 		" && git clone -q --bare " + tmp + "/w " + tmp + "/forge/org/small.git")
 	c.background("exec " + forge + " -listen 127.0.0.1:" + port + " -root " + tmp + "/forge -tokens " + tmp + "/forge-tokens > " + forgeLog + " 2>&1")
@@ -137,7 +142,7 @@ func TestTokenCanary(t *testing.T) {
 	events := &eventLog{}
 	client, err := rpc.Dial(io.TeeReader(conn, fromServer), tapWriter{conn, toServer}, rpc.ClientOptions{
 		Version: it.version, Commit: it.commit, Log: s.log, OnEvent: events.record,
-		SecretParams: rpc.SecretParams{"CredentialStoreToken": {1}},
+		SecretParams: rpc.SecretParams{"CredentialStoreToken": {1}, "ChangeCredentialType": {2}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -201,8 +206,19 @@ func TestTokenCanary(t *testing.T) {
 	if err := json.Unmarshal(call("CredentialVerify", "acct"), &status); err != nil || status.Status != "ok" {
 		t.Errorf("the forge did not accept the stored token: %+v %v\nforge log:\n%s", status, err, c.sh("cat "+forgeLog))
 	}
-	call("ChangeCredentialType", "acct", "token")
-	call("ChangeCredentialType", "acct", "gcm")
+	if !ok(call("ChangeCredentialType", "switch", "token", switchCanary)) {
+		t.Fatal("switch to token did not complete")
+	}
+	switchStore := cfgDir + "/credentials/switch"
+	wantStore := "http://alice:" + switchCanary + "@127.0.0.1:" + port
+	if c.mode(switchStore) != "600" || strings.TrimSpace(c.sh("cat "+switchStore)) != wantStore {
+		t.Fatal("the verified replacement was not activated in the protected credential store")
+	}
+	persisted := c.sh("cat " + cfgDir + "/*.json")
+	if !c.ok("for file in " + cfgDir + `/credentials/.transition-*; do test ! -e "$file" || exit 1; done`) {
+		t.Error("the switch left a staged credential after activation")
+	}
+	call("ChangeCredentialType", "acct", "gcm", "")
 	call("CredentialSetupGCM", "acct")
 	store4GCM := map[string]string{"linux": "Secret Service", "darwin": "the macOS keychain"}[c.goos()]
 	for _, a := range answers {
@@ -210,13 +226,15 @@ func TestTokenCanary(t *testing.T) {
 			t.Errorf("the GCM refusal does not name the store: %s", a)
 		}
 	}
-	if !strings.Contains(strings.Join(answers, "\n"), "CredentialSetupGCM failed") {
-		t.Errorf("CredentialSetupGCM was not refused: %v", answers)
+	for _, method := range []string{"ChangeCredentialType", "CredentialSetupGCM"} {
+		if !strings.Contains(strings.Join(answers, "\n"), method+" failed") {
+			t.Errorf("%s did not refuse GCM", method)
+		}
 	}
-	if !ok(call("CredentialDelete", "acct")) {
+	if !ok(call("CredentialDelete", "acct")) || !ok(call("CredentialDelete", "switch")) {
 		t.Errorf("the delete failed: %v", answers)
 	}
-	if c.exists(store) {
+	if c.exists(store) || c.exists(switchStore) {
 		t.Error("CredentialDelete left the store file")
 	}
 	time.Sleep(200 * time.Millisecond) // a last sample of the host's processes
@@ -228,9 +246,9 @@ func TestTokenCanary(t *testing.T) {
 		t.Fatalf("this side's ssh never ran through the wrapper: %v", err)
 	}
 	// Positive controls: the taps and the sampler saw the run.
-	if n := strings.Count(toServer.String(), canary); n != 1 {
-		t.Errorf("the token crossed the wire to the host %d times, want once", n)
-	}
+	wire := toServer.String()
+	assertSecretParam(t, wire, "CredentialStoreToken", []string{"acct", canary}, canary)
+	assertSecretParam(t, wire, "ChangeCredentialType", []string{"switch", "token", switchCanary}, switchCanary)
 	if !strings.Contains(fromServer.String(), "clone:done") || !strings.Contains(processes, "fakeforge -listen") || !strings.Contains(serverLog, "serving client") {
 		t.Fatalf("a tap saw nothing: wire %d bytes, ps %d bytes, server log %d bytes", len(fromServer.String()), len(processes), len(serverLog))
 	}
@@ -239,10 +257,11 @@ func TestTokenCanary(t *testing.T) {
 		"the answers and errors":        strings.Join(answers, "\n"),
 		"the connection log":            strings.Join(s.log.Lines(), "\n"),
 		"the server log":                serverLog,
+		"the persisted config":          persisted + c.sh("cat "+cfgDir+"/*.json"),
 		"the host's command lines":      processes,
 		"this side's ssh command lines": string(argv),
 	} {
-		if strings.Contains(text, canary) {
+		if strings.Contains(text, canary) || strings.Contains(text, switchCanary) {
 			t.Errorf("the token leaked into %s", where)
 		}
 	}
@@ -250,6 +269,39 @@ func TestTokenCanary(t *testing.T) {
 		if strings.Contains(processes, gcm) {
 			t.Errorf("a refused GCM setup ran %q on the host", gcm)
 		}
+	}
+}
+
+// assertSecretParam allows exactly one occurrence in the designated request,
+// including a check for duplicates elsewhere in the same frame.
+func assertSecretParam(t *testing.T, wire, method string, expected []string, secret string) {
+	t.Helper()
+	reader := bufio.NewReader(strings.NewReader(wire))
+	matches := 0
+	for {
+		body, err := rpc.ReadFrame(reader)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal("could not decode client wire capture")
+		}
+		count := bytes.Count(body, []byte(secret))
+		if count == 0 {
+			continue
+		}
+		var request struct {
+			Method string   `json:"method"`
+			Params []string `json:"params"`
+		}
+		if count != 1 || json.Unmarshal(body, &request) != nil ||
+			request.Method != method || !slices.Equal(request.Params, expected) {
+			t.Fatalf("a secret crossed the wire outside the expected %s request parameter", method)
+		}
+		matches++
+	}
+	if matches != 1 {
+		t.Errorf("the %s secret crossed the wire %d times, want once", method, matches)
 	}
 }
 
