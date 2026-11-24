@@ -11,6 +11,7 @@
   import { t } from '../i18n';
   import { ro } from '../ro';
   import UIIcon from '../UIIcon.svelte';
+  import AccountIssue from './AccountIssue.svelte';
   import AccountMenu from './AccountMenu.svelte';
   import type { RowProps } from './RepoRow.svelte';
 
@@ -37,7 +38,7 @@
   $: health = accountHealth(cred.status, simple, cred.expiresAt);
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: expiresOn = cred.expiresAt ? $t('health.expiresOn', { date: new Date(cred.expiresAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) }) : '';
-  $: credTip = [`${acct?.default_credential_type || 'gcm'} — ${cred.status}`, cred.primaryMsg, cred.patMsg, expiresOn].filter(Boolean).join('\n');
+  $: credTip = [`${acct?.default_credential_type || 'gcm'} — ${cred.status}`, expiresOn].filter(Boolean).join('\n');
   $: canDiscover = canDiscoverWith(cred.status);
   $: canCreate = canCreateWith(cred.status);
 </script>
@@ -58,6 +59,9 @@
         {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
     </span>
   </div>
+  {#if health.attention || cred.problem}
+    <AccountIssue {accountKey} credential={cred} {simple} {fixCredential} />
+  {:else}
   <div class="line">
     <span class="words" style={health.level === 'ok' || health.level === 'pending' ? '' : `color: ${sc(health.color)}`}
       title={simple ? undefined : credTip}>{$t(health.key, health.vars)}</span>
@@ -65,6 +69,7 @@
       <span class="right"><button use:ro={'credentialStoreToken'} class="text-btn" on:click={() => fixCredential(accountKey, health.fix)}>{$t(health.fixKey)}</button></span>
     {/if}
   </div>
+  {/if}
   <div class="line">
     <span class="counts">
       {simple ? $t('simple.projects', { n: total }) : $t('collapse.clones', { n: total })} ·

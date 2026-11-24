@@ -308,6 +308,7 @@ type fetchAllDoneDTO struct {
 }
 
 type discoverDoneDTO struct {
+	Problem    *ProblemDTO      `json:"problem,omitempty"`
 	AccountKey string           `json:"accountKey"`
 	Error      string           `json:"error,omitempty"`
 	Repos      []DiscoverResult `json:"repos,omitempty"`

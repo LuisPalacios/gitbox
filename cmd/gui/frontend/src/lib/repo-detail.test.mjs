@@ -5,7 +5,10 @@ import ts from 'typescript';
 
 const sourceCode = await readFile(new URL('./repo-detail.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(sourceCode, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const { createDetailLoader } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const explain = await readFile(new URL('./explain.ts', import.meta.url), 'utf8');
+const dependency = ts.transpileModule(explain, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText;
+const dataURL = (text) => `data:text/javascript;base64,${Buffer.from(text).toString('base64')}`;
+const { createDetailLoader } = await import(dataURL(outputText.replace('./explain', dataURL(dependency))));
 
 const detail = (subject) => ({
   branch: 'main', ahead: 0, behind: 1, changed: [], untracked: [],
@@ -70,7 +73,8 @@ test('I display current errors and ignore failures from superseded reads', async
   assert.equal(await first, null);
   requests[1].reject(new Error('Cannot read clone'));
   const result = await second;
-  assert.equal(result.error, 'Cannot read clone');
+  assert.deepEqual(result.problem, {});
+  assert.equal(result.error, undefined);
   assert.deepEqual(result.incoming, []);
 });
 

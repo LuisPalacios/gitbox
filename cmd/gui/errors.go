@@ -5,6 +5,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -67,6 +68,38 @@ func toUserError(err error) usererr.UserError {
 	return out
 }
 
+// ProblemDTO preserves an observed cause and the earliest allowed retry.
+type ProblemDTO struct {
+	usererr.UserError
+	RetryAt int64 `json:"retryAt,omitempty"`
+}
+
+func (p *ProblemDTO) UnmarshalJSON(data []byte) error {
+	type payload ProblemDTO
+	var wire payload
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*p = ProblemDTO(wire)
+	p.Code, p.Hint = identifier(p.Code), identifier(p.Hint)
+	p.Detail = userText(p.Detail)
+	return nil
+}
+
+func problem(err error) *ProblemDTO {
+	if err == nil {
+		return nil
+	}
+	result := &ProblemDTO{UserError: toUserError(err)}
+	if errors.Is(err, errServerUnreachable) {
+		result.Code = "provider.offline"
+	}
+	if pe, ok := errors.AsType[*provider.ProviderError](err); ok && pe.RetryAfter > 0 {
+		result.RetryAt = time.Now().Add(pe.RetryAfter).UnixMilli()
+	}
+	return result
+}
+
 // gcmRemoteError refuses Git Credential Manager on a host (#242). OS is
 // the host's, so the reason names the store GCM would use there.
 type gcmRemoteError struct{ OS string }
@@ -116,6 +149,8 @@ type WindowErrorDTO struct {
 	Message string `json:"message"`
 	Code    string `json:"code,omitempty"`
 	Hint    string `json:"hint,omitempty"`
+	Detail  string `json:"detail,omitempty"`
+	RetryAt int64  `json:"retryAt,omitempty"`
 }
 
 // windowError is the Wails ErrorFormatter of a remote window. The Wails
@@ -123,8 +158,11 @@ type WindowErrorDTO struct {
 // so it returns the DTO as JSON text, which the bridge decodes
 // (readonly.ts, windowError).
 func windowError(err error) any {
-	ue := toUserError(err)
-	data, jerr := json.Marshal(WindowErrorDTO{Message: ue.String(), Code: ue.Code, Hint: ue.Hint})
+	ue := problem(err)
+	if ue == nil {
+		return ""
+	}
+	data, jerr := json.Marshal(WindowErrorDTO{Message: ue.String(), Code: ue.Code, Hint: ue.Hint, Detail: ue.Detail, RetryAt: ue.RetryAt})
 	if jerr != nil {
 		return ue.String()
 	}

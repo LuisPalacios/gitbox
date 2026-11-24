@@ -866,7 +866,26 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ProblemDTO {
+	    code?: string;
+	    hint?: string;
+	    detail?: string;
+	    retryAt?: number;
+
+	    static createFrom(source: any = {}) {
+	        return new ProblemDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.hint = source["hint"];
+	        this.detail = source["detail"];
+	        this.retryAt = source["retryAt"];
+	    }
+	}
 	export class CredentialStatus {
+	    problem?: ProblemDTO;
 	    status: string;
 	    message: string;
 	    primary: string;
@@ -881,6 +900,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.problem = this.convertValues(source["problem"], ProblemDTO);
 	        this.status = source["status"];
 	        this.message = source["message"];
 	        this.primary = source["primary"];
@@ -889,6 +909,24 @@ export namespace main {
 	        this.patMsg = source["patMsg"];
 	        this.expiresAt = source["expiresAt"];
 	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class DiscoverResult {
 	    fullName: string;
@@ -1324,6 +1362,7 @@ export namespace main {
 		}
 	}
 	
+
 	export class RecipeFile {
 	    document: string;
 	    slots: string[];
@@ -1746,6 +1785,8 @@ export namespace main {
 	    changed: git.FileChange[];
 	    untracked: string[];
 	    incoming: git.IncomingCommit[];
+	    problem?: ProblemDTO;
+	    incomingProblem?: ProblemDTO;
 	    incomingError?: string;
 	    error?: string;
 	    upstreamGone?: boolean;
@@ -1763,6 +1804,8 @@ export namespace main {
 	        this.changed = this.convertValues(source["changed"], git.FileChange);
 	        this.untracked = source["untracked"];
 	        this.incoming = this.convertValues(source["incoming"], git.IncomingCommit);
+	        this.problem = this.convertValues(source["problem"], ProblemDTO);
+	        this.incomingProblem = this.convertValues(source["incomingProblem"], ProblemDTO);
 	        this.incomingError = source["incomingError"];
 	        this.error = source["error"];
 	        this.upstreamGone = source["upstreamGone"];
@@ -1924,6 +1967,7 @@ export namespace main {
 	    untracked: number;
 	    conflicts: number;
 	    error?: string;
+	    problem?: ProblemDTO;
 	    branch?: string;
 	    isDefault?: boolean;
 	    checkedAt?: string;
@@ -1945,10 +1989,29 @@ export namespace main {
 	        this.untracked = source["untracked"];
 	        this.conflicts = source["conflicts"];
 	        this.error = source["error"];
+	        this.problem = this.convertValues(source["problem"], ProblemDTO);
 	        this.branch = source["branch"];
 	        this.isDefault = source["isDefault"];
 	        this.checkedAt = source["checkedAt"];
 	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SweepDeleteDTO {
 	    skipped: string[];

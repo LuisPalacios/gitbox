@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -245,5 +246,23 @@ func TestWindowErrorCarriesCodeAndHint(t *testing.T) {
 	leak := decode(windowError(fmt.Errorf("push https://bob:ghp_CANARYCANARYCANARYCANARY0123456789@host/x.git failed")))
 	if strings.Contains(leak.Message, "ghp_") || strings.Contains(leak.Message, "bob:") || leak.Code != "" || leak.Hint != "" {
 		t.Errorf("an untyped error crossed as %+v", leak)
+	}
+}
+
+func TestProblemCarriesTypedDiagnosticAndRetry(t *testing.T) {
+	before := time.Now()
+	rateLimited := problem(&provider.ProviderError{
+		Class: provider.ClassRateLimited, Detail: "HTTP 429", RetryAfter: 3 * time.Second,
+	})
+	if rateLimited.Code != "provider.rate_limited" || rateLimited.Detail != "HTTP 429" ||
+		rateLimited.RetryAt < before.Add(3*time.Second).UnixMilli() ||
+		rateLimited.RetryAt > time.Now().Add(3*time.Second).UnixMilli() {
+		t.Fatalf("rate limit = %+v", rateLimited)
+	}
+	if got := problem(errServerUnreachable); got.Code != "provider.offline" || got.RetryAt != 0 {
+		t.Fatalf("unreachable = %+v", got)
+	}
+	if got := problem(errors.New("offline 401")); got.Code != "" {
+		t.Fatalf("guessed a code from an unknown error: %+v", got)
 	}
 }

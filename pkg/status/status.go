@@ -104,6 +104,7 @@ type RepoStatus struct {
 	Untracked    int    `json:"untracked,omitempty"`
 	Conflicts    int    `json:"conflicts,omitempty"`
 	ErrorMsg     string `json:"error,omitempty"`
+	Failure      error  `json:"-"`
 	Branch       string `json:"branch,omitempty"`     // Current branch name (or "(detached)")
 	IsDefault    bool   `json:"is_default,omitempty"` // True when current branch is the repo's default branch
 	DefaultKnown bool   `json:"-"`
@@ -133,6 +134,7 @@ func CheckContext(ctx context.Context, repoPath string) RepoStatus {
 			return rs
 		}
 		rs.State = Error
+		rs.Failure = err
 		rs.ErrorMsg = err.Error()
 		return rs
 	}

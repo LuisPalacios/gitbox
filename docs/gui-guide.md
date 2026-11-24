@@ -202,6 +202,22 @@ Click **Pull all** (down-arrow icon) in the top bar to check the configured clon
 
 The status puts unresolved conflicts first and local changes ahead of branch history. Before a pull, Gitbox rechecks the working tree and skips the clone if it finds local changes, conflicts or an operation in progress. Hover over the row status to see why Gitbox skipped it. The result counts these skips separately from failures. An editor can still write after the last check. If Git refuses a pull because that edit overlaps the update, the row reports the new local work without stashing it.
 
+#### What the messages mean
+
+Needs attention (Simple: **Needs you**), clone details, the account card and the setup wizard explain what blocked an operation. Gitbox offers an action when it can perform it from that screen.
+
+| Message | What I can do |
+| --- | --- |
+| Can't reach the server | I check the connection and click **Retry**. |
+| Sign-in needed | I click **Fix credential** to check or replace the account's credential. |
+| The token lacks permission | I click **Open token page** and use the permissions listed for that provider. |
+| Server busy, try later | I wait. Gitbox offers **Retry** when the server's reported wait ends. |
+| Changes in the clone | I use **Open in editor** to review the changes that caused Gitbox to skip the update. |
+| The branches need a merge | I use **Open terminal** to review the histories with my Git tool. |
+| The online copy can't be found | I check access first. If the provider and account support it, **Re-add online repository** opens a form to create an empty online repository. The clone stays on disk. I publish its history separately with my Git tool. |
+| Drive not connected | I reconnect the drive or mount the folder. |
+| Something went wrong | In Advanced, I can use **Show details** when a diagnostic is available. |
+
 #### Fetch all
 
 Click **Fetch all** (↻ icon) to check every remote for new commits without pulling. The status indicators update so you can see what changed before you pull. In Simple, the button is **Check all**.

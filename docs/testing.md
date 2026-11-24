@@ -6,7 +6,7 @@ This guide covers the test levels, the `test-gitbox.json` fixture, and the check
 
 - **Package unit tests** — the Go tests under `pkg/`. They need no setup, no network and no provider, and isolate everything with `t.TempDir()` and `t.Setenv()`. The `pkg/ops` unit tests run against a temp `XDG_CONFIG_HOME`, a temp `GIT_CONFIG_GLOBAL` and a temp SSH folder, so nothing on the host changes.
 - **GUI tests** — the Go tests under `cmd/gui/`. They call `App` methods directly, without a Wails window. They need the compiled frontend in `cmd/gui/frontend/dist`, because the package embeds it.
-- **Frontend tests** — pure Node tests in `cmd/gui/frontend/src/lib/*.test.mjs`, run with `npm test`. They need neither Wails nor credentials.
+- **Frontend tests** — pure Node tests in `cmd/gui/frontend/src/lib/*.test.mjs`, run with `npm test`. They need neither Wails nor credentials. The catalog test uses Go to read the codes declared in the repository.
 - **Remote mode integration tests** — `go test -tags sshd_integration ./pkg/remote/` against a containerized `sshd`, run by `scripts/remote-it.sh` on a Linux host with Docker, and `go test -tags remote_host ./pkg/remote/` against a real host, run by `scripts/remote-host-it.sh`. See [Remote mode tests](#remote-mode-tests).
 - **Scenario test** — `TestScenario_FullLifecycle` in `pkg/ops/scenario_test.go` drives the whole account lifecycle through `pkg/ops` against a real provider. It needs the fixture below, and `go test -short` skips it.
 

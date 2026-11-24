@@ -51,9 +51,10 @@ func (s Status) String() string {
 // PAT tracks the companion PAT needed for API calls (optional for SSH/GCM).
 type StatusResult struct {
 	// Primary credential status.
-	Primary       Status
-	PrimaryType   string // "ssh", "gcm", "token", or ""
-	PrimaryDetail string
+	Primary        Status
+	PrimaryType    string // "ssh", "gcm", "token", or ""
+	PrimaryDetail  string
+	PrimaryFailure error `json:"-"` // typed cause of a failed primary credential check
 
 	// Companion PAT status (for SSH and GCM accounts).
 	// For Token accounts, PAT mirrors Primary (same token does everything).
@@ -286,6 +287,7 @@ func checkToken(parent context.Context, acct config.Account, accountKey string, 
 	defer cancel()
 	expires, err := provider.CheckAuth(ctx, acct.Provider, acct.URL, token, acct.Username)
 	if err != nil {
+		r.PrimaryFailure = err
 		if provider.IsNetworkError(err) {
 			r.Primary = StatusOffline
 			r.PrimaryDetail = fmt.Sprintf("server unreachable: %v", err)

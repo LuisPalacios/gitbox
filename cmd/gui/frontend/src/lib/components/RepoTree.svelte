@@ -6,6 +6,8 @@
   import RepoRow from './RepoRow.svelte';
   import type { RowProps } from './RepoRow.svelte';
   import RepoDetail from './RepoDetail.svelte';
+  import ErrorExplanation from './ErrorExplanation.svelte';
+  import { repoIssue } from '../explain';
   import PlaceholderRow from './PlaceholderRow.svelte';
   import type { RepoRow as TreeRow } from '../repo-tree';
 
@@ -17,10 +19,11 @@
   export let showAccount = false;
   // Fade calm rows: the view sets it when some row in it needs me.
   export let fadeHealthy = false;
+  export let showIssues = false;
   // Parent label per row key, for rows shown away from their container.
   export let parentLabels: Record<string, string> = {};
 
-  $: ({ expandedRepo, repoDetail, detailLoading, findWorkspaceFolder, ...shared } = rowProps);
+  $: ({ expandedRepo, repoDetail, detailLoading, findWorkspaceFolder, repoActions, credentialStatuses, ...shared } = rowProps);
 </script>
 
 {#each rows as { key, sourceKey: rowSourceKey, repoName, depth, childCount, descendants, placeholders, placeholder } (key)}
@@ -29,12 +32,21 @@
   {:else}
   {@const repoKey = `${rowSourceKey}/${repoName}`}
   {@const state = $repoStates[repoKey] || { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }}
+  {@const accountStatus = credentialStatuses[$sources[rowSourceKey]?.account]?.status}
+  {@const issue = repoIssue(state)}
   <RepoRow {...shared} sourceKey={groupSource || rowSourceKey} {rowSourceKey} {repoName} {depth} {childCount} {descendants} {placeholders}
     rowAccountKey={$sources[rowSourceKey]?.account || rowSourceKey} {repoKey}
     isContainer={!!$sources[rowSourceKey]?.repos[repoName]?.container} {state} rowOpensDetail={opensDetail(state.status)}
     {showAccount} parentLabel={parentLabels[repoKey] || ''} {fadeHealthy} />
   {#if expandedRepo === repoKey}
-    <RepoDetail simple={shared.simple} {state} {repoDetail} {detailLoading} />
+    <RepoDetail simple={shared.simple} {state} {repoDetail} {detailLoading} actions={repoActions(rowSourceKey, repoName, state, true, accountStatus)}
+      issueActions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} />
+  {:else if showIssues && issue}
+    <div class="row-explanation"><ErrorExplanation info={issue} simple={shared.simple} actions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} /></div>
   {/if}
   {/if}
 {/each}
+
+<style>
+  .row-explanation { padding: 0 10px 8px 30px; }
+</style>

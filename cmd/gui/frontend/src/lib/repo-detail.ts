@@ -1,4 +1,5 @@
 import type { RepoDetailView } from './types';
+import { caughtIssue } from './explain';
 
 type DetailResponse = Omit<RepoDetailView, 'changed' | 'untracked' | 'incoming'> & {
   changed?: RepoDetailView['changed'] | null;
@@ -19,7 +20,7 @@ export function createDetailLoader(read: (source: string, repo: string) => Promi
         return { ...raw, changed: raw.changed || [], untracked: raw.untracked || [], incoming: raw.incoming || [] };
       } catch (error) {
         if (request !== generation) return null;
-        return { branch: '', ahead: 0, behind: 0, changed: [], untracked: [], incoming: [], error: error instanceof Error ? error.message : String(error) };
+        return { branch: '', ahead: 0, behind: 0, changed: [], untracked: [], incoming: [], problem: caughtIssue(error) };
       }
     },
   };

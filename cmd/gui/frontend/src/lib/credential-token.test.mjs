@@ -97,12 +97,14 @@ test('I show what the audit found right after a store, and clear an old warning 
 // Onboarding keeps its own token field (#163, #242).
 function onboardingFixture(store) {
   const context = vm.createContext({
-    token: 'fixture-token', accountKey: 'account', busy: false, connectError: '', connectDetail: '',
+    token: 'fixture-token', accountKey: 'account', busy: false, connectError: '', connectProblem: undefined,
+    errorInfo: (_, detail) => ({ detail }),
+    caughtIssue: () => ({}),
     started: false, $t: (key) => key,
     bridge: { credentialStoreToken: store, credentialVerify: async () => ({ status: 'ok' }) },
   });
   context.startProjects = () => { context.started = true; };
-  vm.runInContext(functionsFrom(onboardingSource, ['saveToken']), context);
+  vm.runInContext(functionsFrom(onboardingSource, ['saveToken', 'verifyToken']), context);
   return context;
 }
 
@@ -118,7 +120,7 @@ test('I clear the onboarding token once it is stored, and keep a refused one for
   const refused = onboardingFixture(async () => ({ ok: false, message: 'Storage unavailable' }));
   await refused.saveToken();
   assert.equal(refused.token, 'fixture-token');
-  assert.equal(refused.connectError, 'onboard.tokenFailed');
+  assert.equal(refused.connectProblem.detail, 'Storage unavailable');
 });
 
 test('I clear tokens when closing and reopening either credential modal mode', async () => {
