@@ -182,7 +182,9 @@ func (j *Journal) writeLocked(e journalEntry) {
 	j.lines++
 }
 
-// compactLocked rewrites the file to hold the ring and nothing else.
+// compactLocked rewrites the file to hold the ring and nothing else. The
+// new file is closed before the rename, which Windows needs, and opened
+// again to append.
 func (j *Journal) compactLocked() {
 	_ = j.f.Close()
 	j.f, j.w, j.lines = nil, nil, 0
@@ -194,11 +196,17 @@ func (j *Journal) compactLocked() {
 		j.writeLocked(e)
 	}
 	_ = j.w.Flush()
+	_ = j.f.Close()
+	j.f, j.w = nil, nil
 	if os.Rename(tmp, j.path) != nil {
-		_ = j.f.Close()
 		_ = os.Remove(tmp)
-		j.f, j.w = nil, nil
+		return
 	}
+	f, err := os.OpenFile(j.path, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return
+	}
+	j.f, j.w = f, bufio.NewWriter(f)
 }
 
 // since returns the events after seq after and before seq before, oldest

@@ -2,7 +2,8 @@
 // container (#247): it connects to the daemon's socket, introduces itself
 // as a proxy and reports in one word what happened.
 //
-//	denied    the socket cannot be reached by this user
+//	denied    the socket's folder, or the socket, cannot be reached by this user
+//
 //	refused   nothing listens there, or another error, which follows
 //	closed    the daemon closed the connection without a word
 //	answered  the daemon spoke
@@ -15,11 +16,23 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 )
 
 func main() {
-	c, err := net.DialTimeout("unix", os.Args[1], 3*time.Second)
+	// Like the proxy, it enters the socket's folder and dials the name
+	// alone: the full path of a tagged build passes the 108 bytes a socket
+	// name allows.
+	if err := os.Chdir(filepath.Dir(os.Args[1])); err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			fmt.Println("denied")
+		} else {
+			fmt.Println("refused", err)
+		}
+		return
+	}
+	c, err := net.DialTimeout("unix", filepath.Base(os.Args[1]), 3*time.Second)
 	if err != nil {
 		if errors.Is(err, fs.ErrPermission) {
 			fmt.Println("denied")
