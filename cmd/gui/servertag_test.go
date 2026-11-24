@@ -85,7 +85,8 @@ func TestWailsImportsTagged(t *testing.T) {
 
 // TestSentinelOnlyInTests keeps the e2e_sentinel tag, whose server writes a
 // line to the home folder on every start, out of every path that builds a
-// server for users: only scripts/remote-it.sh may use it.
+// server for users: only the integration scripts, scripts/remote-it.sh and
+// scripts/remote-host-it.sh (#245), may use it.
 func TestSentinelOnlyInTests(t *testing.T) {
 	root := filepath.Join("..", "..")
 	paths := []string{
@@ -106,11 +107,13 @@ func TestSentinelOnlyInTests(t *testing.T) {
 			t.Fatalf("%s: %v", p, err)
 		}
 		if strings.Contains(string(data), "e2e_sentinel") {
-			t.Errorf("%s builds with the e2e_sentinel tag, which only the sshd integration tests may use", p)
+			t.Errorf("%s builds with the e2e_sentinel tag, which only the integration tests may use", p)
 		}
 	}
-	data, err := os.ReadFile(filepath.Join(root, "scripts/remote-it.sh"))
-	if err != nil || !strings.Contains(string(data), "gitboxserver,e2e_sentinel") {
-		t.Errorf("scripts/remote-it.sh no longer builds the sentinel server: %v", err)
+	for _, script := range []string{"scripts/remote-it.sh", "scripts/remote-host-it.sh"} {
+		data, err := os.ReadFile(filepath.Join(root, script))
+		if err != nil || !strings.Contains(string(data), "gitboxserver,e2e_sentinel") {
+			t.Errorf("%s no longer builds the sentinel server: %v", script, err)
+		}
 	}
 }

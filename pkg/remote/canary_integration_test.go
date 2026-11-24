@@ -1,4 +1,4 @@
-//go:build sshd_integration
+//go:build sshd_integration || remote_host
 
 package remote_test
 
@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -22,15 +23,15 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
-// canaryHostConfig has two token accounts on the fake forge of the
-// container, a repository to clone and a pull mirror from the first to the
-// second.
+// canaryHostConfig has two token accounts on the fake forge of the host, a
+// repository to clone and a pull mirror from the first to the second. HOME
+// and PORT stand for the host's home and the forge's port.
 const canaryHostConfig = `{
   "version": 5,
-  "global": {"roots": ["` + testHome + `/git"], "theme": "dark"},
+  "global": {"roots": ["HOME/git"], "theme": "dark"},
   "accounts": {
-    "acct": {"provider": "gitea", "url": "http://127.0.0.1:3000", "username": "alice", "name": "Alice", "email": "a@example.invalid", "default_credential_type": "token"},
-    "bak": {"provider": "gitea", "url": "http://127.0.0.1:3000", "username": "bob", "name": "Bob", "email": "b@example.invalid", "default_credential_type": "token"}
+    "acct": {"provider": "gitea", "url": "http://127.0.0.1:PORT", "username": "alice", "name": "Alice", "email": "a@example.invalid", "default_credential_type": "token"},
+    "bak": {"provider": "gitea", "url": "http://127.0.0.1:PORT", "username": "bob", "name": "Bob", "email": "b@example.invalid", "default_credential_type": "token"}
   },
   "sources": {
     "acct": {"account": "acct", "repos": {"org/small": {}}},
@@ -73,17 +74,6 @@ func (t tapWriter) Write(p []byte) (int, error) {
 
 func (t tapWriter) Close() error { return t.w.Close() }
 
-// writeFileAsTest writes content to path as the test user, through stdin,
-// so it is on no command line.
-func (c *container) writeFileAsTest(path, content string) {
-	c.t.Helper()
-	cmd := exec.Command("docker", "exec", "-i", "-u", "test", c.id, "sh", "-c", "umask 077 && cat > "+path)
-	cmd.Stdin = strings.NewReader(content)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		c.t.Fatalf("writing %s: %v\n%s", path, err, out)
-	}
-}
-
 // TestTokenCanary follows a token typed in a remote window over a real ssh
 // session to a real host (#242). It reaches the host once, in the
 // CredentialStoreToken request, lands in a 0600 file in a 0700 folder, and
@@ -91,7 +81,8 @@ func (c *container) writeFileAsTest(path, content string) {
 // credential check, a type change, a refused GCM setup and the delete, it
 // is in no answer or event, in neither end's log, in no error, and on the
 // command line of no process of the host (sampled every 50 ms) nor of the
-// ssh this side starts. A refused GCM setup starts no git credential.
+// ssh this side starts. A refused GCM setup starts no git credential, and
+// its refusal names the store GCM would use on the host's OS.
 func TestTokenCanary(t *testing.T) {
 	forgeBin := os.Getenv("GITBOX_IT_FAKEFORGE")
 	if forgeBin == "" {
@@ -104,20 +95,22 @@ func TestTokenCanary(t *testing.T) {
 	canary := "gbx-canary-" + hex.EncodeToString(raw[:])
 
 	c := startContainer(t, ctOpts{})
-	docker(t, "cp", forgeBin, c.id+":/usr/local/bin/fakeforge")
-	c.writeFileAsTest("/tmp/forge-tokens", "alice "+canary+"\nbob bak-token-value\n")
-	c.sh("mkdir -p /tmp/forge/org && git init -q -b main /tmp/w && git -C /tmp/w -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one" +
-		" && git clone -q --bare /tmp/w /tmp/forge/org/small.git")
-	docker(t, "exec", "-d", "-u", "test", c.id, "sh", "-c", "exec /usr/local/bin/fakeforge -listen 127.0.0.1:3000 -root /tmp/forge -tokens /tmp/forge-tokens > /tmp/forge.log 2>&1")
-	if !waitFor(10*time.Second, func() bool {
-		return exec.Command("docker", "exec", c.id, "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000").Run() == nil
-	}) {
-		t.Fatalf("the fake forge did not start:\n%s", c.sh("cat /tmp/forge.log 2>/dev/null || true"))
+	// A port of its own: a real host may already listen on 3000.
+	port := strconv.Itoa(20000 + int(raw[0])<<4 + int(raw[1]>>4))
+	tmp, home := c.scratch(), c.home()
+	forge, forgeLog, psLog := tmp+"/fakeforge", tmp+"/forge.log", tmp+"/ps.log"
+	c.install(forgeBin, forge)
+	c.writeFileAsTest(tmp+"/forge-tokens", "alice "+canary+"\nbob bak-token-value\n")
+	c.sh("mkdir -p " + tmp + "/forge/org && git init -q -b main " + tmp + "/w && git -C " + tmp + "/w -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m one" +
+		" && git clone -q --bare " + tmp + "/w " + tmp + "/forge/org/small.git")
+	c.background("exec " + forge + " -listen 127.0.0.1:" + port + " -root " + tmp + "/forge -tokens " + tmp + "/forge-tokens > " + forgeLog + " 2>&1")
+	if !waitFor(10*time.Second, func() bool { return c.ok("exec bash -c 'exec 3<>/dev/tcp/127.0.0.1/" + port + "'") }) {
+		t.Fatalf("the fake forge did not start:\n%s", c.sh("cat "+forgeLog+" 2>/dev/null || true"))
 	}
-	// The sampler runs as root, so it sees every process of the host.
-	docker(t, "exec", "-d", c.id, "sh", "-c", "while :; do ps -eww -o args >> /tmp/ps.log; sleep 0.05; done")
-	cfgDir := testHome + "/.config/gitbox"
-	c.sh("mkdir -p " + cfgDir + " " + testHome + "/git && echo " + base64.StdEncoding.EncodeToString([]byte(canaryHostConfig)) + " | base64 -d > " + cfgDir + "/gitbox.json")
+	c.sampleProcesses(psLog)
+	cfgDir := home + "/.config/gitbox"
+	hostConfig := strings.NewReplacer("HOME", home, "PORT", port).Replace(canaryHostConfig)
+	c.sh("mkdir -p " + cfgDir + " " + home + "/git && echo " + base64.StdEncoding.EncodeToString([]byte(hostConfig)) + " | base64 -d > " + cfgDir + "/gitbox.json")
 
 	// This side's ssh, with every command line it is given.
 	s := c.client(t, "client-canary", true)
@@ -178,10 +171,10 @@ func TestTokenCanary(t *testing.T) {
 		t.Fatalf("storing the tokens failed: %v", answers)
 	}
 	store := cfgDir + "/credentials/acct"
-	if mode := c.sh("stat -c %a " + store); mode != "600" {
+	if mode := c.mode(store); mode != "600" {
 		t.Errorf("the store file has mode %s, want 600", mode)
 	}
-	if mode := c.sh("stat -c %a " + cfgDir + "/credentials"); mode != "700" {
+	if mode := c.mode(cfgDir + "/credentials"); mode != "700" {
 		t.Errorf("the credentials folder has mode %s, want 700", mode)
 	}
 	if n := strings.Count(c.sh("cat "+store), canary); n != 1 {
@@ -189,7 +182,7 @@ func TestTokenCanary(t *testing.T) {
 	}
 
 	call("CloneRepo", "acct", "org/small", "")
-	if !c.exists(testHome + "/git/acct/org/small/.git") {
+	if !c.exists(home + "/git/acct/org/small/.git") {
 		t.Fatalf("the clone did not happen: %s", events.last("clone:done"))
 	}
 	call("FetchRepo", "acct", "org/small")
@@ -206,13 +199,14 @@ func TestTokenCanary(t *testing.T) {
 		PrimaryMsg string `json:"primaryMsg"`
 	}
 	if err := json.Unmarshal(call("CredentialVerify", "acct"), &status); err != nil || status.Status != "ok" {
-		t.Errorf("the forge did not accept the stored token: %+v %v\nforge log:\n%s", status, err, c.sh("cat /tmp/forge.log"))
+		t.Errorf("the forge did not accept the stored token: %+v %v\nforge log:\n%s", status, err, c.sh("cat "+forgeLog))
 	}
 	call("ChangeCredentialType", "acct", "token")
 	call("ChangeCredentialType", "acct", "gcm")
 	call("CredentialSetupGCM", "acct")
+	store4GCM := map[string]string{"linux": "Secret Service", "darwin": "the macOS keychain"}[c.goos()]
 	for _, a := range answers {
-		if strings.HasPrefix(a, "CredentialSetupGCM failed") && !strings.Contains(a, "Secret Service") {
+		if strings.HasPrefix(a, "CredentialSetupGCM failed") && !strings.Contains(a, store4GCM) {
 			t.Errorf("the GCM refusal does not name the store: %s", a)
 		}
 	}
@@ -227,8 +221,8 @@ func TestTokenCanary(t *testing.T) {
 	}
 	time.Sleep(200 * time.Millisecond) // a last sample of the host's processes
 
-	psLog := c.sh("cat /tmp/ps.log")
-	serverLog := c.sh("cat " + testHome + "/.gitbox-server/logs/*.log 2>/dev/null || true")
+	processes := c.sh("cat " + psLog)
+	serverLog := c.sh("cat " + s.root + "/logs/*.log 2>/dev/null || true")
 	argv, err := os.ReadFile(argvLog)
 	if err != nil {
 		t.Fatalf("this side's ssh never ran through the wrapper: %v", err)
@@ -237,15 +231,15 @@ func TestTokenCanary(t *testing.T) {
 	if n := strings.Count(toServer.String(), canary); n != 1 {
 		t.Errorf("the token crossed the wire to the host %d times, want once", n)
 	}
-	if !strings.Contains(fromServer.String(), "clone:done") || !strings.Contains(psLog, "fakeforge -listen") || !strings.Contains(serverLog, "serving client") {
-		t.Fatalf("a tap saw nothing: wire %d bytes, ps %d bytes, server log %d bytes", len(fromServer.String()), len(psLog), len(serverLog))
+	if !strings.Contains(fromServer.String(), "clone:done") || !strings.Contains(processes, "fakeforge -listen") || !strings.Contains(serverLog, "serving client") {
+		t.Fatalf("a tap saw nothing: wire %d bytes, ps %d bytes, server log %d bytes", len(fromServer.String()), len(processes), len(serverLog))
 	}
 	for where, text := range map[string]string{
 		"the host's answers and events": fromServer.String(),
 		"the answers and errors":        strings.Join(answers, "\n"),
 		"the connection log":            strings.Join(s.log.Lines(), "\n"),
 		"the server log":                serverLog,
-		"the host's command lines":      psLog,
+		"the host's command lines":      processes,
 		"this side's ssh command lines": string(argv),
 	} {
 		if strings.Contains(text, canary) {
@@ -253,7 +247,7 @@ func TestTokenCanary(t *testing.T) {
 		}
 	}
 	for _, gcm := range []string{"credential fill", "git-credential-manager"} {
-		if strings.Contains(psLog, gcm) {
+		if strings.Contains(processes, gcm) {
 			t.Errorf("a refused GCM setup ran %q on the host", gcm)
 		}
 	}

@@ -13,7 +13,7 @@ package main
 //	eval "$(scripts/stamp.sh)" && scripts/build-server.sh
 //	pkg=github.com/LuisPalacios/gitbox/cmd/gui
 //	GITBOX_SMOKE_ALIAS=<ssh alias> GITBOX_SMOKE_SERVER_DIR='~/.cache/<scratch>' \
-//	  go test -tags serverbin,remote_smoke -run TestRemoteSmoke -v \
+//	  GITBOX_SMOKE_OS=<host GOOS, default linux> go test -tags serverbin,remote_smoke -run TestRemoteSmoke -v \
 //	  -ldflags "-X $pkg.version=$VERSION -X $pkg.commit=$COMMIT" ./cmd/gui/
 //
 // A test binary takes the stamp under the package's import path, not as
@@ -34,6 +34,10 @@ func TestRemoteSmoke(t *testing.T) {
 	alias, serverDir := os.Getenv("GITBOX_SMOKE_ALIAS"), os.Getenv("GITBOX_SMOKE_SERVER_DIR")
 	if alias == "" || !strings.HasPrefix(serverDir, "~/.cache/") {
 		t.Fatal("set GITBOX_SMOKE_ALIAS and a scratch GITBOX_SMOKE_SERVER_DIR under ~/.cache/")
+	}
+	wantOS := os.Getenv("GITBOX_SMOKE_OS")
+	if wantOS == "" {
+		wantOS = "linux"
 	}
 	// A short folder: ssh control socket paths are limited to about 100
 	// bytes.
@@ -81,7 +85,7 @@ func TestRemoteSmoke(t *testing.T) {
 	for _, e := range sink.named("remote:state") {
 		seen = append(seen, e.args[0].(RemoteStateDTO).State)
 	}
-	if st.ServerOS != "linux" || st.ServerVersion != formatAppVersion(version, commit) {
+	if st.ServerOS != wantOS || st.ServerVersion != formatAppVersion(version, commit) {
 		t.Errorf("connected to %+v", st)
 	}
 	if !slices.Contains(seen, remoteInstalling) {
@@ -109,11 +113,14 @@ func TestRemoteSmoke(t *testing.T) {
 	}
 
 	doc := win.RemoteRunDoctor()
-	if doc.Error != "" || doc.Report == nil || doc.Report.OS != "linux" || doc.Report.Commit != commit {
+	if doc.Error != "" || doc.Report == nil || doc.Report.OS != wantOS || doc.Report.Commit != commit {
 		t.Fatalf("doctor: %+v", doc)
 	}
 	t.Logf("step 4 doctor: %s %s/%s, git %q, config folder writable %v, exec %v",
 		doc.Report.Version, doc.Report.OS, doc.Report.Arch, doc.Report.GitVersion, doc.Report.ConfigDirWritable, doc.Report.ConfigDirExec)
+	for _, r := range doc.Report.Roots {
+		t.Logf("  root %s: %s", r.Path, r.State)
+	}
 
 	win.RemoteDisconnect()
 	if st := win.RemoteInfo(); st.State != remoteDisconnected {
