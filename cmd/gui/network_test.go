@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -427,4 +428,36 @@ func TestPullStopsWithoutNetwork(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestRetryConnectionRechecksOnlySelectedServer(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	a, events := refreshTestApp(t, 0)
+	defer a.stopRefresh()
+	a.refreshHooks = nil
+	a.cfg.Accounts["account-a"] = config.Account{URL: server.URL}
+	selected := serverAddr(a.cfg.Accounts["account-a"])
+	const other = "127.0.0.2:1"
+	a.network.down = map[string]bool{selected: true, other: true}
+
+	if a.reachable(context.Background(), selected) {
+		t.Fatal("ordinary work ignored the cached outage")
+	}
+	if _, err := a.RunTask(retryConnectionTask + "missing"); !errors.Is(err, config.ErrNotFound) {
+		t.Fatalf("missing account retry: %v", err)
+	}
+	if _, err := a.RunTask(retryConnectionTask + "account-a"); err != nil {
+		t.Fatal(err)
+	}
+	if !a.reachable(context.Background(), selected) || a.reachable(context.Background(), other) {
+		t.Fatal("retry did not recover only the selected server")
+	}
+	offline, hosts, count := networkState(t, events)
+	if !offline || count != 1 || len(hosts) != 1 || hosts[0] != "127.0.0.2" {
+		t.Fatalf("network state after retry: offline=%t hosts=%v events=%d", offline, hosts, count)
+	}
+	if len(events.named("fetch:allstart")) != 0 {
+		t.Fatal("retry started a fleet-wide fetch")
+	}
 }

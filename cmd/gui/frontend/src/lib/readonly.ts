@@ -65,7 +65,7 @@ export function guardCalls<T extends Calls>(calls: T, isRemote: () => boolean, m
 export class WindowError extends Error {
   code: string;
   hint: string;
-  constructor(message: string, code: string, hint: string) {
+  constructor(message: string, code: string, hint: string, public detail = "", public retryAt?: number) {
     super(message);
     this.name = 'WindowError';
     this.code = code;
@@ -83,13 +83,13 @@ const IDENTIFIER = /^[A-Za-z0-9._-]{1,64}$/;
 export function decodeWindowError(e: unknown, tr: (key: string) => string): unknown {
   const text = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
   if (!text.startsWith('{')) return e;
-  let dto: { message?: unknown; code?: unknown; hint?: unknown };
+  let dto: { message?: unknown; code?: unknown; hint?: unknown; detail?: unknown; retryAt?: unknown };
   try { dto = JSON.parse(text); } catch { return e; }
   if (!dto || typeof dto.message !== 'string') return e;
   const code = typeof dto.code === 'string' && IDENTIFIER.test(dto.code) ? dto.code : '';
   const hint = typeof dto.hint === 'string' && IDENTIFIER.test(dto.hint) ? dto.hint : '';
   const translated = hint ? tr(hint) : '';
-  return new WindowError(translated && translated !== hint ? translated : dto.message, code, hint);
+  return new WindowError(translated && translated !== hint ? translated : dto.message, code, hint, typeof dto.detail === "string" ? dto.detail.slice(0, 300) : "", typeof dto.retryAt === "number" && Number.isFinite(dto.retryAt) ? dto.retryAt : undefined);
 }
 
 // isDisconnectError: the call failed because the remote window was not

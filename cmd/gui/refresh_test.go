@@ -18,6 +18,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/credential"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/heal"
+	"github.com/LuisPalacios/gitbox/pkg/provider"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 )
 
@@ -681,9 +682,9 @@ func TestCredentialVerify_DoesNotRetryAnAuthenticationError(t *testing.T) {
 		var calls atomic.Int32
 		a.refreshHooks.credential = func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
 			calls.Add(1)
-			return credential.StatusResult{Primary: credential.StatusError, PAT: credential.StatusError, Overall: credential.StatusError}
+			return credential.StatusResult{Primary: credential.StatusError, PAT: credential.StatusError, Overall: credential.StatusError, PrimaryFailure: &provider.ProviderError{Class: provider.ClassUnauthorized, Detail: "HTTP 401"}}
 		}
-		if got := a.CredentialVerify("account-a"); got.Status != "error" || calls.Load() != 1 {
+		if got := a.CredentialVerify("account-a"); got.Status != "error" || calls.Load() != 1 || got.Problem == nil || got.Problem.Code != "provider.unauthorized" {
 			t.Fatalf("CredentialVerify() = %q after %d checks, want error with no retry", got.Status, calls.Load())
 		}
 	})

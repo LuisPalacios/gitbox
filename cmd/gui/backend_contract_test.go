@@ -701,6 +701,11 @@ func TestRemoteEventsAreRelayed(t *testing.T) {
 	statuses := []StatusResult{{Source: "acct", Repo: "org/repo", State: "clean", Branch: "main"}}
 	emit(link.Host.newOperation(), "status:updated", statuses)
 	emit(link.Host.newOperation(), "made:up", "by a hostile server")
+	// A discovery failure keeps typed guidance, with the remote detail scrubbed.
+	const canary = "ghp_CANARYCANARYCANARYCANARY0123456789"
+	discover := problem(&provider.ProviderError{Class: provider.ClassRateLimited, Detail: "HTTP 429", RetryAfter: time.Minute})
+	discover.Detail = "Authorization: Bearer " + canary
+	emit(link.Host.newOperation(), "discover:done", map[string]any{"accountKey": "acct", "problem": discover})
 	emit(link.Host.newOperation(), "fetch:done", map[string]any{"source": "acct", "repo": "org/repo", "error": "git fetch: offline"})
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -716,6 +721,19 @@ func TestRemoteEventsAreRelayed(t *testing.T) {
 	}
 	if len(link.Events.named("fetch:done")) != 1 {
 		t.Errorf("fetch:done was not relayed")
+	}
+	events := link.Events.named("discover:done")
+	if len(events) != 1 {
+		t.Fatalf("discover:done arrived %d times", len(events))
+	}
+	payload, ok := events[0].args[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected discovery payload: %T", events[0].args[0])
+	}
+	gotProblem, ok := payload["problem"].(map[string]any)
+	if !ok || gotProblem["code"] != discover.Code || gotProblem["retryAt"] != float64(discover.RetryAt) ||
+		strings.Contains(fmt.Sprint(gotProblem["detail"]), canary) {
+		t.Fatalf("discovery problem was not relayed safely: %+v", gotProblem)
 	}
 }
 

@@ -80,6 +80,19 @@ test('I show pending review text in Simple and both PR counts in Advanced', asyn
     prSettings.set({ enabled: false, includeDrafts: true });
     const disabled = render(RepoRow, { props: { ...props, simple: true } }).body;
     assert.doesNotMatch(disabled, /pr-review-simple/);
+
+    languageStore.set('en');
+    const deletionFailed = render(RepoRow, {
+      props: {
+        ...props, simple: true, deleteMode: true,
+        state: { status: 'upstream gone' },
+        folderDeleteFailures: { [repoKey]: 'Fixture folder could not be removed' },
+      },
+    }).body;
+    assert.match(deletionFailed, /folder-delete-failure/);
+    assert.match(deletionFailed, /Fixture folder could not be removed/);
+    assert.match(deletionFailed, /Stop showing owner\/project/);
+    assert.doesNotMatch(deletionFailed, /Fix credential/);
   } finally {
     await server.close();
   }

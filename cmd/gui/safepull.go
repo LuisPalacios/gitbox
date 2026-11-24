@@ -90,6 +90,7 @@ func (a *App) safePull(ctx context.Context, cfg *config.Config, source, repo str
 		result.Skipped = skipReason{v: true}
 	} else if err != nil {
 		result.Error = userMsg(err)
+		result.Code = toUserError(err).Code
 	}
 	return result
 }

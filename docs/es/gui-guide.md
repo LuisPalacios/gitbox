@@ -202,6 +202,22 @@ Haz clic en **Pull de todo** (icono de flecha hacia abajo) en la barra superior 
 
 El estado da prioridad a los conflictos sin resolver y a los cambios locales sobre el historial de la rama. Antes de un pull, Gitbox vuelve a comprobar el árbol de trabajo y omite el clon si encuentra cambios locales, conflictos o una operación en curso. Pasa el puntero sobre el estado de la fila para ver por qué Gitbox lo omitió. El resultado cuenta estas omisiones por separado de los fallos. Un editor aún puede escribir después de la última comprobación. Si Git rechaza el pull porque la edición coincide con la actualización, la fila muestra el nuevo trabajo local sin guardarlo en el stash.
 
+#### Qué significan los mensajes
+
+La vista Requiere atención (Simple: **Te necesitan**), los detalles del clon, la tarjeta de la cuenta y el asistente de configuración explican qué ha bloqueado una operación. Gitbox ofrece una acción cuando puede realizarla desde esa pantalla.
+
+| Mensaje | Qué puedo hacer |
+| --- | --- |
+| No se puede conectar con el servidor | Reviso la conexión y pulso **Reintentar**. |
+| Debes iniciar sesión | Pulso **Arreglar credencial** para revisar o sustituir la credencial de la cuenta. |
+| Al token le faltan permisos | Pulso **Abrir página de tokens** y uso los permisos indicados para ese proveedor. |
+| Servidor ocupado, inténtalo más tarde | Espero. Gitbox ofrece **Reintentar** cuando termina la espera indicada por el servidor. |
+| Cambios en el clon | Uso **Abrir en el editor** para revisar los cambios por los que Gitbox omitió la actualización. |
+| Las ramas necesitan una fusión | Uso **Abrir terminal** para revisar los historiales con mi herramienta Git. |
+| No se encuentra la copia en línea | Primero compruebo el acceso. Si el proveedor y la cuenta lo permiten, **Volver a añadir el repositorio en línea** abre un formulario para crear un repositorio en línea vacío. El clon se queda en el disco. Publico su historial por separado con mi herramienta Git. También puedo usar **Dejar de mostrar este proyecto** en el menú del clon para conservar la carpeta y quitar su entrada. |
+| Unidad desconectada | Vuelvo a conectar la unidad o monto la carpeta. |
+| Algo ha fallado | En Avanzado puedo usar **Mostrar detalles** si hay un diagnóstico disponible. |
+
 #### Fetch de todo
 
 Haz clic en **Fetch de todo** (icono ↻) para consultar todos los remotos en busca de commits nuevos sin hacer pull. Los indicadores de estado se actualizan para que veas qué cambió antes de hacer pull. En Simple, el botón es **Comprobar todo**.

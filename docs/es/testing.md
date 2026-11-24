@@ -6,7 +6,7 @@ Esta guía cubre los niveles de prueba, el fixture `test-gitbox.json` y las chec
 
 - **Pruebas unitarias de paquete** — las pruebas Go bajo `pkg/`. No necesitan preparación, ni red, ni proveedor, y lo aíslan todo con `t.TempDir()` y `t.Setenv()`. Las pruebas unitarias de `pkg/ops` se ejecutan contra un `XDG_CONFIG_HOME` temporal, un `GIT_CONFIG_GLOBAL` temporal y una carpeta SSH temporal, así que nada cambia en el host.
 - **Pruebas de GUI** — las pruebas Go bajo `cmd/gui/`. Llaman directamente a los métodos de `App`, sin ventana de Wails. Necesitan el frontend compilado en `cmd/gui/frontend/dist`, porque el paquete lo embebe.
-- **Pruebas del frontend** — pruebas puras de Node en `cmd/gui/frontend/src/lib/*.test.mjs`, que se ejecutan con `npm test`. No necesitan ni Wails ni credenciales.
+- **Pruebas del frontend** — pruebas puras de Node en `cmd/gui/frontend/src/lib/*.test.mjs`, que se ejecutan con `npm test`. No necesitan ni Wails ni credenciales. La prueba del catálogo usa Go para leer los códigos definidos en el repositorio.
 - **Pruebas de integración del modo remoto** — `go test -tags sshd_integration ./pkg/remote/` contra un `sshd` en contenedor, que ejecuta `scripts/remote-it.sh` en un host Linux con Docker, y `go test -tags remote_host ./pkg/remote/` contra un host real, que ejecuta `scripts/remote-host-it.sh`. Consulta [Pruebas del modo remoto](#pruebas-del-modo-remoto).
 - **Prueba de escenario** — `TestScenario_FullLifecycle` en `pkg/ops/scenario_test.go` recorre el ciclo de vida completo de una cuenta a través de `pkg/ops` contra un proveedor real. Necesita el fixture descrito más abajo, y `go test -short` la salta.
 

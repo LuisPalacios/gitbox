@@ -810,7 +810,7 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 			// The server is not there: say so at once instead of letting
 			// the check, and its retries, time out against it.
 			r = credential.StatusResult{Primary: credential.StatusOffline, Overall: credential.StatusOffline,
-				PrimaryDetail: userMsg(errServerUnreachable)}
+				PrimaryDetail: userMsg(errServerUnreachable), PrimaryFailure: errServerUnreachable}
 		} else if r = check(ctx, acct, key, cfg); r.Overall == credential.StatusOffline {
 			// Offline is a network failure (refused, unreachable, DNS):
 			// retry with backoff to ride out a refusal right after launch
@@ -823,7 +823,7 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 			})
 		}
 		cancel()
-		result := CredentialStatus{Status: r.Overall.String(), Message: r.PrimaryDetail, Primary: r.Primary.String(), PrimaryMsg: r.PrimaryDetail, PAT: r.PAT.String(), PATMsg: r.PATDetail, revision: revision}
+		result := CredentialStatus{Status: r.Overall.String(), Message: userText(r.PrimaryDetail), Primary: r.Primary.String(), PrimaryMsg: userText(r.PrimaryDetail), PAT: r.PAT.String(), PATMsg: userText(r.PATDetail), Problem: problem(r.PrimaryFailure), revision: revision}
 		if !r.ExpiresAt.IsZero() {
 			result.ExpiresAt = r.ExpiresAt.UTC().Format(time.RFC3339)
 		}

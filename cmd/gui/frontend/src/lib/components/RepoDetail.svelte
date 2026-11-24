@@ -6,12 +6,19 @@
   import { statusColor, countBadge } from '../status';
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
+  import ErrorExplanation from './ErrorExplanation.svelte';
+  import { errorInfo, repoIssue } from '../explain';
+  import type { ErrorActions } from '../explain';
   import type { RepoState, RepoDetailView } from '../types';
 
   export let simple: boolean;
   export let state: RepoState;
   export let repoDetail: RepoDetailView | null;
   export let detailLoading: boolean;
+  export let actions: ErrorActions;
+  export let issueActions: ErrorActions;
+  export let accountKey: string | undefined = undefined;
+  $: issue = repoDetail?.upstreamGone ? { code: "repo.upstream_gone" } : repoIssue(state);
 
   $: sc = (s: string) => statusColor(s, $themeStore);
 
@@ -26,28 +33,13 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex (I make the scrollable region reachable by keyboard.) -->
 <div class="repo-detail" role="region" aria-label={$t('detail.title')} tabindex="0" aria-busy={detailLoading} transition:slide={{ duration: 150 }}>
-  {#if simple && (state.status === 'upstream gone' || repoDetail?.upstreamGone)}
-    <div class="detail-gone">
-      <p class="detail-gone-body" style="color:{sc('upstream gone')}">&#9888; {$t('simple.gone')}</p>
-    </div>
-  {:else if state.status === 'upstream gone' || repoDetail?.upstreamGone}
-    <div class="detail-gone">
-      <div class="detail-gone-title" style="color:{sc('upstream gone')}">&#9888; {$t('detail.goneTitle')}</div>
-      <p class="detail-gone-body">
-        {$t('detail.goneBody')}
-      </p>
-      <p class="detail-gone-body">
-        <Rich key="detail.goneOptions" />
-      </p>
-      <ul class="detail-gone-list">
-        <li><Rich key="detail.goneKeep" /></li>
-        <li><Rich key="detail.goneDelete" /></li>
-      </ul>
-    </div>
-  {:else if detailLoading}
+  {#if issue}
+    <ErrorExplanation info={issue} {simple} {accountKey} actions={issueActions} />
+  {/if}
+  {#if detailLoading}
     <span class="detail-loading">{$t('detail.loading')}</span>
-  {:else if repoDetail?.error}
-    <span class="detail-error">{repoDetail.error}</span>
+  {:else if repoDetail?.problem || repoDetail?.error}
+    {#if !issue}<ErrorExplanation info={errorInfo(repoDetail.problem, repoDetail.error)} {simple} {accountKey} {actions} />{/if}
   {:else if repoDetail}
     {#if !simple}
     <div class="detail-header">
@@ -60,11 +52,11 @@
       {/if}
     </div>
     {/if}
-    {#if repoDetail.behind > 0 || repoDetail.incoming.length > 0 || repoDetail.incomingError}
+    {#if repoDetail.behind > 0 || repoDetail.incoming.length > 0 || repoDetail.incomingError || repoDetail.incomingProblem}
       <div class="detail-section-title">{$t(simple ? 'detail.incomingSimple' : 'detail.incoming')} <span class="sbadge" style="color:{sc('behind')}">{repoDetail.incoming.length}</span></div>
       <p class="detail-freshness">{$t('detail.incomingFreshness')}</p>
-      {#if repoDetail.incomingError}
-        <p class="detail-error">{$t('detail.incomingError')} {repoDetail.incomingError}</p>
+      {#if repoDetail.incomingError || repoDetail.incomingProblem}
+        <ErrorExplanation info={errorInfo(repoDetail.incomingProblem, repoDetail.incomingError)} {simple} {accountKey} {actions} />
       {:else if repoDetail.incoming.length === 0}
         <p class="detail-clean">{$t('detail.noIncoming')}</p>
       {:else}
@@ -116,28 +108,16 @@
     max-height: 180px; overflow-y: auto; font-size: 12px;
   }
   .detail-loading,
-  .detail-error,
   .detail-clean {
     color: var(--text-muted); font-style: italic;
   }
-  .detail-error { color: var(--text-primary); }
   .detail-freshness { margin: 3px 0 6px; color: var(--text-muted); font-size: 11px; }
   .detail-commits { list-style: none; margin: 0; padding: 0; }
   .detail-commit { display: flex; flex-direction: column; gap: 2px; padding: 5px 0; }
   .detail-commit + .detail-commit { border-top: 1px solid var(--border); }
   .detail-subject { color: var(--text-primary); overflow-wrap: anywhere; }
   .detail-author { color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
-  .detail-gone {
-    display: flex; flex-direction: column; gap: 6px;
-    font-size: 12px; line-height: 1.45;
-  }
-  .detail-gone-title { font-weight: 600; font-size: 12.5px; }
-  .detail-gone-body { margin: 0; color: var(--text-secondary); }
-  .detail-gone-list {
-    margin: 2px 0 0 0; padding-left: 18px;
-    color: var(--text-secondary);
-  }
-  .detail-gone-list li + li { margin-top: 4px; }
+
   .detail-header {
     display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
     font-size: 11px; color: var(--text-secondary);

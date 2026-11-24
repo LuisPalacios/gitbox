@@ -35,7 +35,15 @@ export interface repoRunDTO {
   repo: string;
 }
 
+export interface ProblemDTO {
+  code?: string;
+  hint?: string;
+  detail?: string;
+  retryAt?: number;
+}
+
 export interface CredentialStatus {
+  problem?: ProblemDTO;
   status: string;
   message: string;
   primary: string;
@@ -54,6 +62,7 @@ export interface DiscoverResult {
 }
 
 export interface discoverDoneDTO {
+  problem?: ProblemDTO;
   accountKey: string;
   error?: string;
   repos?: DiscoverResult[];
@@ -319,6 +328,7 @@ export interface StatusResult {
   untracked: number;
   conflicts: number;
   error?: string;
+  problem?: ProblemDTO;
   branch?: string;
   isDefault?: boolean;
   checkedAt?: string;

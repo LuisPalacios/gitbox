@@ -1,5 +1,7 @@
 import type { AIHarnessEntry as AIHarnessInfo } from './dto.generated';
 
+import type { ErrorInfo } from './explain';
+
 // Types mirroring Go structs from pkg/config and cmd/gui/app.go
 
 export interface GlobalConfig {
@@ -158,6 +160,7 @@ export interface StatusResult {
   modified: number;
   untracked: number;
   conflicts: number;
+  problem?: ErrorInfo;
   error?: string;
   branch?: string;
   isDefault?: boolean;
@@ -176,7 +179,8 @@ export interface CredentialStatus {
   status: string;      // overall: ok, warning, offline, error, none, unknown, checking
   message: string;
   primary: string;     // primary credential status (same states as overall)
-  primaryMsg: string;  // human-readable detail for primary (may include raw error)
+  problem?: ErrorInfo;
+  primaryMsg: string;  // human-readable detail for primary (scrubbed by the backend)
   pat: string;         // companion PAT status
   patMsg: string;      // human-readable detail for PAT
   expiresAt?: string;  // RFC 3339 expiry of the token that passed the API check; absent when unknown
@@ -199,6 +203,8 @@ export interface RepoState {
   isDefault?: boolean;
   checkedAt?: string;
   pullSkipped?: PullSkipReason;
+  problem?: ErrorInfo;
+  failedOperation?: "clone" | "pull" | "fetch";
   repairWarnings?: string[];
 }
 
@@ -226,6 +232,8 @@ export interface RepoDetailView {
   untracked: string[];
   incoming: { hash: string; author: string; subject: string }[];
   incomingError?: string;
+  incomingProblem?: ErrorInfo;
+  problem?: ErrorInfo;
   error?: string;
   upstreamGone?: boolean;
   upstreamError?: string;

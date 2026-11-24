@@ -1812,20 +1812,21 @@ type WindowStateDTO struct {
 
 // StatusResult is the frontend-friendly repo status.
 type StatusResult struct {
-	Source       string `json:"source"`
-	Repo         string `json:"repo"`
-	Account      string `json:"account"`
-	Path         string `json:"path"`
-	State        string `json:"state"`
-	Ahead        int    `json:"ahead"`
-	Behind       int    `json:"behind"`
-	Modified     int    `json:"modified"`
-	Untracked    int    `json:"untracked"`
-	Conflicts    int    `json:"conflicts"`
-	Error        string `json:"error,omitempty"`
-	Branch       string `json:"branch,omitempty"`
-	IsDefault    *bool  `json:"isDefault,omitempty"`
-	CheckedAt    string `json:"checkedAt,omitempty"`
+	Source       string      `json:"source"`
+	Repo         string      `json:"repo"`
+	Account      string      `json:"account"`
+	Path         string      `json:"path"`
+	State        string      `json:"state"`
+	Ahead        int         `json:"ahead"`
+	Behind       int         `json:"behind"`
+	Modified     int         `json:"modified"`
+	Untracked    int         `json:"untracked"`
+	Conflicts    int         `json:"conflicts"`
+	Error        string      `json:"error,omitempty"`
+	Problem      *ProblemDTO `json:"problem,omitempty"`
+	Branch       string      `json:"branch,omitempty"`
+	IsDefault    *bool       `json:"isDefault,omitempty"`
+	CheckedAt    string      `json:"checkedAt,omitempty"`
 	sweepStarted time.Time
 }
 
@@ -1845,7 +1846,8 @@ func toStatusResult(rs status.RepoStatus) StatusResult {
 		Modified:  rs.Modified,
 		Untracked: rs.Untracked,
 		Conflicts: rs.Conflicts,
-		Error:     rs.ErrorMsg,
+		Error:     userText(rs.ErrorMsg),
+		Problem:   problem(rs.Failure),
 		Branch:    rs.Branch,
 		IsDefault: isDefault,
 	}
@@ -1945,6 +1947,7 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	result := cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Path: plan.Dest}
 	if err != nil {
 		result.Error = userMsg(failedCloneError(plan.Dest, err))
+		result.Code = toUserError(err).Code
 	} else {
 		// heal.Repo sets user.name/user.email, normalizes the origin
 		// URL, and configures per-repo credential isolation. Warnings are
@@ -2001,16 +2004,18 @@ func (a *App) PullAll(run string) { a.be().PullAll(run) }
 
 // RepoDetail holds human-readable status information for a single repo.
 type RepoDetail struct {
-	Branch        string               `json:"branch"`
-	Ahead         int                  `json:"ahead"`
-	Behind        int                  `json:"behind"`
-	Changed       []git.FileChange     `json:"changed"`
-	Untracked     []string             `json:"untracked"`
-	Incoming      []git.IncomingCommit `json:"incoming"`
-	IncomingError string               `json:"incomingError,omitempty"`
-	Error         string               `json:"error,omitempty"`
-	UpstreamGone  bool                 `json:"upstreamGone,omitempty"`
-	UpstreamError string               `json:"upstreamError,omitempty"`
+	Branch          string               `json:"branch"`
+	Ahead           int                  `json:"ahead"`
+	Behind          int                  `json:"behind"`
+	Changed         []git.FileChange     `json:"changed"`
+	Untracked       []string             `json:"untracked"`
+	Incoming        []git.IncomingCommit `json:"incoming"`
+	Problem         *ProblemDTO          `json:"problem,omitempty"`
+	IncomingProblem *ProblemDTO          `json:"incomingProblem,omitempty"`
+	IncomingError   string               `json:"incomingError,omitempty"`
+	Error           string               `json:"error,omitempty"`
+	UpstreamGone    bool                 `json:"upstreamGone,omitempty"`
+	UpstreamError   string               `json:"upstreamError,omitempty"`
 }
 
 // GetRepoDetail returns local files, incoming commits and the latest upstream flag.
@@ -2045,6 +2050,7 @@ func (a *App) getRepoDetailLocal(sourceKey, repoKey string) RepoDetail {
 	if err != nil {
 		return RepoDetail{
 			Error:        userMsg(err),
+			Problem:      problem(err),
 			UpstreamGone: goneFlag,
 		}
 	}
@@ -2060,6 +2066,7 @@ func (a *App) getRepoDetailLocal(sourceKey, repoKey string) RepoDetail {
 		detail.Incoming, err = git.IncomingCommits(path)
 		if err != nil {
 			detail.IncomingError = userMsg(err)
+			detail.IncomingProblem = problem(err)
 		}
 	}
 	return detail
@@ -2983,7 +2990,7 @@ func (a *App) discoverLocal(accountKey string) {
 			repos, err = ops.ListRemoteRepos(context.Background(), acct, accountKey)
 		}
 		if err != nil {
-			emit(op, "discover:done", discoverDoneDTO{AccountKey: accountKey, Error: userMsg(err)})
+			emit(op, "discover:done", discoverDoneDTO{AccountKey: accountKey, Error: userMsg(err), Problem: problem(err)})
 			return
 		}
 
@@ -3025,13 +3032,14 @@ func (a *App) addDiscoveredReposLocal(key string, repoNames []string) error {
 // CredentialStatus is the result of verifying an account's credentials.
 type CredentialStatus struct {
 	revision   uint64
-	Status     string `json:"status"` // overall: "ok", "warning", "error", "none"
-	Message    string `json:"message"`
-	Primary    string `json:"primary"` // primary credential status
-	PrimaryMsg string `json:"primaryMsg"`
-	PAT        string `json:"pat"` // companion PAT status (for SSH/GCM)
-	PATMsg     string `json:"patMsg"`
-	ExpiresAt  string `json:"expiresAt,omitempty"` // RFC 3339; absent when unknown or never
+	Problem    *ProblemDTO `json:"problem,omitempty"`
+	Status     string      `json:"status"` // overall: "ok", "warning", "error", "none"
+	Message    string      `json:"message"`
+	Primary    string      `json:"primary"` // primary credential status
+	PrimaryMsg string      `json:"primaryMsg"`
+	PAT        string      `json:"pat"` // companion PAT status (for SSH/GCM)
+	PATMsg     string      `json:"patMsg"`
+	ExpiresAt  string      `json:"expiresAt,omitempty"` // RFC 3339; absent when unknown or never
 }
 
 // ─── Helpers ──────────────────────────────────────────────────

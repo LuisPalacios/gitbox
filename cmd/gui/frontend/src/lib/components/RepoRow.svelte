@@ -1,6 +1,9 @@
 <script module lang="ts">
   import type { RepoState, RepoDetailView, EditorInfo, AIHarnessInfo, TerminalProfileInfo } from '../types';
 
+  import type { ErrorActions } from '../explain';
+  import type { CredentialStatus } from '../types';
+
   // RowProps is what every row shares with its list: App builds it once and
   // each view passes it down unchanged. The detail fields feed RepoTree, the
   // rest RepoRow. Rows never write it back; they call the close callbacks.
@@ -22,6 +25,8 @@
     expandedRepo: string | null;
     repoDetail: RepoDetailView | null;
     detailLoading: boolean;
+    repoActions: (source: string, name: string, state: RepoState, forDetail: boolean, credentialStatus?: string) => ErrorActions;
+    credentialStatuses: Record<string, CredentialStatus>;
     activateRepoRow: (sourceKey: string, repoName: string, status: string) => void;
     askDelete: (sourceKey: string, repoKey: string, status: string, removeFolder?: boolean) => void;
     syncRepo: (sourceKey: string, repoKey: string) => void;

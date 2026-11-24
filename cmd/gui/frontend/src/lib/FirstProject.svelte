@@ -2,11 +2,18 @@
   import { onMount, onDestroy } from 'svelte';
   import { bridge, events } from './bridge';
   import { t } from './i18n';
+  import { caughtIssue, errorInfo } from './explain';
+  import type { ErrorInfo } from './explain';
+  import ErrorExplanation from './components/ErrorExplanation.svelte';
   import { ro } from './ro';
   import { firstCloneOutcome, type FirstCloneResult } from './first-project';
   import { providerLabel } from './theme';
   import type { DiscoverResult, OrphanRepoDTO } from './types';
 
+  export let simple: boolean;
+  export let reopenCredential: () => void;
+  export let openTokenPage: (() => void) | undefined;
+  export let tokenScopes: string;
   export let accountKey: string;
   export let provider: string;
   export let url: string;
@@ -26,6 +33,7 @@
   let saving = false;
   let outcome: 'ready' | 'attention' | '' = '';
   let error = '';
+  let listProblem: ErrorInfo | undefined;
   let revision = 0;
   let requested = new Set<string>(); // retries of rows this wizard registered
   let stopListing: (() => void) | undefined;
@@ -39,7 +47,7 @@
     const rev = ++revision;
     stopListing?.(); stopListing = undefined;
     route = next;
-    choices = []; selected = null; destination = ''; filter = ''; error = '';
+    choices = []; selected = null; destination = ''; filter = ''; error = ''; listProblem = undefined;
     loading = true;
     try {
       const config = await bridge.getConfig();
@@ -52,20 +60,20 @@
           .map(r => ({ name: r.repoKey, path: r.path }));
         loading = false;
       } else {
-        stopListing = events.on('discover:done', (data: { accountKey: string; repos?: DiscoverResult[]; error?: string }) => {
+        stopListing = events.on('discover:done', (data: { accountKey: string; repos?: DiscoverResult[]; error?: string; problem?: ErrorInfo }) => {
           if (rev !== revision || data?.accountKey !== accountKey) return;
           stopListing?.(); stopListing = undefined;
           loading = false;
-          if (data.error) { error = $t('onboard.projectsFailed'); return; }
+          if (data.problem || data.error) { listProblem = errorInfo(data.problem, data.error); return; }
           choices = (data.repos || []).filter(r => !tracked[r.fullName] || requested.has(r.fullName))
             .map(r => ({ name: r.fullName, path: '' })).sort((a,b) => a.name.localeCompare(b.name));
         });
         await bridge.discover(accountKey);
       }
-    } catch {
+    } catch (failure) {
       if (rev !== revision) return;
       stopListing?.(); stopListing = undefined;
-      loading = false; error = $t('onboard.projectsFailed');
+      loading = false; listProblem = caughtIssue(failure);
     }
   }
 
@@ -150,6 +158,8 @@
         <button class="primary" disabled={saving || !destination} use:ro={['addDiscoveredRepos', 'cloneRepo']} on:click={prepare}>{saving ? $t('onboard.preparing') : $t('onboard.downloadSelected', { project: selected.name })}</button>
       {/if}
     {/if}
+  {:else if listProblem}
+    <ErrorExplanation info={listProblem} {simple} {accountKey} scopes={tokenScopes} actions={{ retry: () => list(route), credential: reopenCredential, token: openTokenPage }} />
   {:else if !error}
     <p>{route === 'adopt' ? $t('onboard.noLocalProjects') : $t('onboard.projectsNone')}</p>
   {/if}

@@ -9,12 +9,14 @@
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
     applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown, workspaceDiagnostics,
-    remoteWindow
+    remoteWindow, remoteHost
   } from './lib/stores';
   import { detailLocked, accountHealth } from './lib/status';
   import { derivePresentation, CALM_RANK } from './lib/presentation';
   import { createDetailLoader } from './lib/repo-detail';
-  import type { HealthFix } from './lib/status';
+  import { canCreateWith, type HealthFix } from './lib/status';
+  import { editorOff } from './lib/remotehost';
+  import type { ErrorActions } from './lib/explain';
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
   import { languageStore, normalizeLanguage, remoteTextHost, t } from './lib/i18n';
   import { pushNotice, dismissNotice, errorText } from './lib/notices';
@@ -483,9 +485,15 @@
   // notAttempted handles a pull or clone the backend stopped for lack of a
   // server: the row goes back to what it was instead of turning into an
   // error.
-  function notAttempted(key: string) {
+  function notAttempted(key: string, data: { code?: string; error?: string }, operation: "clone" | "pull") {
     repoStates.update((s) => {
-      if (s[key]) s[key] = { ...s[key], status: statusBeforeSync[key] || s[key].status, progress: 0 };
+      if (s[key]) s[key] = {
+        ...s[key],
+        status: statusBeforeSync[key] || s[key].status,
+        progress: 0,
+        problem: { code: data.code, detail: data.error },
+        failedOperation: operation,
+      };
       return { ...s };
     });
   }
@@ -622,7 +630,7 @@
       const row = s[key];
       if (!row || row.status === next) return s;
       statusBeforeSync[key] = row.status;
-      return { ...s, [key]: { ...row, status: next, progress: 0, pullSkipped: undefined } };
+      return { ...s, [key]: { ...row, status: next, progress: 0, pullSkipped: undefined, problem: undefined, failedOperation: undefined } };
     });
   }
 
@@ -636,7 +644,7 @@
     const key = `${sourceKey}/${repoKey}`;
     statusBeforeSync[key] = $repoStates[key]?.status || 'unknown';
     repoStates.update((s) => {
-      s[key] = { ...s[key], status: 'cloning', progress: 0 };
+      s[key] = { ...s[key], status: 'cloning', progress: 0, problem: undefined, failedOperation: undefined };
       return { ...s };
     });
     bridge.cloneRepo(sourceKey, repoKey, root);
@@ -976,7 +984,7 @@
     }
     return byAccount;
   })();
-  $: brokenAccounts = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention);
+  $: brokenAccounts = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention || credStatuses[k]?.problem);
   $: attention = (() => {
     const counts = attentionCounts(keysByAccount, rankOf, CALM_RANK, brokenAccounts);
     return { ...counts, total: counts.total + ($configStore?.pathConflicts?.length ?? 0) };
@@ -1264,7 +1272,7 @@
 
   async function retryCredential(accountKey: string) {
     const before = credStatuses[accountKey];
-    credStatuses[accountKey] = { ...(before || {}), status: 'unknown' };
+    credStatuses[accountKey] = { ...(before || {}), status: 'unknown', problem: undefined };
     credStatuses = credStatuses;
     try {
       const cs = await bridge.credentialVerify(accountKey);
@@ -1314,6 +1322,33 @@
   // Create repo modal
   let createRepoDialog: CreateRepoModal;
   const openCreateRepo = (accountKey: string) => createRepoDialog.openCreateRepo(accountKey);
+
+  function repoActions(source: string, name: string, state: RepoState, forDetail: boolean, credentialStatus?: string): ErrorActions {
+    const account = $sources[source]?.account;
+    const path = state.path;
+    const editor = configEditors.find((item) => !editorOff(item.command, $remoteHost));
+    const profiles = configProfiles.filter((item) => !item.hidden);
+    const profile = profiles.find((item) => item.default) || profiles[0];
+    const [owner, repo, extra] = name.split('/');
+    const retry = () => {
+      if (!state.failedOperation) {
+        void bridge.refreshStatus();
+      } else if (state.failedOperation === 'clone') {
+        void cloneRepo(source, name);
+      } else if (state.failedOperation === 'pull') {
+        syncRepo(source, name);
+      } else if (!fetchingRepos[`${source}/${name}`]) {
+        fetchRepo(source, name);
+      }
+    };
+    return {
+      retry: forDetail ? () => void loadRepoDetail(source, name) : retry,
+      credential: account ? () => fixCredential(account, 'change') : undefined,
+      editor: path && editor ? () => void bridge.openInApp(path, editor.command).catch((error) => pushNotice('error', $t('notice.openEditor'), [errorText(error)])) : undefined,
+      terminal: path && profile ? () => void bridge.openProfile(path, profile.id).catch((error) => pushNotice('error', $t('notice.openTerminalFailed'), [errorText(error)])) : undefined,
+      upstream: account && owner && repo && !extra && canCreateWith(credentialStatus) ? () => void createRepoDialog.openCreateRepo(account, { owner, name: repo }) : undefined,
+    };
+  }
 
   // ── Move repository (issue #64) ──
   let moveDialog: MoveRepoModal;
@@ -1585,7 +1620,7 @@
   $: rowProps = {
     simple, deleteMode, folderDeleteFailures, fetchingRepos, collapsedRepos, workspaceChoices,
     revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
-    expandedRepo, repoDetail, detailLoading,
+    expandedRepo, repoDetail, detailLoading, repoActions, credentialStatuses: credStatuses,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
     togglePRPopover, closePRPopover, sweepBranches, openMoveRepo,
     toggleContainer, rescanContainer, chooseWorkspace, findWorkspaceFolder, toggleRepoCollapsed, isContainerRepo, showAccountView,
@@ -2022,7 +2057,7 @@
       const key = `${data.source}/${data.repo}`;
       const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !data.skipped);
       if (!checked.accept) return;
-      if (data.skipped) { notAttempted(key); return; }
+      if (data.skipped) { notAttempted(key, data, "clone"); return; }
       repoStates.update((s) => {
         if (s[key]) {
           s[key] = {
@@ -2035,6 +2070,8 @@
             path: data.path || s[key].path,
             progress: 0,
             error: data.error,
+            problem: data.error ? { code: data.code, detail: data.error } : undefined,
+            failedOperation: data.error ? 'clone' : undefined,
             repairWarnings: data.error ? s[key].repairWarnings : data.warnings,
           };
         }
@@ -2051,7 +2088,7 @@
       const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !skipped && !data.unchanged);
       if (!checked.accept) return;
       updateRepairWarning(data.source, data.repo, data.repairWarnings);
-      if (skipped === true) { notAttempted(key); return; }
+      if (skipped === true) { notAttempted(key, data, "pull"); return; }
       const reason = skipped ? skipped as PullSkipReason : undefined;
       repoStates.update((s) => {
         const row = s[key];
@@ -2067,6 +2104,8 @@
             behind: data.behind ?? row.behind,
             pullSkipped: reason,
             error: undefined,
+            problem: undefined,
+            failedOperation: undefined,
           };
         } else {
           s[key] = {
@@ -2076,6 +2115,8 @@
             progress: 0,
             pullSkipped: undefined,
             error: data.error,
+            problem: data.error ? { code: data.code, detail: data.error } : undefined,
+            failedOperation: data.error ? 'pull' : undefined,
           };
         }
         return { ...s };
@@ -2113,6 +2154,15 @@
         fetchCompletions.push({ key, operationID: meta.operationID, error: data.error, failure: { code: data.code, host: data.host, fast: data.refusedFast } });
         fetchProgressTimer ??= setTimeout(flushFetchProgress, 125);
       }
+      repoStates.update((states) => {
+        const state = states[key];
+        if (!state || (state.problem && state.failedOperation !== 'fetch') || (!data.error && state.failedOperation !== 'fetch')) return states;
+        return { ...states, [key]: {
+          ...state,
+          problem: data.error ? { code: data.code, detail: data.error } : undefined,
+          failedOperation: data.error ? 'fetch' : undefined,
+        } };
+      });
       if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
       if (!data.error) recheckOfflineAccount(accountOfKey(key));
     });
@@ -2332,7 +2382,7 @@
 
 <!-- ── ONBOARDING ── -->
 {:else if firstRun}
-<Onboarding mode="first-run" onDone={finishOnboarding} />
+<Onboarding {simple} mode="first-run" onDone={finishOnboarding} />
 {:else}
 
 <div class="app" class:remote-offline={remoteOffline}>
@@ -2436,7 +2486,7 @@
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if connectModal}
-    <Onboarding mode="add" onDone={finishConnect} onCancel={() => { connectModal = false; reloadFromDisk(); }} />
+    <Onboarding {simple} mode="add" onDone={finishConnect} onCancel={() => { connectModal = false; reloadFromDisk(); }} />
   {/if}
 
   <AddAccountModal bind:this={addAccountDialog} {simple} bind:credResult bind:credTokenInput bind:credPrecheck {credBusy} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {runCredSetup} {fetchTokenGuide} {verifySSHConnection} {regenerateSSHKey} />

@@ -15,6 +15,7 @@
   import { ro } from '../ro';
   import { onActivateKey } from '../keyboard';
   import UIIcon from '../UIIcon.svelte';
+  import AccountIssue from './AccountIssue.svelte';
   import RepoTree from './RepoTree.svelte';
   import type { RowProps } from './RepoRow.svelte';
   import { compareRepoKeys, groupTreeRows } from '../repo-tree';
@@ -49,7 +50,7 @@
     folded.has(key) ? folded.delete(key) : folded.add(key);
     folded = folded;
   }
-  $: broken = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention);
+  $: broken = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention || credStatuses[k]?.problem);
   $: accountCount = Object.keys($accounts).length;
   $: conflicts = $configStore?.pathConflicts ?? [];
   $: needYou = conflicts.length + items.length + broken.length;
@@ -85,8 +86,7 @@
         <div class="acct-row">
           <span class="mark" style="color: {sc(h.color)}" aria-hidden="true">{h.mark}</span>
           <button class="acct-name" on:click={() => setView(accountView(key))}>{key}</button>
-          <span class="acct-words" style="color: {sc(h.color)}">{$t(h.key)}</span>
-          {#if h.fix}<button use:ro={'credentialStoreToken'} class="text-btn acct-fix" on:click={() => fixCredential(key, h.fix)}>{$t(h.fixKey)}</button>{/if}
+          <AccountIssue accountKey={key} credential={credStatuses[key]} {simple} {fixCredential} />
         </div>
       {/each}
     {/if}
@@ -104,7 +104,7 @@
             <span class="group-n">· {a.count}</span>
           </div>
           {#if !isFolded}
-            <RepoTree rows={a.rows} groupSource={a.sourceKey} {rowProps} {parentLabels} fadeHealthy={items.length > 0} />
+            <RepoTree rows={a.rows} groupSource={a.sourceKey} {rowProps} {parentLabels} showIssues fadeHealthy={items.length > 0} />
           {/if}
         </div>
       {/each}
@@ -129,8 +129,6 @@
     font-size: 13px; font-weight: 600; color: var(--text-repo); white-space: nowrap;
   }
   .acct-name:hover { text-decoration: underline; text-underline-offset: 3px; }
-  .acct-words { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .acct-fix { margin-left: auto; }
   .empty { padding: 32px 8px; text-align: center; color: var(--text-muted); font-size: 13px; }
   .empty p { margin: 0 0 10px; }
   .empty-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }

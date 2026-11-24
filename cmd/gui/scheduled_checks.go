@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"strings"
 	"time"
+
+	"github.com/LuisPalacios/gitbox/pkg/config"
 )
 
 func (a *App) hostHarnessTask() *scheduledTask {
@@ -55,20 +58,41 @@ func (a *App) GetScheduledTasks() []ScheduledTaskDTO { return a.tasks.snapshot()
 // RunTask requests a check now. Concurrent requests share the reservation
 // with periodic runs. The caller that started it waits for actual completion.
 func (a *App) RunTask(name string) (string, error) {
+	if strings.HasPrefix(name, retryConnectionTask) {
+		if a.remote != nil && !a.remote.connected() {
+			return "", errTaskOffline
+		}
+		if err := a.be().RunFleetCheck(a.refreshContext(), name); err != nil {
+			return "", err
+		}
+		return "finished", nil
+	}
 	if a.ctx != nil && a.windowMode != "terminals" {
 		a.ensureWindowTasks()
 	}
 	return a.tasks.runNow(name)
 }
 
-// RunFleetCheck executes only the three read/check operations the window
-// schedules on its fleet. Each inner git or provider request keeps its own
-// bound; an entire fleet can take several such bounds to complete.
+// The account-scoped check is user-triggered and never registered with the scheduler.
+const retryConnectionTask = "retry-connection/"
+
+// RunFleetCheck handles scheduled fleet checks and explicit single-server retries.
+
 func (b localBackend) RunFleetCheck(ctx context.Context, name string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	a := b.a
+	if key, ok := strings.CutPrefix(name, retryConnectionTask); ok {
+		a.mu.Lock()
+		account, exists := a.cfg.Accounts[key]
+		a.mu.Unlock()
+		if !exists {
+			return config.ErrNotFound
+		}
+		a.recheckDownServer(ctx, serverAddr(account))
+		return ctx.Err()
+	}
 	switch name {
 	case taskFetch:
 		return a.fetchAllReposContext(ctx)

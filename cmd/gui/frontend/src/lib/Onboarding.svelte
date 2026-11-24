@@ -11,8 +11,12 @@
   import { openExternal } from './external';
   import { remoteHost, remoteWindow } from './stores';
   import { gcmOffered } from './gcmRemote';
+  import ErrorExplanation from './components/ErrorExplanation.svelte';
+  import { accountIssue, caughtIssue, errorInfo } from './explain';
+  import type { ErrorInfo } from './explain';
   import FirstProject from './FirstProject.svelte';
 
+  export let simple: boolean;
   export let mode: 'first-run' | 'add' = 'first-run';
   export let onDone: (result: { sourceKey: string; repos: string[] } | null) => void;
   export let onCancel: () => void = () => {};
@@ -30,12 +34,14 @@
   let folderRevision = 0;
   let destroyed = false;
   let folderError = '';
+  let folderProblem: ErrorInfo | undefined;
   let folderBusy = false;
   function previewFolder(path: string) {
     clearTimeout(previewTimer);
     const rev = ++folderRevision;
     rootPreview = null;
     folderError = '';
+    folderProblem = undefined;
     if (!path.trim()) return;
     previewTimer = setTimeout(async () => {
       try {
@@ -56,14 +62,15 @@
     if (!rootPreview?.writable || folderBusy) return;
     route = choice;
     folderError = '';
+    folderProblem = undefined;
     if (!folder.trim()) { folderError = $t('onboard.folderRequired'); return; }
     folderBusy = true;
     try {
       // Also switches config saving on and starts new installs in Simple.
       await bridge.initRoot(folder.trim());
       step = 'connect';
-    } catch (err: any) {
-      folderError = err?.message || String(err);
+    } catch (err) {
+      folderProblem = caughtIssue(err);
     }
     folderBusy = false;
   }
@@ -86,10 +93,11 @@
   let phase: 'form' | 'signing-in' | 'failed' | 'token' = 'form';
   let accountKey = ''; // set once the account exists
   let connectError = '';
-  let connectDetail = '';
+  let connectProblem: ErrorInfo | undefined;
   let tokenURL = '';
   let tokenScopes = '';
   let token = '';
+  let tokenInput: HTMLInputElement;
   let busy = false;
 
   async function checkGCM() {
@@ -149,7 +157,7 @@
 
   async function connect() {
     connectError = '';
-    connectDetail = '';
+    connectProblem = undefined;
     if (!url || !username.trim() || !name.trim() || !email.trim()) {
       connectError = $t('onboard.fieldsRequired');
       return;
@@ -161,8 +169,8 @@
     busy = true;
     try {
       await createAccount(useToken ? 'token' : 'gcm');
-    } catch (err: any) {
-      connectError = err?.message || String(err);
+    } catch (err) {
+      connectProblem = caughtIssue(err);
       accountKey = '';
       busy = false;
       return;
@@ -172,8 +180,8 @@
     try {
       if (useToken) await showTokenStep();
       else await signIn();
-    } catch (err: any) {
-      connectError = err?.message || String(err);
+    } catch (err) {
+      connectProblem = caughtIssue(err);
     }
     busy = false;
   }
@@ -181,19 +189,20 @@
   async function signIn() {
     phase = 'signing-in';
     connectError = '';
-    connectDetail = '';
-    let res: any;
+    connectProblem = undefined;
+    let res: Awaited<ReturnType<typeof bridge.credentialSetupGCM>>;
     try {
       res = await bridge.credentialSetupGCM(accountKey);
-    } catch (err: any) {
-      res = { ok: false, message: err?.message || String(err) };
+    } catch (err) {
+      phase = "failed";
+      connectProblem = caughtIssue(err);
+      return;
     }
     if (res?.ok) {
       startProjects();
     } else {
       phase = 'failed';
-      connectError = $t('onboard.signInFailed');
-      connectDetail = res?.message || '';
+      connectProblem = {};
     }
   }
 
@@ -203,8 +212,8 @@
       await bridge.changeCredentialType(accountKey, 'token');
       useToken = true;
       await showTokenStep();
-    } catch (err: any) {
-      connectError = err?.message || String(err);
+    } catch (err) {
+      connectProblem = caughtIssue(err);
     }
     busy = false;
   }
@@ -212,33 +221,50 @@
   async function showTokenStep() {
     phase = 'token';
     connectError = '';
-    connectDetail = '';
-    const guide = await bridge.getTokenGuide(accountKey);
+    connectProblem = undefined;
+    await loadTokenGuide();
+  }
+
+  async function loadTokenGuide() {
+    const key = accountKey;
+    const guide = await bridge.getTokenGuide(key);
+    if (key !== accountKey || destroyed) return;
     tokenURL = guide?.creationURL || '';
     tokenScopes = guide?.scopes || '';
   }
 
   async function saveToken() {
     connectError = '';
-    connectDetail = '';
+    connectProblem = undefined;
     busy = true;
     try {
       const res = await bridge.credentialStoreToken(accountKey, token.trim());
-      if (!res?.ok) throw new Error(res?.message || '');
-      // Stored: the token leaves the window's memory (#163, #242).
-      token = '';
-      const status = await bridge.credentialVerify(accountKey);
-      if (status.status === 'ok' || status.status === 'warning') {
-        startProjects();
+      if (res?.ok) {
+        // Stored: the token leaves the window's memory (#163, #242).
+        token = '';
+        await verifyToken();
       } else {
-        connectError = $t('onboard.tokenFailed');
-        connectDetail = status.primaryMsg || status.message || '';
+        connectProblem = errorInfo(undefined, res?.message);
       }
-    } catch (err: any) {
-      connectError = $t('onboard.tokenFailed');
-      connectDetail = err?.message || String(err);
+    } catch (err) {
+      connectProblem = caughtIssue(err);
+    } finally {
+      busy = false;
     }
-    busy = false;
+  }
+
+  async function verifyToken() {
+    busy = true;
+    connectProblem = undefined;
+    try {
+      const status = await bridge.credentialVerify(accountKey);
+      if (status.status === 'ok' || (status.status === 'warning' && !status.problem)) startProjects();
+      else connectProblem = accountIssue(status);
+    } catch (err) {
+      connectProblem = caughtIssue(err);
+    } finally {
+      busy = false;
+    }
   }
 
   // Back to the form: drop the half-made account from the config (never
@@ -250,11 +276,13 @@
       accountKey = '';
       phase = 'form';
       connectError = '';
-      connectDetail = '';
+      connectProblem = undefined;
       token = '';
+      tokenURL = '';
+      tokenScopes = '';
       useToken = !gcm?.ok;
-    } catch (err: any) {
-      connectError = err?.message || String(err);
+    } catch (err) {
+      connectProblem = caughtIssue(err);
     }
     busy = false;
   }
@@ -264,7 +292,7 @@
   let selected: Record<string, boolean> = {};
   let filter = '';
   let listing = false;
-  let listError = '';
+  let listProblem: ErrorInfo | undefined;
   let saving = false;
   let stopListening: (() => void) | null = null;
 
@@ -276,27 +304,49 @@
 
   function startProjects() {
     step = 'projects';
+    if (!tokenURL) void loadTokenGuide().catch(() => {});
     if (mode === 'add') listRepos();
   }
 
-  function listRepos() {
+  async function listRepos() {
     listing = true;
-    listError = '';
+    listProblem = undefined;
     repos = [];
     selected = {};
     stopListening?.();
     stopListening = events.on('discover:done', (data) => {
-      if (data?.accountKey && data.accountKey !== accountKey) return;
+      if (data?.accountKey !== accountKey) return;
       stopListening?.();
       stopListening = null;
       listing = false;
-      if (data?.error) {
-        listError = String(data.error);
+      if (data?.problem || data?.error) {
+        listProblem = errorInfo(data.problem, data.error);
         return;
       }
       repos = (data?.repos || []).sort((a: DiscoverResult, b: DiscoverResult) => a.fullName.localeCompare(b.fullName));
     });
-    bridge.discover(accountKey);
+    try {
+      await bridge.discover(accountKey);
+    } catch (error) {
+      stopListening?.();
+      stopListening = null;
+      listing = false;
+      listProblem = caughtIssue(error);
+    }
+  }
+
+  async function reopenCredential() {
+    step = 'connect';
+    if (useToken) {
+      try { await showTokenStep(); }
+      catch (error) { connectProblem = caughtIssue(error); }
+    } else {
+      await signIn();
+    }
+  }
+
+  function openTokenPage() {
+    if (tokenURL) void openExternal(tokenURL);
   }
 
   onDestroy(() => {
@@ -313,12 +363,12 @@
 
   async function download() {
     saving = true;
-    listError = '';
+    listProblem = undefined;
     try {
       await bridge.addDiscoveredRepos(accountKey, chosen);
       onDone({ sourceKey: accountKey, repos: chosen });
-    } catch (err: any) {
-      listError = err?.message || String(err);
+    } catch (err) {
+      listProblem = caughtIssue(err);
     }
     saving = false;
   }
@@ -352,6 +402,7 @@
       <h2 class="ob-heading">{$t('onboard.folderTitle')}</h2>
       <p class="ob-desc">{$t('onboard.folderDesc')}</p>
       {#if folderError}<p class="ob-error">{folderError}</p>{/if}
+      {#if folderProblem}<ErrorExplanation info={folderProblem} {simple} />{/if}
       <div class="ob-row">
         <input class="ob-input" id="ob-root" bind:value={folder} aria-label={$t('onboard.folderPick')} translate="no" />
         {#if !$remoteHost}<button class="ob-btn" on:click={browse}>{$t('onboard.browse')}</button>{/if}
@@ -431,6 +482,7 @@
         {/if}
 
         {#if connectError}<p class="ob-error">{connectError}</p>{/if}
+        {#if connectProblem}<ErrorExplanation info={connectProblem} {simple} />{/if}
         <button class="ob-btn ob-primary ob-wide" on:click={connect} disabled={busy || gcm === null}>
           {useToken ? $t('onboard.connectToken') : $t('onboard.connect')}
         </button>
@@ -449,8 +501,7 @@
         <div class="ob-wait"><div class="ob-spinner"></div><span>{$t('onboard.signingIn')}</span></div>
 
       {:else if phase === 'failed'}
-        <p class="ob-error">{connectError}</p>
-        {#if connectDetail}<pre class="ob-detail">{connectDetail}</pre>{/if}
+        {#if connectProblem}<ErrorExplanation info={connectProblem} {simple} />{/if}
         <button class="ob-btn ob-primary ob-wide" on:click={signIn} disabled={busy}>{$t('onboard.tryAgain')}</button>
         <div class="ob-links">
           <button class="ob-link" on:click={switchToToken} disabled={busy}>{$t('onboard.useToken')}</button>
@@ -459,14 +510,20 @@
 
       {:else if phase === 'token'}
         <p class="ob-desc">{$t('onboard.tokenSteps')}</p>
-        {#if tokenURL}
+        {#if tokenURL && connectProblem?.code !== 'provider.scope_denied'}
           <p><a href={tokenURL} on:click|preventDefault={() => openExternal(tokenURL)}>{$t('onboard.tokenLink')}</a></p>
         {/if}
-        {#if tokenScopes}<p class="ob-small">{$t('onboard.tokenScopes', { scopes: tokenScopes })}</p>{/if}
+        {#if tokenScopes && connectProblem?.code !== 'provider.scope_denied'}<p class="ob-small">{$t('onboard.tokenScopes', { scopes: tokenScopes })}</p>{/if}
         <label class="ob-label" for="ob-token">{$t('onboard.token')}</label>
-        <input class="ob-input ob-full" id="ob-token" type="password" bind:value={token} />
+        <input class="ob-input ob-full" id="ob-token" type="password" bind:this={tokenInput} bind:value={token} />
         {#if connectError}<p class="ob-error">{connectError}</p>{/if}
-        {#if connectDetail}<pre class="ob-detail">{connectDetail}</pre>{/if}
+        {#if connectProblem}
+          <ErrorExplanation info={connectProblem} {simple} {busy} {accountKey} scopes={tokenScopes} actions={{
+            retry: verifyToken,
+            credential: () => tokenInput?.focus(),
+            token: tokenURL ? () => void openExternal(tokenURL) : undefined,
+          }} />
+        {/if}
         <button class="ob-btn ob-primary ob-wide" on:click={saveToken} disabled={busy || !token.trim()}>{$t('onboard.tokenSave')}</button>
         <div class="ob-links">
           <button class="ob-link" on:click={changeDetails} disabled={busy}>{$t('onboard.changeDetails')}</button>
@@ -474,15 +531,13 @@
       {/if}
 
     {:else if step === 'projects' && mode === 'first-run'}
-      <FirstProject {accountKey} {provider} {url} {username} {folder} initialRoute={route} onDone={skip} />
+      <FirstProject {simple} {reopenCredential} openTokenPage={tokenURL ? openTokenPage : undefined} {tokenScopes} {accountKey} {provider} {url} {username} {folder} initialRoute={route} onDone={skip} />
     {:else if step === 'projects'}
       <h2 class="ob-heading">{$t('onboard.projectsTitle')}</h2>
       {#if listing}
         <div class="ob-wait"><div class="ob-spinner"></div><span>{$t('onboard.projectsChecking')}</span></div>
-      {:else if listError}
-        <p class="ob-error">{$t('onboard.projectsFailed')}</p>
-        <pre class="ob-detail">{listError}</pre>
-        <button class="ob-btn ob-primary ob-wide" on:click={listRepos}>{$t('onboard.tryAgain')}</button>
+      {:else if listProblem}
+        <ErrorExplanation info={listProblem} {simple} {accountKey} scopes={tokenScopes} actions={{ retry: listRepos, credential: reopenCredential, token: tokenURL ? openTokenPage : undefined }} />
         <div class="ob-links"><button class="ob-link" on:click={skip}>{$t('onboard.skip')}</button></div>
       {:else if repos.length === 0}
         <p class="ob-desc">{$t('onboard.projectsNone')}</p>
@@ -541,10 +596,7 @@
   .ob-desc { font-size: 13px; color: var(--text-secondary); margin: 0 0 14px; line-height: 1.4; }
   .ob-hint, .ob-small { font-size: 11px; color: var(--text-muted); margin: 4px 0 12px; line-height: 1.4; }
   .ob-error { font-size: 12px; color: #D81E5B; margin: 8px 0; font-weight: 600; }
-  .ob-detail {
-    font-size: 11px; color: var(--text-secondary); background: var(--bg-hover); border-radius: 6px;
-    padding: 8px; margin: 0 0 12px; white-space: pre-wrap; word-break: break-word; max-height: 120px; overflow-y: auto;
-  }
+
   .ob-label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 10px 0 4px; }
   .ob-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
   .ob-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

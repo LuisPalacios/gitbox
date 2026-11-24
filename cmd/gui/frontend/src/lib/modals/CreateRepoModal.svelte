@@ -7,6 +7,7 @@
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
 
+  let restoring = false;
   let createRepoModal: string | null = null;
   let createRepoOrgs: string[] = [];
   let createRepoOwner = '';
@@ -41,21 +42,24 @@
     }
   }
 
-  export async function openCreateRepo(accountKey: string) {
+  export async function openCreateRepo(accountKey: string, upstream?: { owner: string; name: string }) {
+    restoring = !!upstream;
     createRepoModal = accountKey;
     createRepoOrgs = [];
     createRepoOwner = '';
-    createRepoName = '';
+    createRepoName = upstream?.name || '';
     createRepoDesc = '';
     createRepoPrivate = true;
-    createRepoClone = true;
+    createRepoClone = !upstream;
     createRepoRoot = $configStore?.sources?.[accountKey]?.root || $configStore?.global?.roots?.[0] || '';
     createRepoBusy = false;
     createRepoError = '';
     createRepoNameError = '';
     try {
       createRepoOrgs = await bridge.listAccountOrgs(accountKey);
-      if (createRepoOrgs.length > 0) createRepoOwner = createRepoOrgs[0];
+      createRepoOwner = upstream
+        ? createRepoOrgs.find((owner) => owner === upstream.owner) || ""
+        : createRepoOrgs[0] || "";
     } catch (e: any) {
       createRepoError = e?.message || $t('createRepo.loadOrgsFailed');
     }
@@ -97,6 +101,7 @@
       </div>
       <div class="modal-body">
         <p class="create-repo-warning"><Rich key="createRepo.intro" vars={{ provider: $accounts[createRepoModal]?.provider || $t('createRepo.provider'), url: $accounts[createRepoModal]?.url || '' }} /></p>
+        {#if restoring}<p>{$t('error.repo.upstream_gone.review')}</p>{/if}
         {#if createRepoError}
           <p class="form-error">{createRepoError}</p>
         {/if}
@@ -124,7 +129,7 @@
             <input type="checkbox" bind:checked={createRepoPrivate} disabled={createRepoBusy} /> {$t('createRepo.private')}
           </label>
           <label style="font-size: 12px; color: var(--text); display: flex; align-items: center; gap: 4px;">
-            <input type="checkbox" bind:checked={createRepoClone} disabled={createRepoBusy} /> {$t('createRepo.cloneAfter')}
+            <input type="checkbox" bind:checked={createRepoClone} disabled={createRepoBusy || restoring} /> {$t('createRepo.cloneAfter')}
           </label>
         </div>
         {#if createRepoClone && rootChoices.length > 1}
