@@ -90,6 +90,21 @@ test('I correlate post-operation status and ignore a superseded probe', () => {
   assert.equal(completion.status('second', '12', clean), undefined);
 });
 
+test('I keep delayed bulk terminal events independent and preserve stale correlation', () => {
+  const { events, deliver } = transport();
+  const completed = [];
+  const stale = [];
+  events.on('pull:alldone', (row, meta) => completed.push([row.run, meta.operationID]),
+    (row, meta) => stale.push([row.run, meta.operationID]));
+  events.snapshot(4, () => 3);
+  deliver('pull:alldone', 9, 3, { run: 'new' }, { operationID: '14' });
+  deliver('pull:alldone', 8, 3, { run: 'old' }, { operationID: '12' });
+  deliver('pull:alldone', 8, 3, { run: 'old' }, { operationID: '12' });
+  deliver('pull:alldone', 10, 2, { run: 'config-changed' }, { operationID: '13' });
+  assert.deepEqual(completed, [['new', '14'], ['old', '12']]);
+  assert.deepEqual(stale, [['config-changed', '13']]);
+});
+
 test('I use typed handlers in the dashboard and its event consumers', async () => {
   for (const file of ['../App.svelte', './Onboarding.svelte', './FirstProject.svelte', './components/RemoteConnected.svelte', './components/RemoteBadge.svelte']) {
     const component = await readFile(new URL(file, import.meta.url), 'utf8');

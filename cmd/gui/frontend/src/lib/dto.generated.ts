@@ -9,6 +9,7 @@ export interface EventMetadata {
 }
 
 export interface cloneDoneDTO {
+  run?: string;
   source: string;
   repo: string;
   path?: string;
@@ -21,13 +22,15 @@ export interface cloneDoneDTO {
 }
 
 export interface cloneProgressDTO {
+  run?: string;
   source: string;
   repo: string;
   phase: string;
   percent: number;
 }
 
-export interface repoEventDTO {
+export interface repoRunDTO {
+  run?: string;
   source: string;
   repo: string;
 }
@@ -187,7 +190,26 @@ export interface PRAccountUpdateDTO {
   error?: string;
 }
 
+export interface pullAllDoneDTO {
+  run: string;
+  error?: string;
+}
+
+export interface repoRef {
+  source: string;
+  repo: string;
+}
+
+export interface pullAllStartDTO {
+  run: string;
+  pulls: repoRef[];
+  clones: repoRef[];
+}
+
 export interface pullDoneDTO {
+  run?: string;
+  behindBefore: number;
+  unchanged?: boolean;
   repairWarnings?: string[];
   source: string;
   repo: string;
@@ -324,7 +346,7 @@ export interface Envelope<T> extends EventMetadata {
 export interface EventPayloads {
   "clone:done": cloneDoneDTO;
   "clone:progress": cloneProgressDTO;
-  "clone:start": repoEventDTO;
+  "clone:start": repoRunDTO;
   "credentials:updated": Record<string, CredentialStatus> | null;
   "discover:done": discoverDoneDTO;
   "fetch:alldone": fetchAllDoneDTO;
@@ -341,8 +363,10 @@ export interface EventPayloads {
   "network:state": networkStateDTO;
   "pr:refreshed": PRAccountUpdateDTO;
   "profiles:reloaded": null;
+  "pull:alldone": pullAllDoneDTO;
+  "pull:allstart": pullAllStartDTO;
   "pull:done": pullDoneDTO;
-  "pull:start": repoEventDTO;
+  "pull:start": repoRunDTO;
   "reconcile:done": ReconcileDTO;
   "remote:log": string;
   "remote:state": RemoteStateDTO;

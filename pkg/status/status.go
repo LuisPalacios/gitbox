@@ -3,6 +3,7 @@ package status
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -118,13 +119,19 @@ func Check(repoPath string) RepoStatus {
 func CheckContext(ctx context.Context, repoPath string) RepoStatus {
 	rs := RepoStatus{Path: repoPath}
 
-	if !git.IsRepo(repoPath) {
+	regular := git.IsRepo(repoPath)
+	if !regular && !git.IsLinkedWorktree(repoPath) {
 		rs.State = NotCloned
 		return rs
 	}
 
 	st, err := git.StatusContext(ctx, repoPath)
 	if err != nil {
+		// A .git file can have a gitdir pointer whose target disappeared.
+		if ge, ok := errors.AsType[*git.GitError](err); !regular && ok && ge.Code == git.CodeNotARepo {
+			rs.State = NotCloned
+			return rs
+		}
 		rs.State = Error
 		rs.ErrorMsg = err.Error()
 		return rs

@@ -438,6 +438,10 @@ export function PreviewSweep(arg1, arg2) {
   return window['go']['main']['App']['PreviewSweep'](arg1, arg2);
 }
 
+export function PullAll(arg1) {
+  return window['go']['main']['App']['PullAll'](arg1);
+}
+
 export function PullRepo(arg1, arg2) {
   return window['go']['main']['App']['PullRepo'](arg1, arg2);
 }

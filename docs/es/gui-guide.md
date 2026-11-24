@@ -198,9 +198,9 @@ Un repo con checkout en una rama no predeterminada muestra una pequeña insignia
 
 #### Pull de todo
 
-Haz clic en **Pull de todo** (icono de flecha hacia abajo) en la barra superior para ponerlo todo al día. Clona los repos ausentes y hace pull de los repos que están por detrás solo con avance rápido (`git pull --ff-only`), así que nunca fusiona y nunca toca los cambios locales. El botón **Pull · solo FF** propio de una fila por detrás hace lo mismo para un repo. En Simple, el botón es **Actualizar todo**.
+Haz clic en **Pull de todo** (icono de flecha hacia abajo) en la barra superior para comprobar si hay actualizaciones para los clones configurados. Gitbox actualiza los clones limpios que están por detrás de su upstream conocido con `git pull --ff-only --no-autostash` y luego clona los repositorios cuyo destino no existe. El botón **Pull · solo FF** de una fila por detrás comprueba las mismas condiciones locales y puede descubrir commits más recientes en el upstream al pulsarlo. En Simple, el botón es **Actualizar todo**.
 
-El estado da prioridad a los conflictos sin resolver y muestra los cambios locales antes que el historial de la rama. Antes de actualizar, Gitbox vuelve a comprobar el árbol de trabajo y omite el clon si encuentra cambios locales, conflictos o una operación en curso. Pasa el ratón sobre el estado de la fila para ver por qué Gitbox lo omitió. El resultado de Pull de todo cuenta estas omisiones por separado de los fallos.
+El estado da prioridad a los conflictos sin resolver y a los cambios locales sobre el historial de la rama. Antes de un pull, Gitbox vuelve a comprobar el árbol de trabajo y omite el clon si encuentra cambios locales, conflictos o una operación en curso. Pasa el puntero sobre el estado de la fila para ver por qué Gitbox lo omitió. El resultado cuenta estas omisiones por separado de los fallos. Un editor aún puede escribir después de la última comprobación. Si Git rechaza el pull porque la edición coincide con la actualización, la fila muestra el nuevo trabajo local sin guardarlo en el stash.
 
 #### Fetch de todo
 
@@ -208,7 +208,7 @@ Haz clic en **Fetch de todo** (icono ↻) para consultar todos los remotos en bu
 
 #### Tarjetas de actividad y de resultado
 
-Mientras se ejecuta Fetch de todo o Pull de todo, una tira bajo la barra superior dice qué abarca, como "Haciendo fetch de 17 clones en 3 cuentas" o "Haciendo pull de 2 (solo avance rápido) y clonando 1", con una barra de progreso. Cuando termina, una tarjeta de resultado en la esquina inferior derecha lo resume: a cuántos clones hizo fetch, cuántos están ahora por detrás y listos para pull, cuáles omitió porque su cuenta está sin conexión, cualquier fallo con el primer error, y que los cambios locales quedaron intactos. Las tarjetas de éxito desaparecen tras unos segundos; una tarjeta con un fallo se queda hasta que la cierras. Los fetch del arranque y los periódicos solo dejan tarjeta cuando algo cambió o falló.
+Mientras se ejecuta Fetch de todo o Pull de todo, una tira bajo la barra superior dice qué abarca, como "Haciendo fetch de 17 clones en 3 cuentas" o "Comprobando si 2 clones pueden avanzar y luego clonando 1", con una barra de progreso. Cuando termina, una tarjeta de resultado en la esquina inferior derecha lo resume: a cuántos clones hizo fetch, cuántos están ahora por detrás y listos para pull, cuáles omitió porque su cuenta está sin conexión, cualquier fallo con el primer error, y que los cambios locales quedaron intactos. Las tarjetas de éxito desaparecen tras unos segundos; una tarjeta con un fallo se queda hasta que la cierras. Los fetch del arranque y los periódicos solo dejan tarjeta cuando algo cambió o falló.
 
 Al terminar un clonado o pull, la fila muestra **Comprobando…** mientras Gitbox comprueba los archivos locales. Si encuentra cambios, la fila pasa a **Cambios en este ordenador** en modo Simple.
 

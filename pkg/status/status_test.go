@@ -118,9 +118,13 @@ func TestCheckDirty(t *testing.T) {
 }
 
 func TestCheckNotCloned(t *testing.T) {
-	rs := Check(filepath.Join(t.TempDir(), "nonexistent"))
-	if rs.State != NotCloned {
-		t.Errorf("state = %v, want NotCloned", rs.State)
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".git"), "gitdir: nonexistent-worktree-metadata\n")
+	for _, path := range []string{filepath.Join(dir, "nonexistent"), dir} {
+		rs := Check(path)
+		if rs.State != NotCloned {
+			t.Errorf("state = %v, want NotCloned", rs.State)
+		}
 	}
 }
 

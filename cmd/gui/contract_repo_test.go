@@ -164,6 +164,7 @@ func repoMutationRows() []contractRow {
 		{name: "CloneRepo", until: []string{"clone:done"}, call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/fresh", ""); return nil, nil }},
 		{name: "CloneRepo again", until: []string{"clone:done"}, call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/fresh", ""); return nil, nil }},
 		{name: "CloneRepo unknown repo", until: []string{"clone:done"}, call: func(b Backend) (any, error) { b.CloneRepo("acct", "org/none", ""); return nil, nil }},
+		{name: "PullAll", until: []string{"pull:alldone"}, call: func(b Backend) (any, error) { b.PullAll("contract"); return nil, nil }},
 		{name: "PullRepo", until: []string{"pull:done"}, call: func(b Backend) (any, error) { b.PullRepo("acct", "org/repo"); return nil, nil }},
 		{name: "PullRepo unknown repo", until: []string{"pull:done"}, call: func(b Backend) (any, error) { b.PullRepo("acct", "org/none"); return nil, nil }},
 		{name: "ConfirmSweep", call: func(b Backend) (any, error) {
@@ -287,6 +288,16 @@ func TestBackendContractRepoMutations(t *testing.T) {
 			}
 			if w, g := left.neutral(t, want), right.neutral(t, got); w != g {
 				t.Errorf("results differ:\n local  %s\n remote %s", w, g)
+			}
+			if row.name == "PullAll" {
+				// Hosts drain independently, so compare the events without
+				// assuming a shared schedule for the two servers.
+				slices.SortFunc(wantEvents, func(a, b contractEvent) int {
+					return strings.Compare(left.neutral(t, a), left.neutral(t, b))
+				})
+				slices.SortFunc(gotEvents, func(a, b contractEvent) int {
+					return strings.Compare(right.neutral(t, a), right.neutral(t, b))
+				})
 			}
 			if w, g := left.neutral(t, wantEvents), right.neutral(t, gotEvents); w != g {
 				t.Errorf("events differ:\n local  %s\n remote %s", w, g)

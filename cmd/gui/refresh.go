@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -161,13 +160,17 @@ func (a *App) goTracked(work func()) bool {
 // healRepo repairs a clone's configuration before network work. Its reads
 // are bounded and stop when the app closes.
 func (a *App) healRepo(cfg *config.Config, source, repo string) heal.Report {
+	return a.healRepoContext(a.refreshContext(), cfg, source, repo)
+}
+
+func (a *App) healRepoContext(ctx context.Context, cfg *config.Config, source, repo string) heal.Report {
 	if a.refreshHooks != nil && a.refreshHooks.heal != nil {
 		return a.refreshHooks.heal(cfg, source, repo)
 	}
 	if a.readOnly {
 		return heal.Report{} // the clone stays as it is
 	}
-	ctx, cancel := context.WithTimeout(a.refreshContext(), healReadTimeout)
+	ctx, cancel := context.WithTimeout(ctx, healReadTimeout)
 	defer cancel()
 	return heal.RepoContext(ctx, cfg, source, repo)
 }
@@ -356,7 +359,6 @@ func (a *App) fetchOne(cfg *config.Config, revision uint64, source, repo string,
 		return err
 	}
 	account := cfg.Accounts[src.Account]
-	host := fetchHostname(account.URL)
 	addr := serverAddr(account)
 	ctx := a.refreshContext()
 	path := status.RepoPath(cfg, source, repo, r)
@@ -388,17 +390,14 @@ func (a *App) fetchOne(cfg *config.Config, revision uint64, source, repo string,
 		call := &repoFetchFlight{done: make(chan struct{}), cfg: cfg, source: source, repo: repo}
 		a.repoFetches[key] = call
 		a.refreshMu.Unlock()
-		release, err := a.fetches.acquire(ctx, host)
-		if err == nil {
-			if lost != nil && fetchEndpointLost(lost, addr) {
-				err = skipUnreachable(op, source, repo, addr)
-			} else {
-				err = a.performFetch(op, cfg, source, repo, path)
-				if lost != nil && addr != "" && isConnectionFailure(err) {
-					lost.Store(addr, true)
-				}
+		var err error
+		if lost != nil && fetchEndpointLost(lost, addr) {
+			err = skipUnreachable(op, source, repo, addr)
+		} else {
+			err = a.performFetch(op, cfg, source, repo, path, lost)
+			if lost != nil && addr != "" && isConnectionFailure(err) {
+				lost.Store(addr, true)
 			}
-			release()
 		}
 		a.refreshMu.Lock()
 		call.err = err
@@ -438,19 +437,18 @@ func retryWithBackoff(ctx context.Context, started time.Time, again func() bool)
 	}
 }
 
-func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, path string) error {
-	a.maintenanceMu.RLock()
-	report, current := a.repairUnderMaintenance(cfg, source, repo, func() {
+func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, path string, lost *sync.Map) error {
+	ctx := a.refreshContext()
+	report, unlock, err := a.prepareClone(ctx, cfg, repoRef{source, repo}, path, func() {
 		emit(op, "fetch:start", fetchEventDTO{Source: source, Repo: repo})
 	})
-	a.maintenanceMu.RUnlock()
-	if !current {
-		err := fmt.Errorf("repository settings changed during refresh")
+	if err != nil {
 		emit(op, "fetch:done", fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo, Error: userMsg(err)}})
 		return err
 	}
-	var err error
-	addr := serverAddr(cfg.Accounts[cfg.Sources[source].Account])
+	defer unlock()
+	account := cfg.Accounts[cfg.Sources[source].Account]
+	addr := serverAddr(account)
 	if len(report.Warnings) > 0 {
 		err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
 	} else {
@@ -465,10 +463,21 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 			fetch = a.refreshHooks.fetch
 		}
 		err = a.onServer(addr, func(ctx context.Context) error {
+			release, err := a.fetches.acquire(ctx, fetchHostname(account.URL))
+			if err != nil {
+				return err
+			}
+			defer release()
+			if lost != nil && fetchEndpointLost(lost, addr) {
+				return errServerUnreachable
+			}
+			if !a.sameRefreshRepo(cfg, source, repo) {
+				return errCloneSettingsChanged
+			}
 			ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 			defer cancel()
 			started := time.Now()
-			_, err := fetch(ctx, path)
+			_, err = fetch(ctx, path)
 			if git.IsRefusedFast(err) {
 				// A connect refused within milliseconds right after launch is
 				// usually macOS Local Network privacy still checking the new
@@ -690,54 +699,36 @@ func fetchEndpointLost(lost *sync.Map, addr string) bool {
 	return gone
 }
 
-// fetchClones drains each host's queue independently, so waiting for a
-// busy host never blocks the collection or dispatch of another host's repos.
 func (a *App) fetchClones(ctx context.Context, cfg *config.Config, revision uint64) []error {
-	type job struct {
-		source string
-		repo   string
-		addr   string
-	}
-	queues := make(map[string][]job)
-	for _, source := range cfg.SourceOrder {
+	var clones []repoRef
+	for _, source := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[source]
-		account := cfg.Accounts[src.Account]
-		host, addr := fetchHostname(account.URL), serverAddr(account)
-		for _, repo := range src.RepoOrder {
+		for _, repo := range src.OrderedRepoKeys() {
 			if git.IsRepo(status.RepoPath(cfg, source, repo, src.Repos[repo])) {
-				queues[host] = append(queues[host], job{source, repo, addr})
+				clones = append(clones, repoRef{source, repo})
 			}
 		}
 	}
 
-	var workers sync.WaitGroup
 	var mu sync.Mutex
 	var errs []error
-	// A connection can fail even after a successful reachability check.
-	// In that case skip the rest of the jobs for that endpoint this cycle.
+	// A connection can fail after the reachability check. Skip the
+	// remaining jobs for that endpoint this cycle.
 	var lost sync.Map
-	for _, jobs := range queues {
-		var next atomic.Int64
-		for range min(len(jobs), fetchPerHostConcurrency) {
-			workers.Go(func() {
-				for index := next.Add(1) - 1; index < int64(len(jobs)) && ctx.Err() == nil; index = next.Add(1) - 1 {
-					j := jobs[index]
-					var err error
-					if fetchEndpointLost(&lost, j.addr) || !a.reachable(ctx, j.addr) {
-						err = skipUnreachable(a.newOperation().atRevision(revision), j.source, j.repo, j.addr)
-					} else {
-						err = a.fetchOne(cfg, revision, j.source, j.repo, &lost)
-					}
-					if err != nil {
-						mu.Lock()
-						errs = append(errs, err)
-						mu.Unlock()
-					}
-				}
-			})
+	dispatchByHost(ctx, cfg, clones, func(ref repoRef) {
+		addr := serverAddr(cfg.Accounts[cfg.Sources[ref.Source].Account])
+		var err error
+		if fetchEndpointLost(&lost, addr) || !a.reachable(ctx, addr) {
+			err = skipUnreachable(a.newOperation().atRevision(revision), ref.Source, ref.Repo, addr)
+		} else {
+			err = a.fetchOne(cfg, revision, ref.Source, ref.Repo, &lost)
 		}
-	}
-	workers.Wait()
+		if err != nil {
+			mu.Lock()
+			errs = append(errs, err)
+			mu.Unlock()
+		}
+	})
 	return errs
 }
 

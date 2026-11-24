@@ -18,7 +18,7 @@ var writeEventTypes = flag.Bool("write-event-types", false, "write the TypeScrip
 
 var eventPayloadTypes = map[string]reflect.Type{
 	"clone:done":               reflect.TypeFor[cloneDoneDTO](),
-	"clone:start":              reflect.TypeFor[repoEventDTO](),
+	"clone:start":              reflect.TypeFor[repoRunDTO](),
 	"clone:progress":           reflect.TypeFor[cloneProgressDTO](),
 	"credentials:updated":      reflect.TypeFor[map[string]CredentialStatus](),
 	"discover:done":            reflect.TypeFor[discoverDoneDTO](),
@@ -36,7 +36,9 @@ var eventPayloadTypes = map[string]reflect.Type{
 	"network:state":            reflect.TypeFor[networkStateDTO](),
 	"pr:refreshed":             reflect.TypeFor[PRAccountUpdateDTO](),
 	"profiles:reloaded":        nil,
-	"pull:start":               reflect.TypeFor[repoEventDTO](),
+	"pull:allstart":            reflect.TypeFor[pullAllStartDTO](),
+	"pull:alldone":             reflect.TypeFor[pullAllDoneDTO](),
+	"pull:start":               reflect.TypeFor[repoRunDTO](),
 	"pull:done":                reflect.TypeFor[pullDoneDTO](),
 	"reconcile:done":           reflect.TypeFor[ReconcileDTO](),
 	"remote:log":               reflect.TypeFor[string](),

@@ -225,6 +225,8 @@ export function PreviewRoot(arg1:string):Promise<main.OnboardingRootPreviewDTO>;
 
 export function PreviewSweep(arg1:string,arg2:string):Promise<main.SweepPreviewDTO>;
 
+export function PullAll(arg1:string):Promise<void>;
+
 export function PullRepo(arg1:string,arg2:string):Promise<void>;
 
 export function RecommendedGlobalGitignoreBody():Promise<string>;

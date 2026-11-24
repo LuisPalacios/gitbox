@@ -299,7 +299,7 @@ func TestPackageFunctionsUseTheRunner(t *testing.T) {
 			return fakeReply{Exit: 1} // the key is not there
 		case cmd == "config user.name Ana":
 			return fakeReply{Stderr: "error: could not lock config file .git/config: File exists\n", Exit: 255}
-		case cmd == "pull --ff-only":
+		case cmd == "pull --ff-only --no-autostash":
 			return fakeReply{Stderr: "fatal: Not possible to fast-forward, aborting.\n", Exit: 128}
 		case cmd == "fetch --prune -- origin":
 			return fakeReply{Stderr: "fatal: unable to access 'https://user:TOKEN@git.example.org/x.git/': Could not resolve host: git.example.org\n", Exit: 128}

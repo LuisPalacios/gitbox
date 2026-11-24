@@ -1,7 +1,7 @@
 <script lang="ts">
   import { acceptStatusBatch, applyRepairReports, statusPaintQueue } from './lib/status';
   import { completionStatuses, hasConfiguredRepo } from './lib/events';
-  import type { EventPayloads } from './lib/dto.generated';
+  import type { EventMetadata, EventPayloads } from './lib/dto.generated';
   import { onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
@@ -482,20 +482,20 @@
   const statusBeforeSync: Record<string, RepoState['status']> = {};
   // notAttempted handles a pull or clone the backend stopped for lack of a
   // server: the row goes back to what it was instead of turning into an
-  // error, and the run still counts it as reported.
-  function notAttempted(key: string, data: EventPayloads['clone:done'] | EventPayloads['pull:done'], operationID: string) {
+  // error.
+  function notAttempted(key: string) {
     repoStates.update((s) => {
       if (s[key]) s[key] = { ...s[key], status: statusBeforeSync[key] || s[key].status, progress: 0 };
       return { ...s };
     });
-    if (pullRun) pullRun = noteDone(pullRun, key, data.error, { code: data.code, host: data.host }, undefined, operationID);
-    checkSyncDone();
   }
   function clearFetchFailNotice() {
     if (fetchFailNotice) dismissNotice(fetchFailNotice.id);
     fetchFailNotice = null;
   }
   let pullRun: Run | null = null;
+  let pullRunID: string | null = null;
+  let pullRunOperation = '';
   const completion = completionStatuses();
   let mirrorDiscoveryDone = '';
   let fetchOperation = '';
@@ -574,6 +574,7 @@
     pullRun = null;
     if (!run) return;
     const sum = summarizePull(run);
+    if (sum.pulled + sum.cloned + sum.skipped + sum.failed === 0) return;
     // Nothing was pulled because no server answered: the offline banner
     // already says so.
     const stoppedByNetwork = sum.failed > 0 && sum.failures.every((f) => run.failures[f.key]?.code === 'git.offline');
@@ -599,45 +600,34 @@
     if (syncing) return;
     syncing = true;
 
-    let currentStates: Record<string, RepoState> = {};
-    repoStates.subscribe((v) => (currentStates = v))();
-
-    const needsSync = Object.entries(currentStates).filter(
-      ([_, r]) => r.status === 'behind' || r.status === 'not cloned'
-    );
-    if (needsSync.length > 0) pullRun = startPull(needsSync.map(([key]) => key), accountOfKey, statusOfKey);
-
-    for (const [key] of needsSync) {
-      const [sourceKey, ...repoParts] = key.split('/');
-      const repoKey = repoParts.join('/');
-      const state = currentStates[key];
-
-      if (state.status === 'not cloned') {
-        statusBeforeSync[key] = state.status;
-        repoStates.update((s) => {
-          s[key] = { ...s[key], status: 'cloning', progress: 0 };
-          return { ...s };
-        });
-        bridge.cloneRepo(sourceKey, repoKey);
-      } else {
-        statusBeforeSync[key] = state.status;
-        repoStates.update((s) => {
-          s[key] = { ...s[key], status: 'syncing', progress: 0, pullSkipped: undefined };
-          return { ...s };
-        });
-        bridge.pullRepo(sourceKey, repoKey);
-      }
+    const run = crypto.getRandomValues(new Uint32Array(4)).join('-');
+    pullRunID = run;
+    try {
+      await bridge.pullAll(run);
+    } catch (error) {
+      if (pullRunID === run) failPullAll(String(error));
     }
-    if (needsSync.length === 0) syncing = false;
+  }
+
+  function failPullAll(error: string) {
+    syncing = false;
+    pullRunID = null;
+    pullRunOperation = '';
+    pullRun = null;
+    pushNotice('error', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), [error]);
+  }
+
+  function markSyncStart(key: string, next: 'syncing' | 'cloning') {
+    repoStates.update((s) => {
+      const row = s[key];
+      if (!row || row.status === next) return s;
+      statusBeforeSync[key] = row.status;
+      return { ...s, [key]: { ...row, status: next, progress: 0, pullSkipped: undefined } };
+    });
   }
 
   function syncRepo(sourceKey: string, repoKey: string) {
-    const key = `${sourceKey}/${repoKey}`;
-    statusBeforeSync[key] = $repoStates[key]?.status || 'unknown';
-    repoStates.update((s) => {
-      s[key] = { ...s[key], status: 'syncing', progress: 0, pullSkipped: undefined };
-      return { ...s };
-    });
+    markSyncStart(`${sourceKey}/${repoKey}`, 'syncing');
     bridge.pullRepo(sourceKey, repoKey);
   }
 
@@ -1457,6 +1447,8 @@
       // Work that was in flight when the connection dropped ended with it;
       // its rows come back from the host's status.
       syncing = false;
+      pullRunID = null;
+      pullRunOperation = '';
       pullRun = null;
       mirrorSettingUp = {};
       fetchingRepos = {};
@@ -1968,9 +1960,41 @@
       }
     });
 
+    const repoKey = ({ source, repo }: { source: string; repo: string }) => `${source}/${repo}`;
+    const startPullRun = (data: EventPayloads['pull:allstart'], meta: EventMetadata) => {
+      if (data.run !== pullRunID || pullRunOperation) return;
+      pullRunOperation = meta.operationID;
+      pullRun = startPull(data.pulls.map(repoKey), data.clones.map(repoKey), accountOfKey, statusOfKey);
+    };
+    const finishPullRun = (data: EventPayloads['pull:alldone'], meta: EventMetadata) => {
+      if (data.run !== pullRunID || (!meta.client && pullRunOperation && pullRunOperation !== meta.operationID)) return;
+      if (data.error) { failPullAll(data.error); return; }
+      syncing = false;
+      pullRunID = null;
+      pullRunOperation = '';
+      finishPull();
+    };
+    events.on('pull:allstart', startPullRun, startPullRun);
+    events.on('pull:alldone', finishPullRun, finishPullRun);
+
+    const noteClone = (data: EventPayloads['clone:done'], meta: EventMetadata) => {
+      if (pullRun && data.run === pullRunID) {
+        pullRun = noteDone(pullRun, repoKey(data), data.error, { code: data.code, host: data.host }, undefined, meta.operationID);
+      }
+    };
+    const notePull = (data: EventPayloads['pull:done'], meta: EventMetadata) => {
+      const skip = typeof data.skipped === 'string' ? data.skipped as PullSkipReason : undefined;
+      if (pullRun && data.run === pullRunID) {
+        pullRun = noteDone(pullRun, repoKey(data), data.error, { code: data.code, host: data.host }, skip, meta.operationID, data.unchanged);
+      }
+    };
+
     for (const name of ['clone:start', 'pull:start'] as const) {
-      events.on(name, ({ source, repo }, meta) => {
-        if (configuredRepo(source, repo)) completion.start(`${source}/${repo}`, meta.operationID);
+      events.on(name, (data, meta) => {
+        const key = repoKey(data);
+        if (configuredRepo(data.source, data.repo) && completion.start(key, meta.operationID)) {
+          markSyncStart(key, name === 'clone:start' ? 'cloning' : 'syncing');
+        }
       });
     }
 
@@ -1987,12 +2011,12 @@
     });
 
     events.on('clone:done', (data, meta) => {
+      noteClone(data, meta);
       if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
       const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !data.skipped);
       if (!checked.accept) return;
-      const operationID = meta.client ? `client/${meta.operationID}` : meta.operationID;
-      if (data.skipped) { notAttempted(key, data, operationID); return; }
+      if (data.skipped) { notAttempted(key); return; }
       repoStates.update((s) => {
         if (s[key]) {
           s[key] = {
@@ -2010,26 +2034,23 @@
         }
         return { ...s };
       });
-      if (pullRun) pullRun = noteDone(pullRun, key, data.error, undefined, undefined, operationID);
       if ('row' in checked && checked.row) publishCompletionRow(checked.row);
-      checkSyncDone();
-    });
+    }, noteClone);
 
     events.on('pull:done', (data, meta) => {
+      notePull(data, meta);
       if (!configuredRepo(data.source, data.repo)) return;
       const key = `${data.source}/${data.repo}`;
       const skipped = data.skipped;
-      const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !skipped);
+      const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !skipped && !data.unchanged);
       if (!checked.accept) return;
       updateRepairWarning(data.source, data.repo, data.repairWarnings);
-      const operationID = meta.client ? `client/${meta.operationID}` : meta.operationID;
-      if (skipped === true) { notAttempted(key, data, operationID); return; }
+      if (skipped === true) { notAttempted(key); return; }
       const reason = skipped ? skipped as PullSkipReason : undefined;
-      if (pullRun) pullRun = noteDone(pullRun, key, data.error, undefined, reason, operationID);
       repoStates.update((s) => {
         const row = s[key];
         if (!row) return s;
-        if (skipped) {
+        if (skipped || data.unchanged) {
           s[key] = {
             ...row,
             status: (data.state as RepoState['status'] | undefined) ?? statusBeforeSync[key] ?? 'unknown',
@@ -2054,15 +2075,13 @@
         return { ...s };
       });
       if ('row' in checked && checked.row) publishCompletionRow(checked.row);
-      checkSyncDone();
-    });
+    }, notePull);
 
     events.on('status:one', (row, meta) => {
       if (!configuredRepo(row.source, row.repo)) return;
       const key = `${row.source}/${row.repo}`;
       const result = completion.status(key, meta.operationID, row);
       if (result && $repoStates[key]?.status === 'pending') publishCompletionRow(result);
-      checkSyncDone();
     });
 
     events.on('fetch:start', (data, meta) => {
@@ -2246,20 +2265,6 @@
 
     try { await initDashboard(); }
     catch (e) { markStartup('finished'); throw e; }
-  }
-
-  function checkSyncDone() {
-    let states: Record<string, RepoState> = {};
-    repoStates.subscribe((v) => (states = v))();
-    const stillRunning = Object.entries(states).some(([key, row]) => {
-      const slash = key.indexOf('/');
-      return configuredRepo(key.slice(0, slash), key.slice(slash + 1)) &&
-        (row.status === 'syncing' || row.status === 'cloning' || row.status === 'pending');
-    });
-    if (!stillRunning) {
-      syncing = false;
-      finishPull();
-    }
   }
 
 </script>
