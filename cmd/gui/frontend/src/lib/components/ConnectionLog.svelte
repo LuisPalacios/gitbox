@@ -2,7 +2,7 @@
   // The connection log of a remote window (#239): every step with its
   // timing, install decisions, hashes, and what ssh and the server print.
   // The Go side scrubs each line before it gets here.
-  import { afterUpdate } from 'svelte';
+  import { afterUpdate, tick } from 'svelte';
   import { bridge } from '../bridge';
   import type { RemoteDoctorReport } from '../bridge';
   import { t } from '../i18n';
@@ -49,6 +49,10 @@
     } finally {
       doctorBusy = false;
     }
+    // The answer is at the top of the body: show it instead of the tail.
+    follow = false;
+    await tick();
+    if (box) box.scrollTop = 0;
   }
 </script>
 
@@ -63,6 +67,9 @@
     </div>
   </header>
 
+  <!-- One scrolling body: the doctor's report, then the lines, both
+       selectable so a line or a path can be copied. -->
+  <div class="log-body selectable" bind:this={box} on:scroll={onScroll}>
   {#if doctorError}
     <p class="doctor doctor-bad">{doctorError}</p>
   {:else if report}
@@ -77,15 +84,20 @@
       </dd>
       <dt>{$t('remote.doctor.credentials')}</dt>
       <dd>{$t('remote.doctor.findings', { n: report.credentialFindings?.length ?? 0 })}</dd>
+      {#each report.roots ?? [] as root}
+        <dt>{$t('remote.doctor.root')}</dt>
+        <dd class:doctor-bad={root.state !== 'ok'}><span translate="no">{root.path}</span>: {$t(`remote.doctor.root.${root.state}`)}</dd>
+      {/each}
     </dl>
   {/if}
 
-  <div class="log-lines" bind:this={box} on:scroll={onScroll} translate="no">
+  <div class="log-lines" translate="no">
     {#each lines as line}
       <div class="log-line">{line}</div>
     {:else}
       <div class="log-empty">{$t('remote.log.empty')}</div>
     {/each}
+  </div>
   </div>
 </section>
 
@@ -102,16 +114,19 @@
   .log-head h3 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
   .log-count { font-size: 11px; color: var(--text-muted); }
   .log-actions { margin-left: auto; display: flex; gap: 6px; }
+  .log-body {
+    flex: 1; min-height: 120px; overflow: auto; overscroll-behavior: contain;
+    background: var(--bg-base);
+  }
   .log-lines {
-    flex: 1; min-height: 120px; overflow: auto; padding: 8px 14px;
+    padding: 8px 14px;
     font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     font-size: 11px; line-height: 1.55; color: var(--text-secondary);
-    background: var(--bg-base);
   }
   .log-line { white-space: pre-wrap; word-break: break-all; }
   .log-empty { color: var(--text-muted); font-style: italic; }
   .doctor {
-    margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--border);
+    margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--bg-card);
     display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 12px;
   }
   .doctor dt { color: var(--text-muted); }

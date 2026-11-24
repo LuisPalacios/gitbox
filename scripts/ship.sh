@@ -176,7 +176,7 @@ build_and_ship_gui() {
     fi
 
     # The built app must report this stamp and carry the server binaries of
-    # this same build. No size check: a development build embeds two targets.
+    # this same build. No size check: a development build embeds three targets.
     local exe="$artifact"
     [[ "$artifact" == *".app" ]] && exe="$artifact/Contents/MacOS/GitboxApp"
     local check_cmd="export PATH=$path_prefix && cd ~/$remote_dir && \

@@ -3,16 +3,14 @@
   // action, then every repo that needs me, grouped needs help → local work
   // → behind → not cloned. Inside a group, rows sit under a foldable header
   // per account, and a container nests the clones beside it (#148); a clone
-  // whose container is elsewhere keeps its parent tag. Rows keep their place
-  // while the view is open: one that turns fine (after a pull, say) stays,
-  // faded, until I leave the view and come back.
+  // whose container is elsewhere keeps its parent tag. A row that turns fine
+  // (after a clone or a pull, say) leaves at once.
   import { accounts, sources, themeStore, configStore } from '../stores';
   import { statusColor, accountHealth } from '../status';
   import { ATTENTION_GROUPS, CALM_RANK } from '../presentation';
   import { providerColor } from '../theme';
   import type { HealthFix } from '../status';
-  import { attentionItems, pinAttention, accountView } from '../views';
-  import type { AttentionItem } from '../views';
+  import { attentionItems, accountView } from '../views';
   import { t } from '../i18n';
   import { ro } from '../ro';
   import { onActivateKey } from '../keyboard';
@@ -35,15 +33,7 @@
   // Every clone in alphabetical order; attentionItems keeps that order inside a group.
   $: keys = Object.entries($sources).flatMap(([sk, s]) => Object.keys(s.repos).map((r) => `${sk}/${r}`)).sort(compareRepoKeys);
 
-  // The rank each row had when it first showed. Plain (not reactive) state:
-  // pinning it must not re-run the list it comes from.
-  let pinned: Record<string, number> = {};
-  function list(keys: string[], rankOf: (key: string) => number): AttentionItem[] {
-    const items = attentionItems(keys, rankOf, CALM_RANK, pinned);
-    pinned = pinAttention(items, pinned);
-    return items;
-  }
-  $: items = list(keys, rankOf);
+  $: items = attentionItems(keys, rankOf, CALM_RANK);
 
   $: groups = ATTENTION_GROUPS.map((name, rank) => {
     const keys = items.filter((i) => i.rank === rank).map((i) => i.key);
@@ -62,7 +52,7 @@
   $: broken = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention);
   $: accountCount = Object.keys($accounts).length;
   $: conflicts = $configStore?.pathConflicts ?? [];
-  $: needYou = conflicts.length + items.filter((i) => !i.settled).length + broken.length;
+  $: needYou = conflicts.length + items.length + broken.length;
 </script>
 
 <section class="view-scroll">
@@ -114,7 +104,7 @@
             <span class="group-n">· {a.count}</span>
           </div>
           {#if !isFolded}
-            <RepoTree rows={a.rows} groupSource={a.sourceKey} {rowProps} {parentLabels} fadeHealthy={items.some((i) => !i.settled)} />
+            <RepoTree rows={a.rows} groupSource={a.sourceKey} {rowProps} {parentLabels} fadeHealthy={items.length > 0} />
           {/if}
         </div>
       {/each}

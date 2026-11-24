@@ -185,7 +185,7 @@ func (r *runner) start(ctx context.Context, l layout, build, pin, action string)
 		_ = stdout.Close()
 		return nil, true, nil
 	case "nohash":
-		return fail(newError(CodeNoHashTool, "%s has none of sha256sum, shasum or openssl to verify the server", r.alias))
+		return fail(newError(CodeNoHashTool, "%s has none of shasum, sha256sum or openssl to verify the server", r.alias))
 	case "unreadable":
 		r.log.Printf("start: the installed file cannot be hashed: not started, not reinstalled")
 		return fail(newError(CodeHashMismatch, "the server installed on %s cannot be read to verify it and was not started", r.alias))

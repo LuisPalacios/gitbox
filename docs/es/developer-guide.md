@@ -69,13 +69,13 @@ El modo remoto instala `gitbox-server` en el otro host desde dentro de GitboxApp
 
 ```bash
 eval "$(scripts/stamp.sh)"
-GITBOX_SERVER_TARGETS=linux/amd64,linux/arm64 scripts/build-server.sh
+GITBOX_SERVER_TARGETS=linux/amd64,linux/arm64,darwin/arm64 scripts/build-server.sh
 (cd cmd/gui && wails build -tags serverbin -ldflags "$LDFLAGS")
 cmd/gui/build/bin/GitboxApp --list-server-targets   # macOS: GitboxApp.app/Contents/MacOS/GitboxApp
 ```
 
 - `scripts/stamp.sh` imprime la identidad del build: `VERSION`, `COMMIT` (siempre el SHA completo) y los `LDFLAGS` que estampan ambos en un binario. `VERSION` es `GITBOX_VERSION` cuando está definido, como hacen CI, el script de release y el gate; si no, es `git describe --tags --always --dirty` más `-dev`. Un GitboxApp solo habla con un `gitbox-server` de la misma versión y commit, así que todos los caminos de build toman ambos de aquí.
-- `scripts/build-server.sh` hace cross-compile del servidor para cada target de `GITBOX_SERVER_TARGETS`. `all` significa Linux, macOS y Windows en amd64 y arm64; el valor por defecto es `linux/amd64,linux/arm64`. Deja un archivo gzip por target y `zz_generated.go` en `cmd/gui/serverbin/`, y git ignora ambos. El archivo generado fija cada binario por el SHA-256 de sus bytes sin comprimir.
+- `scripts/build-server.sh` hace cross-compile del servidor para cada target de `GITBOX_SERVER_TARGETS`. `all` significa Linux, macOS y Windows en amd64 y arm64; el valor por defecto es `linux/amd64,linux/arm64,darwin/arm64`. Deja un archivo gzip por target y `zz_generated.go` en `cmd/gui/serverbin/`, y git ignora ambos. El archivo generado fija cada binario por el SHA-256 de sus bytes sin comprimir.
 - El build tag `serverbin` los embebe. Un build sin el tag no lleva servidor dentro y no necesita ninguno de esos archivos, y así es como `go vet`, `go test` y la comprobación de salud siguen funcionando en un checkout limpio.
 - `GitboxApp --list-server-targets` imprime el build del servidor embebido y una línea por target con su tamaño y su SHA-256. Vuelve a leer cada binario contra su hash fijado, y falla cuando la app no podría ejecutar el modo remoto: `unstamped_build`, `server_target_missing` o `server_build_mismatch`.
 
@@ -110,7 +110,7 @@ go test -short ./...    # pruebas unitarias (no necesitan preparación más all�
 go test ./...           # todo (necesita test-gitbox.json para el escenario de pkg/ops)
 ```
 
-El arranque del modo remoto tiene sus propias pruebas de integración contra un `sshd` en contenedor: `scripts/remote-it.sh` las ejecuta en un host Linux con Docker, a partir de la imagen de `test/sshd`, y el gate lo ejecuta en su carril `remote-it` ([testing.md › Pruebas del modo remoto](testing.md#pruebas-del-modo-remoto)).
+El arranque del modo remoto tiene sus propias pruebas de integración contra un `sshd` en contenedor: `scripts/remote-it.sh` las ejecuta en un host Linux con Docker, a partir de la imagen de `test/sshd`, y el gate lo ejecuta en su carril `remote-it`. `scripts/remote-host-it.sh` ejecuta las pruebas que no necesitan contenedor contra un host real, como un Mac con una cuenta desechable ([testing.md › Pruebas del modo remoto](testing.md#pruebas-del-modo-remoto)).
 
 Activo el pre-push hook una vez por clon con `git config core.hooksPath .githooks`. [testing.md](testing.md) cubre los niveles de prueba, el fixture, las pruebas del frontend y las checklists pre-PR y de release. Uso `/test-plan` en Claude Code o `$test-plan` en Codex para automatizar las comprobaciones pre-PR.
 

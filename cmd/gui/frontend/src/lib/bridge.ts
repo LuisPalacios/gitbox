@@ -267,6 +267,13 @@ export interface RemoteDoctorReport {
   configDirExec: boolean;
   gitVersion: string;
   credentialFindings: CredentialFinding[] | null;
+  roots?: RemoteDoctorRoot[];
+}
+
+/** Whether the server can read one clone root of the host (#245). */
+export interface RemoteDoctorRoot {
+  path: string;
+  state: 'ok' | 'missing' | 'tcc' | 'denied' | 'unreadable';
 }
 
 export interface RemoteDoctorResult extends RemoteResult {

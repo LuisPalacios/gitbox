@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -475,7 +476,28 @@ type serverDoctorReport struct {
 	// run.
 	GitVersion         string               `json:"gitVersion"`
 	CredentialFindings []credential.Finding `json:"credentialFindings"`
+	// Roots has one entry per clone root of the host's config, when the
+	// config loads (#245).
+	Roots []doctorRoot `json:"roots,omitempty"`
 }
+
+// doctorRoot is whether the server can read one clone root.
+type doctorRoot struct {
+	Path string `json:"path"`
+	// State is one of the doctorRoot* values.
+	State string `json:"state"`
+}
+
+const (
+	doctorRootOK         = "ok"
+	doctorRootMissing    = "missing"
+	doctorRootTCC        = "tcc"
+	doctorRootDenied     = "denied"
+	doctorRootUnreadable = "unreadable"
+)
+
+// doctorRootStates is every State a client accepts.
+var doctorRootStates = []string{doctorRootOK, doctorRootMissing, doctorRootTCC, doctorRootDenied, doctorRootUnreadable}
 
 func serverDoctor(cfgPath string) serverDoctorReport {
 	home, _ := os.UserHomeDir()
@@ -483,12 +505,59 @@ func serverDoctor(cfgPath string) serverDoctorReport {
 		Version: version, Commit: commit, OS: runtime.GOOS, Arch: runtime.GOARCH,
 		Home: home, ConfigPath: cfgPath,
 		CredentialFindings: credential.AuditCredentialDir(),
+		Roots:              doctorRoots(cfgPath),
 	}
 	report.ConfigDirWritable, report.ConfigDirExec = probeDir(nearestDir(filepath.Dir(cfgPath)))
 	if res, err := git.Run(context.Background(), git.Request{Args: []string{"--version"}, Env: git.Inherit}); err == nil {
 		report.GitVersion = strings.TrimSpace(string(res.Stdout))
 	}
 	return report
+}
+
+// doctorRoots reads one entry of each clone root of the config at cfgPath.
+// It only reads: a missing or broken config gives no roots.
+func doctorRoots(cfgPath string) []doctorRoot {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		return nil
+	}
+	roots := make([]doctorRoot, 0, len(cfg.Global.Roots))
+	for _, r := range cfg.Global.Roots {
+		p := config.ExpandTilde(r)
+		roots = append(roots, doctorRoot{Path: p, State: rootState(readOneEntry(p), runtime.GOOS)})
+	}
+	return roots
+}
+
+// readOneEntry opens dir and reads one entry, which is what TCC refuses.
+func readOneEntry(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.Readdirnames(1); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
+// rootState names why a root cannot be read. On macOS, a process that
+// sshd starts gets EPERM ("Operation not permitted") from the folders TCC
+// protects, such as Documents, Desktop, Downloads and iCloud Drive, while
+// ordinary permissions give EACCES.
+func rootState(err error, goos string) string {
+	switch {
+	case err == nil:
+		return doctorRootOK
+	case errors.Is(err, fs.ErrNotExist):
+		return doctorRootMissing
+	case goos == "darwin" && errors.Is(err, syscall.EPERM):
+		return doctorRootTCC
+	case errors.Is(err, fs.ErrPermission):
+		return doctorRootDenied
+	}
+	return doctorRootUnreadable
 }
 
 // nearestDir returns dir, or its closest parent that exists.

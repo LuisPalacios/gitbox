@@ -106,6 +106,12 @@ Los logs de cada host van a `/tmp/gitbox-ship-<platform>.log`, y el resumen mues
 
 Ejecuta `GitboxApp --version` en todas las plataformas: la salida local de `wails build` y las copias que `ship.sh` dejó preparadas en los remotos. El flag imprime `GitboxApp <version> (<sha>)` y sale sin abrir ninguna ventana, así que funciona por SSH normal. El script informa de éxito o fallo por plataforma y sale con código distinto de cero ante cualquier fallo.
 
+```bash
+./scripts/smoke.sh remote-mac
+```
+
+Ejecuta el smoke remoto del [modo remoto](remote-mode.md) desde esta máquina contra el host macOS de `SSH_REMOTE_MAC_HOST`, un alias de una cuenta desechable preparada como describe [testing.md](testing.md#pruebas-del-modo-remoto). Construye los servidores embebidos, conecta, lo que instala el servidor en un `server_dir` de prueba, lee el log, ejecuta el doctor, desconecta y desinstala. `./scripts/smoke.sh all` lo incluye cuando `SSH_REMOTE_MAC_HOST` está definido.
+
 ### Pruebas interactivas (modo de prueba)
 
 ```bash
@@ -145,9 +151,10 @@ Copia el `~/.config/gitbox/gitbox.json` local a un remoto. Primero muestra un di
 | Script                                  | Qué hace                                                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------ |
 | `ship.sh [short-name]`                  | Compila la GUI en cada remoto y la deja preparada para pruebas                 |
-| `smoke.sh [target]`                     | Smoke test no interactivo (`GitboxApp --version`)                              |
+| `smoke.sh [target]`                     | Smoke test no interactivo (`GitboxApp --version`, `remote-mac`)                |
 | `gate.sh [--only/--skip lane]`          | Verifica HEAD en todos los carriles en paralelo ([Gate local](local-gate.md))  |
 | `remote-it.sh`                          | Pruebas de integración con sshd del modo remoto (Docker en Linux)              |
+| `remote-host-it.sh [alias]`             | Pruebas de integración del modo remoto contra un host real (macOS)             |
 | `test-commands.sh [target]`             | Imprime los comandos de lanzamiento en modo de prueba                          |
 | `run-commands.sh [target]`              | Imprime los comandos de lanzamiento en modo producción                         |
 | `setup-credentials.sh [target]`         | Verifica tokens y configura claves SSH en cada target                          |

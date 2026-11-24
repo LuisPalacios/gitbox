@@ -1,20 +1,16 @@
-//go:build sshd_integration
+//go:build sshd_integration || remote_host
 
 package remote_test
 
-// The sshd integration tests of the bootstrap (#239). scripts/remote-it.sh
-// builds the gitbox-sshd image and the linux/amd64 server with the
-// e2e_sentinel tag, then runs:
-//
-//	go test -race -tags sshd_integration ./pkg/remote/
-//
-// Each test starts its own container on an --internal Docker network (no
-// egress), reached by its IP, and talks to it through the real system ssh
-// with a config file of its own. "Never executed" means the line count of
-// the sentinel's $HOME/.gitbox-e2e/ran.log did not change.
+// The integration tests of remote mode against a real sshd. The sshd lane
+// (itdocker_test.go, tag sshd_integration) gives each test a fresh
+// container; the real-host lane (ithost_test.go, tag remote_host, #245)
+// runs the tests that need no container of their own against a host with a
+// disposable account, such as a Mac with Remote Login. "Never executed"
+// means the line count of the sentinel's $HOME/.gitbox-e2e/ran.log did not
+// change.
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -24,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,69 +35,45 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
+// it is what the harness's TestMain prepared for every test.
 var it struct {
-	image, network  string
 	server          []byte
 	pin             string
 	version, commit string
-	keyDir          string
-	pubKey          string
+	// target is the server's platform, "linux/amd64", and goos its first
+	// half.
+	target, goos string
+	// keyDir is a short folder for keys and ssh control sockets.
+	keyDir string
 }
 
+// testHome is the home of the test user in the sshd containers.
 const testHome = "/home/test"
 
-func TestMain(m *testing.M) {
-	os.Exit(runMain(m))
-}
-
-func runMain(m *testing.M) int {
-	fail := func(format string, args ...any) int {
-		fmt.Fprintf(os.Stderr, "sshd integration: "+format+"\n", args...)
-		return 1
-	}
-	it.image = os.Getenv("GITBOX_IT_IMAGE")
-	if it.image == "" {
-		it.image = "gitbox-sshd"
-	}
+// loadServer reads the server that the lane's script built for target.
+func loadServer(target string) error {
 	it.version, it.commit = os.Getenv("GITBOX_IT_VERSION"), os.Getenv("GITBOX_IT_COMMIT")
 	serverPath := os.Getenv("GITBOX_IT_SERVER")
 	if serverPath == "" || it.version == "" || it.commit == "" {
-		return fail("GITBOX_IT_SERVER, GITBOX_IT_VERSION and GITBOX_IT_COMMIT are required; run scripts/remote-it.sh")
+		return errors.New("GITBOX_IT_SERVER, GITBOX_IT_VERSION and GITBOX_IT_COMMIT are required")
 	}
 	var err error
 	if it.server, err = os.ReadFile(serverPath); err != nil {
-		return fail("reading the server: %v", err)
+		return fmt.Errorf("reading the server: %w", err)
 	}
 	sum := sha256.Sum256(it.server)
 	it.pin = hex.EncodeToString(sum[:])
-
-	// Control sockets need a short path.
-	if it.keyDir, err = os.MkdirTemp("/tmp", "gbxit"); err != nil {
-		return fail("%v", err)
-	}
-	defer os.RemoveAll(it.keyDir)
-	key := filepath.Join(it.keyDir, "id")
-	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "gitbox-it", "-f", key).CombinedOutput(); err != nil {
-		return fail("ssh-keygen: %v %s", err, out)
-	}
-	pub, err := os.ReadFile(key + ".pub")
-	if err != nil {
-		return fail("%v", err)
-	}
-	it.pubKey = strings.TrimSpace(string(pub))
-
-	it.network = "gbx-it-" + strconv.Itoa(os.Getpid())
-	if out, err := exec.Command("docker", "network", "create", "--internal", it.network).CombinedOutput(); err != nil {
-		return fail("docker network create: %v %s", err, out)
-	}
-	defer func() { _ = exec.Command("docker", "network", "rm", it.network).Run() }()
-	return m.Run()
+	it.target = target
+	it.goos, _, _ = strings.Cut(target, "/")
+	return nil
 }
 
 type ctOpts struct {
 	noexecHome bool
 	shell      string
-	bashrc     string
+	// bashrc is what the login shell prints before every command: the
+	// container's ~/.bashrc, a real host's rc file for its shell.
+	bashrc string
 	// netAdmin lets the test shape the container's network with tc (#295).
 	netAdmin bool
 	// gitDaemon serves the fixture repository on git://127.0.0.1:9418.
@@ -110,12 +81,6 @@ type ctOpts struct {
 	// gitHost makes the container the git host of an SSH account (#244):
 	// the git user, with git-shell, owns org/small.git.
 	gitHost bool
-}
-
-type container struct {
-	t  *testing.T
-	id string
-	ip string
 }
 
 func docker(t *testing.T, args ...string) string {
@@ -127,69 +92,55 @@ func docker(t *testing.T, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func startContainer(t *testing.T, o ctOpts) *container {
-	t.Helper()
-	args := []string{"run", "-d", "--rm", "--network", it.network, "-e", "AUTHORIZED_KEY=" + it.pubKey}
-	if o.shell != "" {
-		args = append(args, "-e", "LOGIN_SHELL="+o.shell)
-	}
-	if o.bashrc != "" {
-		args = append(args, "-e", "BASHRC_B64="+base64.StdEncoding.EncodeToString([]byte(o.bashrc)))
-	}
-	if o.noexecHome {
-		args = append(args, "--tmpfs", testHome+":noexec,uid=1000,gid=1000,mode=0755")
-	}
-	if o.netAdmin {
-		args = append(args, "--cap-add", "NET_ADMIN")
-	}
-	if o.gitDaemon {
-		args = append(args, "-e", "GIT_DAEMON=1")
-	}
-	if o.gitHost {
-		args = append(args, "-e", "GIT_HOST=1")
-	}
-	c := &container{t: t, id: docker(t, append(args, it.image)...)}
-	t.Cleanup(func() { _ = exec.Command("docker", "rm", "-f", c.id).Run() })
-	c.ip = docker(t, "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", c.id)
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(c.ip, "22"), time.Second)
-		if err == nil {
-			_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-			line, _ := bufio.NewReader(conn).ReadString('\n')
-			_ = conn.Close()
-			if strings.HasPrefix(line, "SSH-") {
-				return c
-			}
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("sshd in %s did not answer: %v\n%s", c.ip, err, docker(t, "logs", c.id))
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-}
-
-// sh runs a command in the container as the test user.
-func (c *container) sh(script string) string {
-	c.t.Helper()
-	out, err := exec.Command("docker", "exec", "-u", "test", "-e", "HOME="+testHome, c.id, "sh", "-c", script).CombinedOutput()
-	if err != nil {
-		c.t.Fatalf("in container: %s: %v\n%s", script, err, out)
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func (c *container) exists(path string) bool {
-	return exec.Command("docker", "exec", c.id, "test", "-e", path).Run() == nil
-}
+// q quotes s as one word of a POSIX shell.
+func q(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 func (c *container) runs() int {
 	c.t.Helper()
-	out := c.sh("cat " + testHome + "/.gitbox-e2e/ran.log 2>/dev/null || true")
+	out := c.sh("cat " + q(c.home()+"/.gitbox-e2e/ran.log") + " 2>/dev/null || true")
 	if out == "" {
 		return 0
 	}
 	return len(strings.Split(out, "\n"))
+}
+
+// The host commands below differ between GNU coreutils (the containers)
+// and BSD (macOS).
+
+// mode is the permission bits of path in octal, such as "700".
+func (c *container) mode(path string) string {
+	c.t.Helper()
+	if c.goos() == "darwin" {
+		return c.sh("stat -f %Lp " + q(path))
+	}
+	return c.sh("stat -c %a " + q(path))
+}
+
+// age sets the modification time of path to d ago.
+func (c *container) age(path string, d time.Duration) {
+	c.t.Helper()
+	ago := "$(( $(date +%s) - " + strconv.Itoa(int(d.Seconds())) + " ))"
+	if c.goos() == "darwin" {
+		c.sh("touch -t \"$(date -r " + ago + " +%Y%m%d%H%M.%S)\" " + q(path))
+		return
+	}
+	c.sh("touch -d @" + ago + " " + q(path))
+}
+
+// sha256 is the hex SHA-256 of a file of the host.
+func (c *container) sha256(path string) string {
+	c.t.Helper()
+	tool := "sha256sum "
+	if c.goos() == "darwin" {
+		tool = "shasum -a 256 "
+	}
+	return strings.Fields(c.sh(tool + q(path)))[0]
+}
+
+// terminalShell is a login shell of TestRemoteTerminalOverSSH.
+type terminalShell struct {
+	shell  string
+	family remote.Family
 }
 
 // session is the client side of one test against one container.
@@ -217,14 +168,14 @@ func (c *container) clientWith(t *testing.T, clientID string, knownHost bool, ex
 	known := filepath.Join(dir, "known_hosts")
 	content := ""
 	if knownHost {
-		content = c.ip + " " + docker(t, "exec", c.id, "cat", "/etc/ssh/ssh_host_ed25519_key.pub") + "\n"
+		content = c.knownHosts()
 	}
 	if err := os.WriteFile(known, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg := filepath.Join(dir, "config")
-	conf := fmt.Sprintf("Host %s\n  HostName %s\n  User test\n  IdentityFile %s\n  IdentitiesOnly yes\n  IdentityAgent none\n  UserKnownHostsFile %s\n  GlobalKnownHostsFile /dev/null\n%s",
-		alias, c.ip, filepath.Join(it.keyDir, "id"), known, extra)
+	conf := fmt.Sprintf("Host %s\n%s  IdentitiesOnly yes\n  IdentityAgent none\n  UserKnownHostsFile %s\n  GlobalKnownHostsFile /dev/null\n%s",
+		alias, c.hostBlock(), known, extra)
 	if err := os.WriteFile(cfg, []byte(conf), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -235,16 +186,17 @@ func (c *container) clientWith(t *testing.T, clientID string, knownHost bool, ex
 	s := &session{c: c, log: remote.NewLog(nil)}
 	s.opts = remote.Options{
 		ClientID: clientID, Version: it.version, Commit: it.commit, Log: s.log, ControlDir: controlDir,
+		ServerDir: c.serverDir(),
 		Target: func(goos, goarch string) (remote.Target, error) {
-			if goos != "linux" || goarch != "amd64" {
-				return remote.Target{}, errors.New("only linux/amd64 is built for the tests")
+			if goos+"/"+goarch != it.target {
+				return remote.Target{}, fmt.Errorf("only %s is built for the tests", it.target)
 			}
 			return remote.Target{SHA256: it.pin, Size: int64(len(it.server)), Load: func() ([]byte, error) { return it.server, nil }}, nil
 		},
 	}
 	remote.SetConfigFile(&s.opts, cfg)
 	s.build = remote.BuildName(it.version, it.commit, it.pin)
-	s.root = testHome + "/.gitbox-server"
+	s.root = c.serverRoot()
 	s.final = s.root + "/" + s.build + "/" + remote.BinaryName
 	return s
 }
@@ -293,7 +245,7 @@ func (s *session) connectErr(ctx context.Context) (connected, error) {
 		_ = sess.Close()
 		return connected{}, fmt.Errorf("handshake: %w", err)
 	}
-	if hello := client.Server(); hello.Version != it.version || hello.Commit != it.commit || hello.OS != "linux" {
+	if hello := client.Server(); hello.Version != it.version || hello.Commit != it.commit || hello.OS != it.goos {
 		_ = client.Close()
 		_ = sess.Close()
 		return connected{}, fmt.Errorf("server hello = %+v", hello)
@@ -352,26 +304,22 @@ func (s *session) logHas(sub string) bool {
 
 func TestInstallNoInternet(t *testing.T) {
 	c := startContainer(t, ctOpts{})
-	// No default route: the routing table has no 00000000 destination.
-	for _, line := range strings.Split(c.sh("cat /proc/net/route"), "\n")[1:] {
-		if f := strings.Fields(line); len(f) > 1 && f[1] == "00000000" {
-			t.Fatalf("the container has a default route: %s", line)
-		}
-	}
+	c.requireNoEgress()
 	s := c.client(t, "client-a", true)
 	conn := s.connect(t)
 	defer conn.close()
 	if !c.exists(s.final) {
 		t.Fatal("no final binary after the install")
 	}
-	if got := c.sh("stat -c %a " + s.final + " " + filepath.Dir(s.final)); got != "700\n700" {
-		t.Errorf("modes of the binary and its folder = %q, want 700 and 700", got)
+	if b, d := c.mode(s.final), c.mode(filepath.Dir(s.final)); b != "700" || d != "700" {
+		t.Errorf("modes of the binary and its folder = %s and %s, want 700 and 700", b, d)
 	}
 }
 
 func TestRejectCorruptBinary(t *testing.T) {
 	c := startContainer(t, ctOpts{})
 	s := c.client(t, "client-a", true)
+	before := c.runs()
 	remote.SetUploadFilter(&s.opts, func(r io.Reader) io.Reader {
 		data, _ := io.ReadAll(r)
 		data = bytes.Clone(data)
@@ -387,7 +335,7 @@ func TestRejectCorruptBinary(t *testing.T) {
 	if c.exists(s.final) {
 		t.Error("a final binary exists")
 	}
-	if c.runs() != 0 {
+	if c.runs() != before {
 		t.Error("the corrupt upload ran")
 	}
 }
@@ -396,6 +344,7 @@ func TestRejectWrongHash(t *testing.T) {
 	c := startContainer(t, ctOpts{})
 	s := c.client(t, "client-a", true)
 	wrong := strings.Repeat("f", 64)
+	before := c.runs()
 	s.opts.Target = func(string, string) (remote.Target, error) {
 		return remote.Target{SHA256: wrong, Size: int64(len(it.server)), Load: func() ([]byte, error) { return it.server, nil }}, nil
 	}
@@ -407,8 +356,8 @@ func TestRejectWrongHash(t *testing.T) {
 		s.dump(t)
 		t.Error("the mismatch was not caught at the install's hash check")
 	}
-	if n := c.runs(); n != 0 {
-		t.Errorf("ran.log has %d lines: the trial run executed a file with the wrong hash", n)
+	if n := c.runs() - before; n != 0 {
+		t.Errorf("ran.log grew by %d lines: the trial run executed a file with the wrong hash", n)
 	}
 	build := remote.BuildName(it.version, it.commit, wrong)
 	if c.exists(s.root + "/" + build + "/" + remote.BinaryName) {
@@ -445,7 +394,7 @@ func TestPreviousVersionInstalled(t *testing.T) {
 		t.Fatal("the previous version with a live marker was collected")
 	}
 
-	c.sh("touch -d '11 minutes ago' " + oldDir + "/in-use.old-client")
+	c.age(oldDir+"/in-use.old-client", 11*time.Minute)
 	conn = s.connect(t)
 	defer conn.close()
 	eventually(t, "the previous version to be collected", func() bool { return !c.exists(oldDir) })
@@ -475,7 +424,7 @@ func TestConcurrentInstall(t *testing.T) {
 	if got := c.sh("ls " + dir + "/gitbox-server | wc -l"); got != "1" {
 		t.Errorf("%s final binaries", got)
 	}
-	if got := strings.Fields(c.sh("sha256sum " + a.final))[0]; got != it.pin {
+	if got := c.sha256(a.final); got != it.pin {
 		t.Errorf("final hash %s, want %s", got, it.pin)
 	}
 	if got := c.sh("ls -A " + dir + " | sort | tr '\\n' ' '"); got != "gitbox-server in-use.client-a in-use.client-b" {
@@ -518,7 +467,7 @@ func TestInterruptedUpload(t *testing.T) {
 	if c.exists(s.final) {
 		t.Fatal("a final binary exists after the interrupted upload")
 	}
-	c.sh("touch -d '2 hours ago' " + dir + "/" + tmps)
+	c.age(dir+"/"+tmps, 2*time.Hour)
 
 	s2 := c.client(t, "client-a", true)
 	conn := s2.connect(t)
@@ -615,7 +564,8 @@ func TestStaleGCLock(t *testing.T) {
 	c := startContainer(t, ctOpts{})
 	s := c.client(t, "client-a", true)
 	lock := s.root + "/.gc.lock"
-	c.sh("umask 077 && mkdir -p " + lock + " && echo '{}' > " + lock + "/owner && touch -d '10 minutes ago' " + lock)
+	c.sh("umask 077 && mkdir -p " + lock + " && echo '{}' > " + lock + "/owner")
+	c.age(lock, 10*time.Minute)
 	conn := s.connect(t)
 	defer conn.close()
 	eventually(t, "the stale lock to be broken", func() bool { return s.logHas("gc: breaking a stale lock") })
@@ -669,14 +619,7 @@ func TestRemoteTerminalOverSSH(t *testing.T) {
 		`back\\slash\'quote`, "$(touch M)", "`touch M`", "a;touch M", "a&&touch M", "a|touch M",
 		"x'; touch M; '", "a & echo x > M & b", "ünïcödé ✓", "-dash",
 	}
-	for _, tc := range []struct {
-		shell  string
-		family remote.Family
-	}{
-		{"/bin/bash", remote.FamilyPOSIX},
-		{"/usr/bin/fish", remote.FamilyFish},
-		{"/bin/sh", remote.FamilyOther}, // the generic wrapper, read by dash
-	} {
+	for _, tc := range terminalShells(t) {
 		t.Run(filepath.Base(tc.shell)+"-"+string(tc.family), func(t *testing.T) {
 			c := startContainer(t, ctOpts{shell: tc.shell})
 			s := c.client(t, "client-a", true)
@@ -684,12 +627,10 @@ func TestRemoteTerminalOverSSH(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			base := testHome + "/hostile"
+			base := c.home() + "/hostile"
 			for _, name := range names {
 				dir := base + "/" + name
-				if out, err := exec.Command("docker", "exec", "-u", "test", c.id, "mkdir", "-p", "--", dir).CombinedOutput(); err != nil {
-					t.Fatalf("mkdir %q: %v %s", name, err, out)
-				}
+				c.sh("mkdir -p -- " + q(dir))
 				for _, program := range [][]string{{"pwd"}, nil} {
 					cmdline, err := remote.RemoteCommand(tc.family, dir, program)
 					if err != nil {
@@ -716,7 +657,9 @@ func TestRemoteTerminalOverSSH(t *testing.T) {
 					}
 				}
 			}
-			if found := c.sh("find " + testHome + " -name M"); found != "" {
+			// An injected touch M runs in the folder or, if the cd failed,
+			// in the home.
+			if found := c.sh("find " + q(base) + " -name M; find " + q(c.home()) + " -maxdepth 1 -name M"); found != "" {
 				t.Errorf("an injected command ran:\n%s", found)
 			}
 		})

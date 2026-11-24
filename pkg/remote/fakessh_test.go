@@ -82,12 +82,13 @@ func newFake(t *testing.T, serverScript string) *fake {
 		t.Fatal(err)
 	}
 	t.Setenv("FAKE_SSH_HOME", home)
-	// The fake host is Linux, whatever runs the test.
+	// The fake host is Linux, whatever runs the test, unless FAKE_UNAME_S
+	// and FAKE_UNAME_M say otherwise.
 	bin := filepath.Join(dir, "bin")
 	if err := os.Mkdir(bin, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	uname := "#!/bin/sh\ncase \"$1\" in -s) echo Linux ;; -m) echo x86_64 ;; esac\n"
+	uname := "#!/bin/sh\ncase \"$1\" in -s) echo \"${FAKE_UNAME_S:-Linux}\" ;; -m) echo \"${FAKE_UNAME_M:-x86_64}\" ;; esac\n"
 	if err := os.WriteFile(filepath.Join(bin, "uname"), []byte(uname), 0o700); err != nil {
 		t.Fatal(err)
 	}

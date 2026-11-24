@@ -27,32 +27,20 @@ export function viewAccount(view: string): string {
   return view.startsWith(ACCOUNT_VIEW) ? view.slice(ACCOUNT_VIEW.length) : '';
 }
 
-// One row of Needs attention: its key, the rank group it shows in, and
-// whether it has turned fine since the view opened (shown faded).
-export interface AttentionItem { key: string; rank: number; settled: boolean }
+// One row of Needs attention: its key and the rank group it shows in.
+export interface AttentionItem { key: string; rank: number }
 
 // The Needs attention rows, worst group first and in the given order inside
-// each group. rankOf returns the attention rank (calm = calmRank). pinned
-// holds the rank each row had when the view first showed it: a pinned row
-// keeps that place, and stays (settled) after it turns fine, until the view
-// closes and the caller clears pinned.
-export function attentionItems(keys: string[], rankOf: (key: string) => number, calmRank: number, pinned: Record<string, number> = {}): AttentionItem[] {
+// each group. rankOf returns the attention rank (calm = calmRank). A row
+// follows its current rank: it moves group when its state changes, and it
+// leaves as soon as it turns fine.
+export function attentionItems(keys: string[], rankOf: (key: string) => number, calmRank: number): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const key of keys) {
-    const now = rankOf(key);
-    const was = pinned[key];
-    if (was !== undefined) items.push({ key, rank: was, settled: now >= calmRank });
-    else if (now < calmRank) items.push({ key, rank: now, settled: false });
+    const rank = rankOf(key);
+    if (rank < calmRank) items.push({ key, rank });
   }
   return items.sort((a, b) => a.rank - b.rank);
-}
-
-// pinAttention records the rank of every row on screen that isn't pinned
-// yet, so the next render keeps them in place.
-export function pinAttention(items: AttentionItem[], pinned: Record<string, number>): Record<string, number> {
-  const next = { ...pinned };
-  for (const item of items) if (next[item.key] === undefined) next[item.key] = item.rank;
-  return next;
 }
 
 // How many repos need me, per account and in total. Accounts whose

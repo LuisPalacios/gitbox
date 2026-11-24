@@ -35,21 +35,16 @@ test('I build and read account views', () => {
 test('I list attention rows worst group first, keeping order inside a group', () => {
   const ranks = { a: 4, b: 2, c: 0, d: 1, e: 2, f: 3 };
   const items = v.attentionItems(['a', 'b', 'c', 'd', 'e', 'f'], (k) => ranks[k], CALM);
-  assert.deepEqual(items.map((i) => [i.key, i.rank, i.settled]), [['c', 0, false], ['d', 1, false], ['b', 2, false], ['e', 2, false], ['f', 3, false]]);
+  assert.deepEqual(items.map((i) => [i.key, i.rank]), [['c', 0], ['d', 1], ['b', 2], ['e', 2], ['f', 3]]);
 });
 
-test('I keep rows in place while the view is open, faded once they settle', () => {
-  const ranks = { a: 2, b: 1 };
+test('I drop a row as soon as it turns fine and move one whose state changes', () => {
+  const ranks = { a: 3, b: 1 };
   const keys = ['a', 'b'];
-  const first = v.attentionItems(keys, (k) => ranks[k], CALM);
-  const pinned = v.pinAttention(first, {});
-  assert.deepEqual(pinned, { a: 2, b: 1 });
-  ranks.a = 4; // pulled: now up to date
-  ranks.b = 0; // got worse, but stays where it was until the view closes
-  const later = v.attentionItems(keys, (k) => ranks[k], CALM, pinned);
-  assert.deepEqual(later.map((i) => [i.key, i.rank, i.settled]), [['b', 1, false], ['a', 2, true]]);
-  assert.deepEqual(v.attentionItems(keys, (k) => ranks[k], CALM).map((i) => i.key), ['b']);
-  assert.deepEqual(v.pinAttention(later, pinned), pinned);
+  assert.deepEqual(v.attentionItems(keys, (k) => ranks[k], CALM).map((i) => [i.key, i.rank]), [['b', 1], ['a', 3]]);
+  ranks.a = 4; // cloned: now up to date
+  ranks.b = 0; // got worse: moves to the worse group at once
+  assert.deepEqual(v.attentionItems(keys, (k) => ranks[k], CALM).map((i) => [i.key, i.rank]), [['b', 0]]);
 });
 
 test('I count attention per account and in total, with broken accounts on top', () => {
@@ -64,7 +59,7 @@ test('I count only the default branch without an upstream in Needs attention', (
   const states = { main: true, feature: false, unidentified: undefined };
   for (const mode of ['simple', 'advanced']) {
     const rankOf = key => derivePresentation({ status: 'no upstream', isDefault: states[key] }, mode).attention;
-    assert.deepEqual(v.attentionItems(keys, rankOf, CALM), [{ key: 'main', rank: 1, settled: false }]);
+    assert.deepEqual(v.attentionItems(keys, rankOf, CALM), [{ key: 'main', rank: 1 }]);
     assert.deepEqual(v.attentionCounts({ account: keys }, rankOf, CALM), { total: 1, byAccount: { account: 1 } });
   }
 });
