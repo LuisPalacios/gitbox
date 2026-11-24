@@ -20,12 +20,23 @@ type GC struct {
 	Now time.Time
 	// Logf receives one line per decision.
 	Logf func(format string, args ...any)
+	// StopWait bounds the stop of an old build's daemon before it is
+	// killed. Zero means DaemonStopWait.
+	StopWait time.Duration
+}
+
+func (g GC) stopWait() time.Duration {
+	if g.StopWait > 0 {
+		return g.StopWait
+	}
+	return DaemonStopWait
 }
 
 // CollectGarbage deletes what nobody uses any more: every build folder
 // other than the current one with no live marker and no upload in
 // progress, temporary files older than TempMaxAge, and the logs of builds
-// that are gone. It touches only entries whose names gitbox gives them, and
+// that are gone. The daemon of a build it deletes is stopped first (#247);
+// a build whose daemon does not stop stays. It touches only entries whose names gitbox gives them, and
 // never runs on a root that is the home or the filesystem root. When
 // another collection holds a fresh lock, it does nothing.
 func CollectGarbage(g GC) error {
@@ -66,6 +77,13 @@ func CollectGarbage(g GC) error {
 		case recentTemp:
 			logf("gc: keeping %s, an upload is in progress", name)
 		default:
+			if stopped, err := StopDaemon(StateDir(dir), g.stopWait()); err != nil {
+				logf("gc: keeping %s, its daemon did not stop", name)
+				builds[name] = true
+				continue
+			} else if stopped {
+				logf("gc: stopped the daemon of %s", name)
+			}
 			if err := os.RemoveAll(dir); err != nil {
 				logf("gc: could not remove %s", name)
 				builds[name] = true

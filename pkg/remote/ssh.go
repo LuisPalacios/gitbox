@@ -47,6 +47,10 @@ type Options struct {
 	// approve the signature. agent is AgentOnePassword when the agent ssh
 	// uses is 1Password's, empty otherwise.
 	OnSlowLogin func(agent string)
+	// Daemon starts the session through gitbox-server proxy, which reaches
+	// the host's daemon of this build and starts it when needed (#247).
+	// Unset, the session gets a server of its own that ends with it.
+	Daemon bool
 
 	// control holds the connection-reuse options the runner chose.
 	control []string

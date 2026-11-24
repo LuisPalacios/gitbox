@@ -17,7 +17,8 @@ import (
 // the pin the client passed. Only a final file that does not exist answers
 // "missing", which leads to an install; one that exists but cannot be hashed
 // answers "unreadable", so it is never replaced silently. Arguments: mode, path, build, pin, action
-// ("serve" or "doctor"), client id.
+// ("serve", "proxy" or "doctor"), client id. The proxy reaches the daemon of
+// the build, starting it when needed, from the file just verified (#247).
 const startScript = rootPrelude + `
 f="$r/$3/gitbox-server";
 [ -f "$f" ] || { printf "\0GBX\0missing\0\0"; exit 0; };` + hashFunc + `
@@ -28,6 +29,7 @@ x=${x%% *};
 [ "$x" = "$4" ] || { printf "\0GBX\0mismatch\0%s\0" "$x"; exit 97; };
 printf "\0GBX\0ok\0%s\0" "$x";
 if [ "$5" = doctor ]; then exec "$f" --doctor; fi;
+if [ "$5" = proxy ]; then exec "$f" proxy --client-id "$6"; fi;
 exec "$f" serve --stdio --client-id "$6"
 `
 
@@ -85,8 +87,12 @@ func Dial(ctx context.Context, alias string, o Options) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	action := "serve"
+	if o.Daemon {
+		action = "proxy"
+	}
 	for attempt := 0; ; attempt++ {
-		s, missing, err := r.start(ctx, l, build, t.SHA256, "serve")
+		s, missing, err := r.start(ctx, l, build, t.SHA256, action)
 		if err != nil {
 			return nil, err
 		}
@@ -355,9 +361,24 @@ func Doctor(ctx context.Context, alias string, o Options) ([]byte, error) {
 	return bytes.TrimSpace(report), nil
 }
 
-// reinstallScript deletes one build folder. Arguments: mode, path, build.
+// stopDaemonFunc defines gbxstop, which stops the daemon of one build
+// folder before it is deleted (#247): the process daemon.pid names, if it
+// is a gitbox-server, gets SIGTERM and, after five seconds, SIGKILL.
+const stopDaemonFunc = `
+gbxstop() { p="$1/state/daemon.pid"; [ -f "$p" ] || return 0;
+n=$(cat "$p" 2>/dev/null); expr "$n" : "[0-9][0-9]*\$" >/dev/null || return 0;
+case "$(ps -p "$n" -o comm= 2>/dev/null)" in *gitbox-server*) ;; *) return 0;; esac;
+kill -TERM "$n" 2>/dev/null; i=0;
+while kill -0 "$n" 2>/dev/null && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i+1)); done;
+kill -KILL "$n" 2>/dev/null; i=0;
+while kill -0 "$n" 2>/dev/null && [ "$i" -lt 20 ]; do sleep 0.1; i=$((i+1)); done; return 0; };
+`
+
+// reinstallScript stops the daemon of one build folder and deletes the
+// folder. Arguments: mode, path, build.
 const reinstallScript = rootPrelude + `
-[ -d "$r" ] || { printf "\0GBX\0done\0"; exit 0; };` + refuseRoot + `
+[ -d "$r" ] || { printf "\0GBX\0done\0"; exit 0; };` + refuseRoot + stopDaemonFunc + `
+gbxstop "$r/$3";
 rm -rf -- "$r/$3";
 printf "\0GBX\0done\0"
 `
@@ -409,11 +430,11 @@ find "$r" -mindepth 2 -maxdepth 2 -type f -name "in-use.*" -mmin -10 2>/dev/null
 `
 
 // uninstallScript deletes what gitbox put under the root and the root when
-// it is then empty. Anything else in the root stays: in logs/ it deletes
-// only build logs, like garbage collection, and the folder when it is then
-// empty. Arguments: mode, path.
+// it is then empty, after it stops the daemon of each build. Anything else
+// in the root stays: in logs/ it deletes only build logs, like garbage
+// collection, and the folder when it is then empty. Arguments: mode, path.
 const uninstallScript = rootPrelude + `
-[ -d "$r" ] || { printf "\0GBX\0absent\0"; exit 0; };` + refuseRoot + `
+[ -d "$r" ] || { printf "\0GBX\0absent\0"; exit 0; };` + refuseRoot + stopDaemonFunc + `
 cd "$real" || exit 1;
 for e in * .gc.lock .gitbox-server.*.tmp; do
 [ -e "$e" ] || continue;
@@ -428,7 +449,7 @@ if expr "$b" : "[A-Za-z0-9][A-Za-z0-9._+-]*-[0-9a-f]\{40\}-[0-9a-f]\{8\}\$" >/de
 done;
 rmdir logs 2>/dev/null; fi;;
 .gitbox-server.*.tmp) rm -f -- "$e";;
-*) if expr "$e" : "[A-Za-z0-9][A-Za-z0-9._+-]*-[0-9a-f]\{40\}-[0-9a-f]\{8\}\$" >/dev/null; then rm -rf -- "$e"; fi;;
+*) if expr "$e" : "[A-Za-z0-9][A-Za-z0-9._+-]*-[0-9a-f]\{40\}-[0-9a-f]\{8\}\$" >/dev/null; then gbxstop "$e"; rm -rf -- "$e"; fi;;
 esac;
 done;
 cd / || exit 1;
