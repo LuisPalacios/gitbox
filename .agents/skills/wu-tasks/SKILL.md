@@ -31,7 +31,7 @@ If requirements or criteria are missing, contradictory or untestable, identify t
 
 ### 2. Design the breakdown
 
-Split by independently reviewable outcomes, AC clusters and code boundaries. Each task must fit one branch/PR and contribute to the parent's defined scope. Do not manufacture three tasks to fill agent slots. Split oversized tasks into siblings; never create grandchildren. Include integration or verification work when needed to prove criteria that cross task boundaries.
+Split by independently reviewable outcomes, AC clusters and code boundaries. Each task must fit one branch/PR and contribute to the parent's defined scope. Size tasks by their acceptance criteria. Split oversized tasks into siblings; never create grandchildren. Include integration or verification work when needed to prove criteria that cross task boundaries.
 
 Draft each task with:
 
@@ -56,4 +56,4 @@ Set the agreed native list order over the complete child set and read it back. O
 
 Report the parent URL and the actual tasks in order, with each task's URL, AC IDs and prerequisites. Distinguish created, reused, linked and pending operations. Show uncovered criteria if any remain; never call a partial breakdown complete.
 
-Once the breakdown is complete, the next step is `$wu-coordinate-tasks <N>` for up to three compatible pending tasks, or `$work-issue <task-number>` for one task. Creation does not start execution or close the container.
+Once the breakdown is complete, the next step is `$wu-coordinate-tasks <N>` for a finite batch (three tasks by default, with independent `--count` and `--concurrency` options), or `$work-issue <task-number>` for one task. Creation does not start execution or close the container.

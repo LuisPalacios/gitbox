@@ -122,7 +122,7 @@ Codex discovers repository skills from `.agents/skills/` and supplies their name
 | `$test-plan` | Run the gitbox test plan. |
 | `$work-issue` | Drive a GitHub issue through an isolated worktree, planning, implementation, verification, and PR creation. |
 | `$wu-container` | Create a work-unit container with purpose, problem, high-level requirements and acceptance criteria, or a standalone issue with no children. |
-| `$wu-coordinate-tasks` | Coordinates up to three pending task sub-issues of one explicit work unit through a supervisor and isolated workers. |
+| `$wu-coordinate-tasks` | Coordinates a finite queue of direct tasks from one explicit work unit. |
 | `$wu-tasks` | Decompose an existing work unit into native GitHub task sub-issues, with acceptance-criteria coverage and explicit dependencies. |
 
 <!-- /index:skills -->
@@ -274,7 +274,7 @@ Every English doc under `docs/` has a counterpart under `docs/es/`; update both 
 
 I use two work modes: an independent issue without children, or a top-level `work-unit` container with native task sub-issues. `$wu-container` defines the purpose, problem, HLR and acceptance criteria (`--independent` selects the first mode); `$wu-tasks <N>` creates the container's task breakdown. There is no umbrella above work units and no task nesting.
 
-For one supervisor governing up to three parallel tasks of one work unit, use `$wu-coordinate-tasks <N> --count 3 --active none`. The container number is required; if missing, ask. Never select from the global backlog or infer membership from body references. Declare other sessions with `--active <issues>`; the skill combines that information with live evidence and atomic local reservations. Its default authority covers local work. `--publish` explicitly adds push and PR publication for the selected batch; merge remains separate.
+Use `$wu-coordinate-tasks <N> --count 30 --concurrency 20 --active none` to authorize up to 30 tasks of one work unit and request 20 simultaneous workers. With only the work-unit number, use `--count 3 --concurrency 3 --active none`. Always announce the effective options before starting. Concurrency is capped at 25 and falls with session capacity, dependencies and file conflicts. The container number is required; if missing, ask. Never select from the global backlog or infer membership from body references. Declare other sessions with `--active <issues>`; the skill combines that information with live evidence and atomic local reservations. Its default authority covers local work. `--publish` explicitly adds push and PR publication for the selected batch; merge remains separate.
 
 For multi-issue work where several agent sessions run in parallel, use the `$work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `$merge-pr <PR#>` handles rebase check, local gate check, merge, and worktree cleanup as a separate, deliberate action.
 

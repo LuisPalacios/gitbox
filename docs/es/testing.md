@@ -26,9 +26,9 @@ Compruebo los cambios en las skills de work units con el gate del harness:
 ./scripts/health.sh harness markdown shellcheck actionlint
 ```
 
-El gate del harness incluye `ai/scripts/test_coordinate_issues.py` y `ai/scripts/test_coordinate_roadmap.py`. Comprueban el registro compartido y el helper opcional de checklist de work unit con fixtures locales, sin crear issues en GitHub ni iniciar agentes. Describo su cobertura en [testing-reference.md](testing-reference.md#pruebas-de-mantenimiento-del-harness-de-agentes).
+El gate del harness incluye `ai/scripts/test_coordinate_issues.py` y `ai/scripts/test_coordinate_roadmap.py`. Usan fixtures locales para el registro compartido, la cola de workers con capacidades simuladas de 15 y cuatro, y el helper opcional de checklist de work unit. Describo su cobertura en [testing-reference.md](testing-reference.md#pruebas-de-mantenimiento-del-harness-de-agentes).
 
-También reviso el flujo en una sesión nueva de Codex y otra de Claude Code: `wu-container` redacta HLR y criterios de aceptación completos, `wu-tasks` vincula las tareas a esos criterios y `wu-coordinate-tasks` pregunta el número de contenedor si falta. Compruebo que la coordinación rechace issues independientes, tareas de otro padre y dependencias sin resolver, y que la reanudación conserve la work unit indicada. Uso escenarios de solo lectura para estas comprobaciones; probar el descubrimiento no autoriza la publicación. Los cambios limitados al harness omiten las pruebas Go y las compilaciones de GUI; aun así ejecuto la comprobación de salud completa antes de una PR.
+También reviso el flujo en una sesión nueva de Codex y otra de Claude Code: `wu-container` redacta HLR y criterios de aceptación completos, `wu-tasks` vincula las tareas a esos criterios y `wu-coordinate-tasks` pregunta el número de contenedor si falta. Compruebo que la coordinación excluya las issues independientes y las tareas de otro padre, que las tareas dependientes esperen hasta la integración, y que la reanudación conserve la work unit indicada. Uso escenarios de solo lectura para estas comprobaciones; probar el descubrimiento no autoriza la publicación. Los cambios limitados al harness omiten las pruebas Go y las compilaciones de GUI; aun así ejecuto la comprobación de salud completa antes de una PR.
 
 ## Medición del arranque
 

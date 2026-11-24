@@ -1,6 +1,6 @@
 ---
 name: wu-coordinate-tasks
-description: Coordinates up to three pending task sub-issues of one explicit work unit through a supervisor and isolated workers. Requires the container issue number, including on resume; never selects from the global backlog.
+description: Coordinates a finite queue of direct tasks from one explicit work unit. Dispatches ready tasks as worker slots open, up to the requested concurrency and session capacity. Requires the container number, including on resume.
 ---
 
 # $wu-coordinate-tasks — Supervise tasks within one work unit
@@ -10,17 +10,23 @@ Use the current conversation as the supervisor and delegate one issue per worker
 ## Invocation and authority
 
 ```text
-$wu-coordinate-tasks 214 --count 3 --active none
-$wu-coordinate-tasks 214 --count 3 --active 162,170
+$wu-coordinate-tasks 214
+$wu-coordinate-tasks 214 --count 30 --concurrency 20 --active 162,170
 $wu-coordinate-tasks 214 --resume <owner>
 $wu-coordinate-tasks help
 ```
 
 These are supervisor arguments, not shell commands. The positional container number is mandatory, including on resume. If absent, ask which work unit to use and wait before selection or reservation; never infer it from a roadmap, registry or recent issue. Help explains usage without operations. `--roadmap` and `--no-roadmap` are retired; an old invocation needs an explicit work-unit number and validation, not a backlog fallback.
 
-`--count` accepts 1 to 3 tasks. Default to three tasks, with fewer workers when capacity or independence requires it; reserve one agent slot for the supervisor. Finish this finite batch rather than continually consuming all children. Distinct work units can have separate supervisor sessions, but their files, contracts and global resources still need conflict checks.
+`--count N` authorizes at most N distinct issues over the whole batch (positive integer, default 3). Freeze the selected issue IDs before dispatch. A completion, failed launch or resume never adds another issue. `--concurrency W` requests at most W simultaneous workers (integer 1–25, default the smaller of N and 25). Reject invalid arguments before reservation. For example, a count of 30 and concurrency of 20 permits up to 30 issues over time and 20 workers at once. `--count 3` still ends after at most three issues. On resume use the recorded roster and requested concurrency.
 
-- `--active none` declares no other sessions; `--active N,M` excludes those issues and their affected areas. If absent, ask once before reserving work; continue read-only discovery while waiting. Local evidence cannot reveal every external session. Investigate contradictory live worktree evidence even after a declaration.
+For a new batch, apply the defaults for each omitted option automatically and keep every explicit value. For example, `$wu-coordinate-tasks 214` uses `--count 3 --concurrency 3 --active none`. With only `--count 30`, request 25 workers. On resume, recover the saved roster and requested concurrency first.
+
+**Always announce the effective options to the user** before selecting, reserving or dispatching, including when every option was supplied. Show the work unit, new batch or resume owner, count, requested concurrency, active exclusions and whether publication and work-unit updates are authorized for this session. For a resumed batch show the saved roster size as the count. Then proceed without asking the user to confirm default values.
+
+Before dispatch report the roster, requested concurrency, known session limit and other occupied slots (or “unknown”), and how many workers have actually launched (initially zero for a new batch). Update the actual count from harness handles on every refill. If capacity is unknown, try one launch at a time until the request is met or the harness reports saturation.
+
+- `--active N,M` excludes the named issues and their affected areas. The default, `--active none`, means the user listed no additional issues. Always honor existing reservations and inspect live worktrees, branches and PRs for external work. Keep confirmed external claims on resume.
 - Starting a batch authorizes local selection, worktrees, worker plans, implementation, tests and commits for the chosen work unit's direct pending tasks. The supervisor handles ordinary `work-issue` start/plan confirmations.
 - `--publish`, or equivalent current-session instructions, authorizes push and creation/update of the selected tasks' own PRs after verification. `--update-work-unit` authorizes only minimal optional task-completion checkbox edits after verified resolution; it does not change HLR/AC or close the parent.
 - Task creation belongs to `wu-tasks`; `--create-subissues` is retired. New scope does not silently expand this batch. Report any necessary follow-up and its parent AC, then use `wu-tasks` with separate authority when requested.
@@ -40,13 +46,29 @@ The shared registry lives in `<git-common-dir>/gitbox-coordination/registry.sqli
 
 Use the available agent creation, messaging, inspection and waiting capabilities. Do not assume a particular tool name or claim to have launched workers without tool evidence. If delegation is unavailable, report the limitation and offer serial work or separate sessions; do not silently call that parallel execution.
 
+### Codex mechanics
+
+Read the current session's concurrency announcement and inspect its active agent tree before dispatch. If the announcement counts the supervisor, subtract it once and account for other active agents. The trusted project's `.codex/config.toml` configures new sessions on versions that accept these settings:
+
+```toml
+[agents]
+max_threads = 40
+max_depth = 1
+```
+
+The installed CLI counts spawned threads in `max_threads`. For example, its corresponding announcement includes 41 total slots. Live availability can be lower. To check another installation, run `codex app-server --strict-config --print-startup-config` and inspect the concurrency line from `codex debug prompt-input` in the checkout. Use the limit announced by the running session. If the client requires a user-level setting, show the user the same table to merge into `~/.codex/config.toml` before starting a fresh session.
+
+Default to `gpt-6.2-sol` for each worker unless the user specifies another model. Check the spawn tool's accepted models (the CLI also lists them in `codex debug models`). With the collaboration tools, pass `model: "gpt-6.2-sol"` and `fork_turns: "none"` for a fresh worker. Give it the full contract and paths to this skill and `.agents/skills/work-issue/SKILL.md`. A full-history fork inherits the parent's model. When selection is unavailable, report the inherited or configured worker model if exposed, otherwise report it as unverified.
+
+Record each returned worker ID. Use agent inspection, messages and completion events to refill a free slot. If this client's completed threads still occupy slots, close the finished worker through its lifecycle tool after saving its result. Retain its issue claim for review or an open PR.
+
 ## Workflow
 
 Track this checklist in the conversation and persist issue progress in the registry:
 
-- [ ] Validate the explicit work unit, inspect live evidence and other sessions; choose compatible pending children.
+- [ ] Validate the explicit work unit, inspect live evidence and other sessions, map dependencies and choose the finite roster.
 - [ ] Atomically reserve issues and create or recover independent worktrees.
-- [ ] Delegate scoped work and supervise questions, overlap and shared resources.
+- [ ] Fill available slots, supervise questions and refill on each completion.
 - [ ] Review changes and verify acceptance against each exact commit.
 - [ ] Publish only authorized results, check the local gate and report remaining work.
 
@@ -56,26 +78,35 @@ For new selection, validate the parent using the shared issue rules: open, marke
 
 Only open direct children without existing work or an open PR qualify for new selection. On resume, retain and inspect this batch's own worktrees and PRs. If the parent or a task has closed, allow read-only reconciliation and safe cleanup of confirmed resolved work; do not begin new implementation or publish against the closed scope. Confirm prerequisite work actually merged and satisfies the dependency; closed-as-not-planned is not completed. Read task AC references against the parent contract. Inspect Git status, worktrees, branches and the registry without overwriting existing work. Fetch the base when permitted. Read each candidate issue and its comments, prerequisites, related PRs and their changed files; inspect the current implementation to validate old plans. Native relationships define membership. A checkbox is neither membership nor proof of completion. Recheck membership and pending state immediately before reservation and again on resume or scope changes; a detached/reparented task blocks further execution and publication until resolved.
 
-Explain the chosen issues, their dependencies, affected files, expected tests and why they can progress independently. Exclude already claimed issues, ongoing external work, unresolved prerequisite merges and maintainer decisions. Also check indirect overlap: public APIs, shared docs/catalogs, event contracts, generated outputs and test fixtures. Task order and different containers do not prove independence. Defer an issue when shared contracts make simultaneous implementation unsafe; assign serial ownership for small unavoidable documentation overlaps.
+Build the dependency graph for **all** native direct children. For each child record its explicit prerequisites (including any live dependency links), affected files/contracts and current resolution evidence. Verify prerequisites outside the unit separately. Missing or ambiguous references, cycles and their downstream tasks stay blocked. Report the missing edge or cycle path and continue with unaffected tasks. Use dependency order with native list order to break ties. Prefer ready tasks and include waiting children when their prerequisites can be met within the selected batch. Never add an out-of-scope issue to satisfy an edge.
+
+Explain the chosen issues, dependencies, affected files, expected tests and which can start now. Exclude already claimed issues and ongoing external work from the roster. Keep tasks with unresolved prerequisites or maintainer decisions out of dispatch. Also check indirect overlap: public APIs, shared docs/catalogs, event contracts, generated outputs and test fixtures. Task order and different containers do not prove independence. Defer an issue when shared contracts make simultaneous implementation unsafe; assign serial ownership for small unavoidable documentation overlaps.
 
 ### 2. Reserve and isolate
 
 Reserve the complete selected issue set with its mandatory `work_unit` in one transaction using a unique owner ID; if any claim conflicts, select again without leaving partial reservations. Record declared external issues as explicit exclusion-only external reservations when unclaimed, and inspect existing owners rather than replacing them. Record their affected areas for selection. Keep them occupied until the user confirms that external work ended.
 
-After reservation and before creating worktrees or launching workers, reread all current claims and inspect their issue scopes, including claims whose details are still empty. Another supervisor may have reserved different issues affecting the same files since selection. Yield and reselect an unstarted conflicting issue rather than launch overlapping work. Recheck this at scope changes; the registry's issue uniqueness alone does not enforce file/API isolation.
+After reservation and before creating worktrees or launching workers, reread all current claims and inspect their issue scopes, including claims whose details are still empty. Another supervisor may have reserved different issues affecting the same files since selection. For overlapping unstarted tasks in one batch, give the first ready task in roster order ownership of the shared files and queue the others. Across sessions, agree on a single owner before launching either task. Wait for review or integration where the later task needs the earlier change. Recheck before every launch and at scope changes; the registry's issue uniqueness alone does not enforce file/API isolation.
 
-Create one branch and sibling worktree per issue using `work-issue` naming and base rules. Create them sequentially, recording the actual paths and base commit. Never check out a different branch in an occupied worktree. A partial setup failure retains its reservation until the supervisor accounts for created worktrees and releases only safe entries.
+Prepare the currently ready worktrees sequentially so access requests can be grouped. For each eligible task, create or recover its branch and sibling worktree using `work-issue` naming and base rules. Record the actual path and base commit. Refresh the base after a prerequisite integrates so the worker starts from a commit containing that change. Never check out a different branch in an occupied worktree. A partial setup failure retains its reservation until the supervisor accounts for created worktrees and releases only safe entries.
 
 On resume, require the supplied container to match the recorded scope, then validate its live native relationships and AC again. A legacy `roadmap` value is only a scope hint, not proof of a valid work unit; do not silently migrate legacy batches into execution. Inspect the recorded agents, processes, worktrees, Git state and PRs. Adopt existing work instead of creating another branch. An old heartbeat does not prove the workers stopped. Use the explicit generation-checked takeover only after confirming the old supervisor and workers cannot still mutate state. Fencing protects registry writes, not running shell processes or GitHub actions.
 
 ### 3. Delegate and communicate
 
-Give each worker this contract, filled with concrete values:
+On each launch, completion or verified integration:
+
+1. Reconcile the registry with harness handles, worktrees and open PRs. Refresh membership, dependencies, external claims and file/contract overlap. Compute the eligible queued issues and usable worker capacity. Include launching and running workers in the occupied count, including workers waiting for a plan response.
+2. Use the atomic `next` request in [protocol.md](protocol.md) for **one** issue. Confirm its worktree and access, then launch with the recorded attempt ID in the contract. Bind the returned handle before requesting another issue. Continue until all available slots are filled or every remaining issue is blocked.
+3. If the harness explicitly refused to start a worker, return that attempt to the queue, retain its issue reservation and wait for a capacity change. If the launch outcome is unknown, retain its slot and identify the handle by owner, issue and attempt before retrying.
+4. On a terminal worker report, confirm it has stopped, record the outcome and free its execution slot. Refill immediately while other workers continue. Review, a local commit and an open PR keep the issue reserved. Only confirmed integration **and** complete issue resolution satisfy an edge. Recompute readiness on that event even if the worker finished earlier.
+
+If only blocked tasks remain and there is no live worker or observable integration in progress, report the blocking issues and the resume command. Preserve the roster and reservations. Give every worker this contract, filled with concrete values:
 
 ```text
 Work unit, task and parent AC IDs advanced:
 Task acceptance criteria:
-Owner, generation and registry path:
+Owner, generation, dispatch attempt and registry path:
 Absolute worktree, branch and base SHA:
 Owned files/contracts and exclusions (including other sessions):
 Plan source and required tests/build/smoke:
