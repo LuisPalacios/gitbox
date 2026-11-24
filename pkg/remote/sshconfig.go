@@ -51,7 +51,7 @@ func (r *aliasReader) read(path string, depth int) {
 	if !ok {
 		return
 	}
-	for _, line := range strings.Split(data, "\n") {
+	for line := range strings.SplitSeq(data, "\n") {
 		key, args := configLine(line)
 		switch strings.ToLower(key) {
 		case "host":
