@@ -109,12 +109,24 @@ type RemoteEntryDTO struct {
 	ServerDir string `json:"serverDir,omitempty"`
 	// Editor is the editor chosen for this remote, empty for Auto (#287).
 	Editor string `json:"editor,omitempty"`
+	// Open says a window of this remote is running on this machine, and
+	// State is the connection state it last recorded (#330).
+	Open  bool   `json:"open"`
+	State string `json:"state,omitempty"`
+	// The last-known facts of the host, from its last connection (#330).
+	ServerOS      string `json:"serverOS,omitempty"`
+	ServerArch    string `json:"serverArch,omitempty"`
+	ServerVersion string `json:"serverVersion,omitempty"`
+	LastConnected string `json:"lastConnected,omitempty"`
 }
 
-// RemotesDTO is what the Remotes section of Settings shows. Enabled is false
-// unless remote mode is on, by the flag or the experimental_remote key.
+// RemotesDTO is what the host switcher and the Remote hosts window show
+// (#330). Enabled is false unless remote mode is on, by the flag or the
+// experimental_remote key. Current is the alias this window shows, empty in
+// the local window.
 type RemotesDTO struct {
 	Enabled bool             `json:"enabled"`
+	Current string           `json:"current,omitempty"`
 	Remotes []RemoteEntryDTO `json:"remotes"`
 	// RemoteEditors are the editor commands a remote can be set to
 	// (pkg/remote.RemoteEditors).
@@ -177,6 +189,10 @@ type remoteSession struct {
 	cancel context.CancelFunc
 	// policy paces the attempts after the link to a daemon dropped.
 	policy remote.ReconnectPolicy
+	// presence tells the other processes of this machine that this
+	// window is open and how its connection is (#330). Nil when it could
+	// not be taken.
+	presence *config.WindowPresence
 }
 
 func newRemoteSession(a *App, alias string) *remoteSession {
@@ -228,7 +244,29 @@ func (s *remoteSession) set(gen int, change func(*RemoteStateDTO)) {
 	s.state.Editor = editor
 	st := s.state
 	s.mu.Unlock()
+	_ = s.presence.SetState(st.State)
 	emit(s.a.newOperation(), "remote:state", st)
+}
+
+// holdPresence marks this window open for the other processes of this
+// machine (#330). A failure only costs the other windows that knowledge.
+func (s *remoteSession) holdPresence(dir string) {
+	p, err := config.HoldWindow(dir, s.alias)
+	if err != nil {
+		s.log.Printf("window: presence not recorded: %s", userMsg(err))
+		return
+	}
+	s.presence = p
+	_ = p.SetState(s.info().State)
+}
+
+// rememberFacts saves what the host reported to this remote's entry, for
+// the Remote hosts window (#330). A failed save is only logged.
+func (s *remoteSession) rememberFacts(st RemoteStateDTO) {
+	f := config.RemoteFacts{ServerOS: st.ServerOS, ServerArch: st.ServerArch, ServerVersion: st.ServerVersion, LastConnected: time.Now()}
+	if err := s.a.clientPrefs().Update(func(p *config.ClientPrefs) { p.SetRemoteFacts(s.alias, f) }); err != nil {
+		s.log.Printf("connect: the host's facts were not saved: %s", userMsg(err))
+	}
 }
 
 // noteTruncated marks the state incomplete, once per connection.
@@ -371,11 +409,11 @@ func (s *remoteSession) connectOnce(ctx context.Context, gen int) error {
 	s.log.Printf("connect: connected to %s %s/%s, build %s", s.alias, userText(hello.OS), userText(hello.Arch), s.backend.ServerVersion())
 	s.logSession(hello)
 	outcome, had := s.backend.resumeOutcome()
-	s.set(gen, func(st *RemoteStateDTO) {
-		*st = RemoteStateDTO{State: remoteConnected, Alias: s.alias,
-			ServerOS: userText(hello.OS), ServerArch: userText(hello.Arch), ServerVersion: s.backend.ServerVersion(),
-			Resumed: had && outcome.Resumed && !outcome.Gap}
-	})
+	connected := RemoteStateDTO{State: remoteConnected, Alias: s.alias,
+		ServerOS: userText(hello.OS), ServerArch: userText(hello.Arch), ServerVersion: s.backend.ServerVersion(),
+		Resumed: had && outcome.Resumed && !outcome.Gap}
+	s.set(gen, func(st *RemoteStateDTO) { *st = connected })
+	s.rememberFacts(connected)
 	s.a.syncTaskInterval()
 	go s.watch(gen, conn)
 	return nil
@@ -722,11 +760,59 @@ func (a *App) remoteEnabled() bool {
 	return a.experimentalRemote || a.clientPrefs().Get().ExperimentalRemote
 }
 
-// ListRemotes is what the Remotes section of Settings shows.
+// prefsPath is the client's own gitbox.json.
+func (a *App) prefsPath() string {
+	if a.cfgPath != "" {
+		return a.cfgPath
+	}
+	return config.DefaultV2Path()
+}
+
+// freshPrefs reads the client preferences from the file, so a remote that
+// another window added or removed shows here at once (#330).
+func (a *App) freshPrefs() config.ClientPrefs {
+	if f, ok := a.clientPrefs().(*filePrefs); ok {
+		f.Reload()
+		return f.Get()
+	}
+	if cfg, err := config.Load(a.prefsPath()); err == nil {
+		return config.ExtractPrefs(cfg)
+	}
+	return a.clientPrefs().Get()
+}
+
+// ListRemotes is what the host switcher and the Remote hosts window show
+// (#330): every configured remote, whether a window of it is open and how
+// its connection is, and what the host reported last.
 func (a *App) ListRemotes() RemotesDTO {
-	out := RemotesDTO{Enabled: a.remoteEnabled(), Remotes: []RemoteEntryDTO{}, RemoteEditors: remote.RemoteEditorCommands()}
-	for _, r := range a.clientPrefs().Get().Remotes {
-		out.Remotes = append(out.Remotes, RemoteEntryDTO{Alias: r.Alias, ServerDir: r.ServerDir, Editor: r.Editor})
+	out := RemotesDTO{Enabled: a.remoteEnabled(), Current: a.remoteAlias, Remotes: []RemoteEntryDTO{}, RemoteEditors: remote.RemoteEditorCommands()}
+	dir := config.WindowsDir(a.prefsPath())
+	for _, r := range a.freshPrefs().Remotes {
+		open, state := config.WindowOpen(dir, r.Alias)
+		if r.Alias == a.remoteAlias && a.remote != nil {
+			open, state = true, a.remote.info().State
+		}
+		out.Remotes = append(out.Remotes, RemoteEntryDTO{Alias: r.Alias, ServerDir: r.ServerDir, Editor: r.Editor,
+			Open: open, State: state, ServerOS: r.ServerOS, ServerArch: r.ServerArch, ServerVersion: r.ServerVersion, LastConnected: r.LastConnected})
+	}
+	return out
+}
+
+// ListSSHAliases suggests the Host aliases of this computer's ssh
+// configuration that are not remotes yet, for the add form of the Remote
+// hosts window (#330). It never fails: no configuration means no
+// suggestions.
+func (a *App) ListSSHAliases() []string {
+	out := []string{}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return out
+	}
+	added := a.freshPrefs().Remotes
+	for _, alias := range remote.ConfigAliases(home) {
+		if _, dup := findRemote(added, alias); !dup {
+			out = append(out, alias)
+		}
 	}
 	return out
 }
@@ -810,19 +896,85 @@ func (a *App) ConnectRemote(alias string) RemoteResultDTO {
 	if _, ok := findRemote(a.clientPrefs().Get().Remotes, alias); !ok {
 		return resultOf(&remoteError{remoteUnknownAlias, fmt.Sprintf("no remote named %s is configured", alias)})
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return resultOf(fmt.Errorf("the GitboxApp binary cannot be located"))
-	}
-	args := remoteWindowArgs(alias, a.testMode, a.cfgPath)
-	cmd := exec.Command(exe, args...)
-	// No git.HideWindow: the child is a Wails GUI, and SW_HIDE would start
-	// its window hidden (see OpenTerminalsManagerWindow).
-	if err := cmd.Start(); err != nil {
+	if err := startWindow(remoteWindowArgs(alias, a.testMode, a.cfgPath)); err != nil {
 		return resultOf(fmt.Errorf("the remote window could not be started"))
 	}
-	go func() { _, _ = cmd.Process.Wait() }()
 	return RemoteResultDTO{}
+}
+
+// ShowRemoteLog brings the open window of a remote to the front with its
+// connection log shown (#330). The log lives in that window's process, so
+// a remote without an open window has none to show.
+func (a *App) ShowRemoteLog(alias string) RemoteResultDTO {
+	if !a.remoteEnabled() {
+		return resultOf(&remoteError{remoteNotEnabled, "remote mode is off on this machine"})
+	}
+	if _, ok := findRemote(a.freshPrefs().Remotes, alias); !ok {
+		return resultOf(&remoteError{remoteUnknownAlias, fmt.Sprintf("no remote named %s is configured", alias)})
+	}
+	if open, _ := config.WindowOpen(config.WindowsDir(a.prefsPath()), alias); !open {
+		return resultOf(&remoteError{remoteWindowClosed, "this remote has no open window"})
+	}
+	if err := startWindow(append(remoteWindowArgs(alias, a.testMode, a.cfgPath), showLogFlag)); err != nil {
+		return resultOf(fmt.Errorf("the remote window could not be reached"))
+	}
+	return RemoteResultDTO{}
+}
+
+// OpenRemotesWindow opens the Remote hosts window (#330): a process of its
+// own, like a remote window, so it outlives the window that opened it. A
+// second call reaches its single-instance lock, which focuses it.
+func (a *App) OpenRemotesWindow() RemoteResultDTO {
+	if !a.remoteEnabled() {
+		return resultOf(&remoteError{remoteNotEnabled, "remote mode is off on this machine"})
+	}
+	if err := startWindow(remotesWindowArgs(a.testMode, a.cfgPath)); err != nil {
+		return resultOf(fmt.Errorf("the Remote hosts window could not be started"))
+	}
+	return RemoteResultDTO{}
+}
+
+// ShowLocalWindow brings the local window to the front, or starts it, from
+// a remote window or the Remote hosts window (#330): a plain launch reaches
+// the local window's single-instance lock.
+func (a *App) ShowLocalWindow() RemoteResultDTO {
+	var args []string
+	if a.testMode {
+		args = append(args, "--test-mode")
+	}
+	if err := startWindow(args); err != nil {
+		return resultOf(fmt.Errorf("the local window could not be started"))
+	}
+	return RemoteResultDTO{}
+}
+
+// startWindow starts this binary with args, independent of this process.
+// No git.HideWindow: the child is a Wails GUI, and SW_HIDE would start its
+// window hidden (see OpenTerminalsManagerWindow).
+var startWindow = func(args []string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _, _ = cmd.Process.Wait() }()
+	return nil
+}
+
+// showLogFlag asks the open window of a remote to show its connection log.
+const showLogFlag = "--show-log"
+
+// remotesWindowArgs are the arguments of the Remote hosts window's process.
+// In test mode it reads the remotes of the test window that opened it.
+func remotesWindowArgs(testMode bool, cfgPath string) []string {
+	args := []string{"--remotes-window", "--experimental-remote"}
+	if testMode && cfgPath != "" {
+		args = append(args, "--test-mode", "--prefs-file="+cfgPath)
+	}
+	return args
 }
 
 // remoteWindowArgs are the arguments of a remote window's process. In test
@@ -841,12 +993,17 @@ type remoteFlags struct {
 	prefsFile    string
 	experimental bool
 	testMode     bool
+	// remotesWindow runs the Remote hosts window (#330).
+	remotesWindow bool
+	// showLog asks a remote window to show its connection log (#330).
+	showLog bool
 }
 
 // parseRemoteFlags reads --remote <alias> (or --remote=<alias>),
-// --experimental-remote, --test-mode and --prefs-file=<path>. It fails on a
-// --remote without --experimental-remote, and on --prefs-file without
-// --test-mode and --remote.
+// --remotes-window, --show-log, --experimental-remote, --test-mode and
+// --prefs-file=<path>. It fails on a --remote or --remotes-window without
+// --experimental-remote, on both at once, on --show-log without --remote,
+// and on --prefs-file without --test-mode and one of the two.
 func parseRemoteFlags(args []string) (remoteFlags, error) {
 	var f remoteFlags
 	remoteSeen := false
@@ -862,6 +1019,10 @@ func parseRemoteFlags(args []string) (remoteFlags, error) {
 		case strings.HasPrefix(arg, "--remote="):
 			remoteSeen = true
 			f.alias = strings.TrimPrefix(arg, "--remote=")
+		case arg == "--remotes-window":
+			f.remotesWindow = true
+		case arg == showLogFlag:
+			f.showLog = true
 		case arg == "--experimental-remote":
 			f.experimental = true
 		case arg == "--test-mode":
@@ -877,8 +1038,14 @@ func parseRemoteFlags(args []string) (remoteFlags, error) {
 		return f, fmt.Errorf("--remote %q is not a valid ssh_config alias", f.alias)
 	case remoteSeen && !f.experimental:
 		return f, errors.New("--remote needs --experimental-remote: remote mode is experimental")
-	case f.prefsFile != "" && (!f.testMode || !remoteSeen):
-		return f, errors.New("--prefs-file is only for a remote window in test mode (--remote, --test-mode)")
+	case remoteSeen && f.remotesWindow:
+		return f, errors.New("--remote and --remotes-window open different windows")
+	case f.remotesWindow && !f.experimental:
+		return f, errors.New("--remotes-window needs --experimental-remote: remote mode is experimental")
+	case f.showLog && !remoteSeen:
+		return f, errors.New("--show-log is only for a remote window (--remote)")
+	case f.prefsFile != "" && (!f.testMode || (!remoteSeen && !f.remotesWindow)):
+		return f, errors.New("--prefs-file is only for a remote or Remote hosts window in test mode (--remote or --remotes-window, --test-mode)")
 	}
 	return f, nil
 }

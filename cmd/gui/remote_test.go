@@ -277,8 +277,17 @@ func TestParseRemoteFlags(t *testing.T) {
 		{[]string{"--remote", "my-server"}, remoteFlags{}, "needs --experimental-remote"},
 		{[]string{"--remote"}, remoteFlags{}, "needs the ssh_config alias"},
 		{[]string{"--remote", "-oProxyCommand=x", "--experimental-remote"}, remoteFlags{}, "not a valid"},
-		{[]string{"--remote", "my-server", "--experimental-remote", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "only for a remote window in test mode"},
-		{[]string{"--test-mode", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "only for a remote window in test mode"},
+		{[]string{"--remote", "my-server", "--experimental-remote", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "--prefs-file is only for"},
+		{[]string{"--test-mode", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "--prefs-file is only for"},
+		// The Remote hosts window and the log request (#330).
+		{[]string{"--remotes-window", "--experimental-remote"}, remoteFlags{remotesWindow: true, experimental: true}, ""},
+		{[]string{"--remotes-window", "--experimental-remote", "--test-mode", "--prefs-file=/tmp/x.json"},
+			remoteFlags{remotesWindow: true, experimental: true, testMode: true, prefsFile: "/tmp/x.json"}, ""},
+		{[]string{"--remote", "my-server", "--experimental-remote", "--show-log"}, remoteFlags{alias: "my-server", experimental: true, showLog: true}, ""},
+		{[]string{"--remotes-window"}, remoteFlags{}, "needs --experimental-remote"},
+		{[]string{"--remotes-window", "--remote", "my-server", "--experimental-remote"}, remoteFlags{}, "open different windows"},
+		{[]string{"--show-log", "--experimental-remote"}, remoteFlags{}, "only for a remote window"},
+		{[]string{"--remotes-window", "--experimental-remote", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "--prefs-file is only for"},
 	}
 	for _, c := range cases {
 		got, err := parseRemoteFlags(c.args)

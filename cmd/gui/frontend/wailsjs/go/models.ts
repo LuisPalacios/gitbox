@@ -26,11 +26,11 @@ export namespace config {
 	    previous_type?: string;
 	    staged_id?: string;
 	    managed_ssh?: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new CredentialTransition(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.rename_to = source["rename_to"];
@@ -134,7 +134,7 @@ export namespace config {
 	        this.view = source["view"];
 	    }
 	}
-
+	
 	export class EditorEntry {
 	    name: string;
 	    command: string;
@@ -168,6 +168,10 @@ export namespace config {
 	    alias: string;
 	    server_dir?: string;
 	    editor?: string;
+	    server_os?: string;
+	    server_arch?: string;
+	    server_version?: string;
+	    last_connected?: string;
 	    window?: WindowState;
 	    compact_window?: WindowState;
 	
@@ -180,6 +184,10 @@ export namespace config {
 	        this.alias = source["alias"];
 	        this.server_dir = source["server_dir"];
 	        this.editor = source["editor"];
+	        this.server_os = source["server_os"];
+	        this.server_arch = source["server_arch"];
+	        this.server_version = source["server_version"];
+	        this.last_connected = source["last_connected"];
 	        this.window = this.convertValues(source["window"], WindowState);
 	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
 	    }
@@ -617,16 +625,16 @@ export namespace gitignore {
 }
 
 export namespace heal {
-
+	
 	export class ProofOverride {
 	    scope: string;
 	    key: string;
 	    value: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ProofOverride(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scope = source["scope"];
@@ -917,11 +925,11 @@ export namespace main {
 	    hint?: string;
 	    detail?: string;
 	    retryAt?: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ProblemDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
@@ -955,7 +963,7 @@ export namespace main {
 	        this.patMsg = source["patMsg"];
 	        this.expiresAt = source["expiresAt"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1141,11 +1149,11 @@ export namespace main {
 	    lastVerified?: any;
 	    verdict: string;
 	    reason?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new IdentityProofDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.account = source["account"];
@@ -1161,7 +1169,7 @@ export namespace main {
 	        this.verdict = source["verdict"];
 	        this.reason = source["reason"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1343,11 +1351,11 @@ export namespace main {
 	    repo: string;
 	    behind?: number;
 	    reason?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new PullPlanItem(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.source = source["source"];
@@ -1359,11 +1367,11 @@ export namespace main {
 	export class repoRef {
 	    source: string;
 	    repo: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new repoRef(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.source = source["source"];
@@ -1379,11 +1387,11 @@ export namespace main {
 	    skipped: PullPlanItem[];
 	    offline: repoRef[];
 	    repairsPending: repoRef[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new PullPlanDTO(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.planID = source["planID"];
@@ -1395,7 +1403,7 @@ export namespace main {
 	        this.offline = this.convertValues(source["offline"], repoRef);
 	        this.repairsPending = this.convertValues(source["repairsPending"], repoRef);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1414,8 +1422,8 @@ export namespace main {
 		    return a;
 		}
 	}
-
-
+	
+	
 	export class RecipeFile {
 	    document: string;
 	    slots: string[];
@@ -1698,6 +1706,12 @@ export namespace main {
 	    alias: string;
 	    serverDir?: string;
 	    editor?: string;
+	    open: boolean;
+	    state?: string;
+	    serverOS?: string;
+	    serverArch?: string;
+	    serverVersion?: string;
+	    lastConnected?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RemoteEntryDTO(source);
@@ -1708,6 +1722,12 @@ export namespace main {
 	        this.alias = source["alias"];
 	        this.serverDir = source["serverDir"];
 	        this.editor = source["editor"];
+	        this.open = source["open"];
+	        this.state = source["state"];
+	        this.serverOS = source["serverOS"];
+	        this.serverArch = source["serverArch"];
+	        this.serverVersion = source["serverVersion"];
+	        this.lastConnected = source["lastConnected"];
 	    }
 	}
 	export class RemotePathDTO {
@@ -1808,6 +1828,7 @@ export namespace main {
 	}
 	export class RemotesDTO {
 	    enabled: boolean;
+	    current?: string;
 	    remotes: RemoteEntryDTO[];
 	    remoteEditors: string[];
 	
@@ -1818,6 +1839,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.enabled = source["enabled"];
+	        this.current = source["current"];
 	        this.remotes = this.convertValues(source["remotes"], RemoteEntryDTO);
 	        this.remoteEditors = source["remoteEditors"];
 	    }
@@ -2071,7 +2093,7 @@ export namespace main {
 	        this.isDefault = source["isDefault"];
 	        this.checkedAt = source["checkedAt"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -2230,23 +2252,23 @@ export namespace main {
 	
 	
 	
-
-
+	
+	
 
 }
 
 export namespace ops {
-
+	
 	export class Step {
 	    name: string;
 	    ok: boolean;
 	    err?: string;
 	    repo?: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Step(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -2261,11 +2283,11 @@ export namespace ops {
 	    sshPublicKey?: string;
 	    sshAddURL?: string;
 	    sshVerified?: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new StepReport(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
@@ -2274,7 +2296,7 @@ export namespace ops {
 	        this.sshAddURL = source["sshAddURL"];
 	        this.sshVerified = source["sshVerified"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;

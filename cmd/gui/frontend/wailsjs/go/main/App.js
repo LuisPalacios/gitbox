@@ -330,6 +330,10 @@ export function ListRoots() {
   return window['go']['main']['App']['ListRoots']();
 }
 
+export function ListSSHAliases() {
+  return window['go']['main']['App']['ListSSHAliases']();
+}
+
 export function ListShells() {
   return window['go']['main']['App']['ListShells']();
 }
@@ -396,6 +400,10 @@ export function OpenProfile(arg1, arg2) {
 
 export function OpenRecipeImport() {
   return window['go']['main']['App']['OpenRecipeImport']();
+}
+
+export function OpenRemotesWindow() {
+  return window['go']['main']['App']['OpenRemotesWindow']();
 }
 
 export function OpenRepoConfigInEditor(arg1, arg2) {
@@ -628,6 +636,14 @@ export function SetViewMode(arg1) {
 
 export function SetupMirrorRepo(arg1, arg2) {
   return window['go']['main']['App']['SetupMirrorRepo'](arg1, arg2);
+}
+
+export function ShowLocalWindow() {
+  return window['go']['main']['App']['ShowLocalWindow']();
+}
+
+export function ShowRemoteLog(arg1) {
+  return window['go']['main']['App']['ShowRemoteLog'](arg1);
 }
 
 export function ShowWindow() {

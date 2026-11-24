@@ -35,6 +35,8 @@ const (
 	remoteNotEnabled remoteCode = "not_enabled"
 	// remoteUnknownAlias: no remote with that alias is configured.
 	remoteUnknownAlias remoteCode = "unknown_alias"
+	// remoteWindowClosed: the action needs the remote's open window (#330).
+	remoteWindowClosed remoteCode = "window_closed"
 )
 
 // remoteError is a refusal of remote mode. Its text names builds and

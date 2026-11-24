@@ -172,6 +172,8 @@ export function ListRemotes():Promise<main.RemotesDTO>;
 
 export function ListRoots():Promise<Array<main.RootDTO>>;
 
+export function ListSSHAliases():Promise<Array<string>>;
+
 export function ListShells():Promise<Array<main.ShellInfo>>;
 
 export function ListTerminalApps():Promise<Array<main.TerminalAppInfo>>;
@@ -205,6 +207,8 @@ export function OpenInExplorer(arg1:string):Promise<void>;
 export function OpenProfile(arg1:string,arg2:string):Promise<void>;
 
 export function OpenRecipeImport():Promise<main.RecipeFile>;
+
+export function OpenRemotesWindow():Promise<main.RemoteResultDTO>;
 
 export function OpenRepoConfigInEditor(arg1:string,arg2:string):Promise<void>;
 
@@ -321,6 +325,10 @@ export function SetUIMode(arg1:string):Promise<void>;
 export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 
 export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
+
+export function ShowLocalWindow():Promise<main.RemoteResultDTO>;
+
+export function ShowRemoteLog(arg1:string):Promise<main.RemoteResultDTO>;
 
 export function ShowWindow():Promise<void>;
 
