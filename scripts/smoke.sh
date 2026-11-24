@@ -35,7 +35,7 @@ remote_mac_smoke() {
     # shellcheck disable=SC2088
     (cd "$REPO_ROOT" && GITBOX_SMOKE_ALIAS="$host" GITBOX_SMOKE_OS=darwin \
         GITBOX_SMOKE_SERVER_DIR="~/.cache/gitbox-smoke-$$" \
-        go test -count=1 -tags serverbin,remote_smoke -run TestRemoteSmoke \
+        go test -count=1 -v -tags serverbin,remote_smoke -run TestRemoteSmoke \
         -ldflags "-X $pkg.version=$VERSION -X $pkg.commit=$COMMIT" ./cmd/gui/)
 }
 

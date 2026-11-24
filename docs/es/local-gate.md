@@ -30,6 +30,8 @@ El build es el que hace una release. Cada uno de esos carriles compila los seis 
 - **win:** las dos suites de coordinación, `go test -short ./...` y `bash scripts/test-bootstrap.sh`, y después el build. El carril fija `core.autocrlf=false` y `core.longpaths=true` mediante `GIT_CONFIG_COUNT` para sus propios procesos, así que la configuración global de Git del usuario del host nunca cambia.
 - **remote-it:** `bash scripts/remote-it.sh` en el host del carril linux, a la vez que el carril linux. Construye la imagen `gitbox-sshd` a partir de `test/sshd`, construye un servidor `linux/amd64` con el tag `e2e_sentinel` y ejecuta `go test -race -tags sshd_integration ./pkg/remote/`: los escenarios del arranque del modo remoto, cada uno contra un contenedor nuevo en una red interna de Docker. No construye ninguna GUI. Consulta [Pruebas › Pruebas del modo remoto](testing.md#pruebas-del-modo-remoto).
 
+Las pruebas en host real de los hosts macOS (`scripts/remote-host-it.sh`, #245) no son un carril. Necesitan una cuenta desechable en un Mac con Sesión remota, algo que un clon limpio en un host de carril no puede dar por hecho, y el carril remote-it ya demuestra el protocolo en cada commit. Las ejecuto a mano cuando un cambio toca el lado del host del modo remoto (el sondeo, los scripts de instalación y arranque, el servidor o su doctor), y la pull request lo indica.
+
 ## Hosts y requisitos previos
 
 El gate lee los hosts de `.env`, el mismo archivo que usan `ship.sh` y `smoke.sh` (consulta [Multiplataforma](multiplatform.md)). Un carril se ejecuta en local cuando esta máquina coincide con su plataforma, y por SSH en caso contrario:

@@ -7,7 +7,7 @@ This guide covers the test levels, the `test-gitbox.json` fixture, and the check
 - **Package unit tests** — the Go tests under `pkg/`. They need no setup, no network and no provider, and isolate everything with `t.TempDir()` and `t.Setenv()`. The `pkg/ops` unit tests run against a temp `XDG_CONFIG_HOME`, a temp `GIT_CONFIG_GLOBAL` and a temp SSH folder, so nothing on the host changes.
 - **GUI tests** — the Go tests under `cmd/gui/`. They call `App` methods directly, without a Wails window. They need the compiled frontend in `cmd/gui/frontend/dist`, because the package embeds it.
 - **Frontend tests** — pure Node tests in `cmd/gui/frontend/src/lib/*.test.mjs`, run with `npm test`. They need neither Wails nor credentials.
-- **Remote mode integration tests** — `go test -tags sshd_integration ./pkg/remote/` against a containerized `sshd`, run by `scripts/remote-it.sh` on a Linux host with Docker. See [Remote mode tests](#remote-mode-tests).
+- **Remote mode integration tests** — `go test -tags sshd_integration ./pkg/remote/` against a containerized `sshd`, run by `scripts/remote-it.sh` on a Linux host with Docker, and `go test -tags remote_host ./pkg/remote/` against a real host, run by `scripts/remote-host-it.sh`. See [Remote mode tests](#remote-mode-tests).
 - **Scenario test** — `TestScenario_FullLifecycle` in `pkg/ops/scenario_test.go` drives the whole account lifecycle through `pkg/ops` against a real provider. It needs the fixture below, and `go test -short` skips it.
 
 `go test ./pkg/...` runs without the frontend build. Everything else under Go needs `cmd/gui/frontend/dist`; build it once:
@@ -71,16 +71,16 @@ go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -para
 
 ## Remote mode tests
 
-The bootstrap and the read-only window of [remote mode](remote-mode.md) have three layers of tests.
+The bootstrap and the read-only window of [remote mode](remote-mode.md) have four layers of tests.
 
-- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh, and the read-only checks: `TestBackendContract` over every served method, `TestHostileServer`, `TestOpenExternal`, `TestRemoteWindowReadOnly`, `TestServerSavesThroughTheGuard` and `TestBackendContractMutations`, the token checks of #242, `TestTokenCanary` and `TestHostRefusesGCM`, and the SSH key check of #244, `TestPrivateKeyNeverOnWire`. The package's `TestMain` gives these tests a home folder of their own, so an SSH setup never writes into the real `~/.ssh`:
+- **Unit tests** in `pkg/remote`, which every `go test -short` runs. They include `TestNoConfigOverrideInProduction` and a fake `ssh` that runs the real remote scripts with the local `sh` in a home folder of the test's own: install, hash checks, `noexec`, banners, uninstall and the refused roots. `TestProbeDarwin` feeds the probe the answer a Mac gave, and `TestHashToolSelection` runs the hash function with only some of `shasum`, `sha256sum` and `openssl` on the `PATH`. Windows skips the fake-ssh tests, which need a POSIX `sh`. `cmd/gui` adds `TestRemoteLifecycle`, which drives a remote window with a dialer that needs no ssh, and the read-only checks: `TestBackendContract` over every served method, `TestHostileServer`, `TestOpenExternal`, `TestRemoteWindowReadOnly`, `TestServerSavesThroughTheGuard` and `TestBackendContractMutations`, the token checks of #242, `TestTokenCanary` and `TestHostRefusesGCM`, and the SSH key check of #244, `TestPrivateKeyNeverOnWire`. The package's `TestMain` gives these tests a home folder of their own, so an SSH setup never writes into the real `~/.ssh`:
 
   ```bash
   go test -race -short ./cmd/gui/ -run 'TestBackendContract|TestHostileServer|TestOpenExternal|TestRemoteWindowReadOnly|TestServerSavesThroughTheGuard|TestBackendContractMutations|TestTokenCanary|TestHostRefusesGCM|TestPrivateKeyNeverOnWire'
   ```
 
 - **The server build of `cmd/gui`.** `go test -race -short -tags gitboxserver ./cmd/gui/` runs the tests of the in-use marker and the rotating server log. Tests that need the window shell carry `//go:build !gitboxserver`, so this run compiles.
-- **sshd integration tests** behind the `sshd_integration` tag, in `pkg/remote/integration_test.go`:
+- **sshd integration tests** behind the `sshd_integration` tag, in `pkg/remote/integration_test.go` and the other `*_integration_test.go` files, with the container harness of `itdocker_test.go`:
 
   ```bash
   scripts/remote-it.sh                           # every scenario
@@ -92,8 +92,38 @@ The bootstrap and the read-only window of [remote mode](remote-mode.md) have thr
   ```
 
   The script needs Docker on Linux. It builds the `gitbox-sshd` image from `test/sshd` (Debian slim with OpenSSH, fish, git, `iproute2` and `procps`, a `test` user whose key lives outside the home, and a 60 MB fixture repository that `git daemon` serves on `127.0.0.1:9418` when the container starts with `GIT_DAEMON=1`, plus a `git` user with `git-shell` that owns `org/small.git` when it starts with `GIT_HOST=1`, the git provider of the SSH account tests), a `linux/amd64` server with the `e2e_sentinel` tag, which appends a line to `$HOME/.gitbox-e2e/ran.log` on every start, and the fake forge of `test/fakeforge`, which `TestTokenCanary` copies into its container: Gitea's API and git over HTTP behind the tokens of a file. Each test starts its own container on an `--internal` Docker network, with no route out, and connects through the real `ssh` with a config file and a `known_hosts` of its own, filled from the container's host key. The fault tests start theirs with `--cap-add NET_ADMIN` and shape its network with `tc netem`. "Never executed" means the line count of `ran.log` did not change. The local gate runs it in its `remote-it` lane.
+- **Real-host tests** behind the `remote_host` tag, with the harness of `pkg/remote/ithost_test.go` (#245). They run the tests that need no container of their own against a real host, such as a Mac with Remote Login: the bootstrap battery, `TestTokenCanary` and `TestRemoteTerminalOverSSH` in the host's login shell. The other tests skip.
 
-A remote smoke drives the client methods against a real host from my machine, with a temporary config: add, connect, log, doctor, disconnect and uninstall. It needs a build that carries its server and a scratch `server_dir`:
+  ```bash
+  scripts/remote-host-it.sh                      # against SSH_REMOTE_MAC_HOST from .env
+  GITBOX_IT_RUN=TestTokenCanary scripts/remote-host-it.sh my-mac
+  ```
+
+  The script asks the host for its platform with `uname -sm`, builds the sentinel server and the fake forge for it, and runs `go test -race -tags remote_host ./pkg/remote/`. The tests write and delete files in the home of the remote account, so it must be a disposable account of its own. The harness refuses to start without its `~/.gitbox-it-host` marker, or when the alias reaches the account the tests run from. It resolves the alias with `ssh -G`, then reads only its key and a `known_hosts` file (`GITBOX_REMOTE_TEST_KNOWN_HOSTS`, from `SSH_REMOTE_MAC_KNOWN_HOSTS` in `.env`), and writes an ssh config of its own with `IdentityAgent none`. Each test gets a folder of its own under `~/.gitbox-it/` as its `server_dir`, and the cleanup removes it with the gitbox config, the clone root and the rc file the test wrote. A real host keeps its network, so `TestInstallNoInternet` checks the route only in the sshd lane. On a Mac I set up the account once:
+
+  ```bash
+  sudo sysadminctl -addUser gitbox-it -fullName "Gitbox IT" -shell /bin/zsh -home /Users/gitbox-it -password -
+  sudo createhomedir -c -u gitbox-it
+  sudo dscl . -create /Users/gitbox-it IsHidden 1
+  sudo dseditgroup -o edit -a gitbox-it -t user com.apple.access_ssh
+  mkdir -p ~/.cache/gitbox-it && ssh-keygen -q -t ed25519 -N "" -f ~/.cache/gitbox-it/id_ed25519
+  printf 'localhost %s\n' "$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)" > ~/.cache/gitbox-it/known_hosts
+  sudo -H -u gitbox-it sh -c 'umask 077; mkdir -p ~/.ssh; cat > ~/.ssh/authorized_keys; touch ~/.gitbox-it-host' < ~/.cache/gitbox-it/id_ed25519.pub
+  ```
+
+  Then a `Host` alias for it in `~/.ssh/config`, before any `Host *` block, and the alias in `.env`:
+
+  ```text
+  Host gitbox-it-mac
+    HostName localhost
+    User gitbox-it
+    IdentityFile ~/.cache/gitbox-it/id_ed25519
+    IdentityAgent none
+  ```
+
+  The local gate does not run this lane: see [Local gate](local-gate.md#what-each-lane-runs).
+
+A remote smoke drives the client methods against a real host from my machine, with a temporary config: add, connect, log, doctor, disconnect and uninstall. It needs a build that carries its server and a scratch `server_dir`. `GITBOX_SMOKE_OS` names the host's system (`linux` by default), and `./scripts/smoke.sh remote-mac` runs it against `SSH_REMOTE_MAC_HOST`:
 
 ```bash
 eval "$(scripts/stamp.sh)" && scripts/build-server.sh

@@ -54,7 +54,7 @@ Remote mode installs `gitbox-server` from inside GitboxApp, so a GUI that must r
 
 ```bash
 eval "$(scripts/stamp.sh)"
-scripts/build-server.sh          # GITBOX_SERVER_TARGETS: "all" (six targets) or a list; default linux/amd64,linux/arm64
+scripts/build-server.sh          # GITBOX_SERVER_TARGETS: "all" (six targets) or a list; default linux/amd64,linux/arm64,darwin/arm64
 (cd cmd/gui && wails build -tags serverbin -ldflags "$LDFLAGS")   # Linux: -tags webkit2_41,serverbin
 cmd/gui/build/bin/GitboxApp --list-server-targets
 ```

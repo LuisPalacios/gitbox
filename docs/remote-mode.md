@@ -1,8 +1,8 @@
 # Remote mode (experimental)
 
-Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
+Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server or a Mac. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
 
-This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config and its clones, sets up token and SSH credentials on it, and opens its folders in my local editor, terminal and AI harnesses. Only Linux hosts are supported for now; macOS and Windows hosts follow.
+This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config and its clones, sets up token and SSH credentials on it, and opens its folders in my local editor, terminal and AI harnesses. Linux and macOS hosts are supported (see [macOS hosts](#macos-hosts)); Windows hosts follow.
 
 ## Before I start: an alias that needs no prompt
 
@@ -179,7 +179,7 @@ The install runs only when the server of this build is missing:
 1. GitboxApp probes the host for its system and architecture in one command.
 2. It checks the free space with `df` and needs twice the size of the server.
 3. It streams the server, which it carries inside, to a temporary file in the build folder.
-4. It checks the SHA-256 of that file against the pin. A mismatch deletes the file before it ever runs.
+4. It checks the SHA-256 of that file against the pin, with the first of `shasum`, `sha256sum` or `openssl` that the host has. A mismatch deletes the file before it ever runs.
 5. It runs the file once with `--version`. On a home mounted `noexec` this fails, the file is deleted, and the error says to set `server_dir` to a folder that allows programs to run. GitboxApp never falls back to `/tmp`.
 6. It renames the file into place, which is atomic. Two clients that install at once converge on the same file.
 
@@ -217,7 +217,7 @@ It deletes only what gitbox put there: the build folders, the build logs in `log
 - the install decisions, the hash of the uploaded file and the pin;
 - what `ssh` and the server print on stderr.
 
-**Copy log** copies it. **Run doctor** runs `gitbox-server --doctor` on the host in a separate command, verified like a start, and shows the server build, the git version, the config path and whether that folder allows writing and running programs.
+**Copy log** copies it. **Run doctor** runs `gitbox-server --doctor` on the host in a separate command, verified like a start, and shows the server build, the git version, the config path and whether that folder allows writing and running programs. For each clone root of the host's config, it also shows whether the server can read it, and names the cause when it cannot: the folder is missing, macOS privacy protection blocks it (see [macOS hosts](#macos-hosts)), the permissions refuse it, or it cannot be read.
 
 On the host, the server also writes `<root>/logs/<build>.log`, rotated at 1 MiB with three older files kept.
 
@@ -235,14 +235,14 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `ssh_config`: `ssh` cannot read the configuration of the alias. Fix `ssh_config`.
 - `ssh_failed`: any other `ssh` failure, such as an unknown host or a refused connection. The log shows what `ssh` printed.
 - `banner_overflow`: the login shell printed more than 1 MiB before the answer. Quiet the shell startup files for non-interactive sessions.
-- `unsupported_os`: the host is not Linux. macOS and Windows hosts come in a later version.
+- `unsupported_os`: the host is neither Linux nor macOS. Windows hosts come in a later version.
 - `unsupported_arch`: the host is neither amd64 nor arm64.
-- `server_target_missing`: this GitboxApp carries no server for that host. A development build carries only the Linux ones; rebuild with the six targets.
+- `server_target_missing`: this GitboxApp carries no server for that host. A development build carries only the Linux ones and the Apple silicon one; rebuild with the six targets.
 - `server_build_mismatch` and `unstamped_build`: this GitboxApp was built without a matching stamp. Rebuild it as the developer guide says.
 - `hash_mismatch`: the server on the host does not match the pin, or cannot be read to check it, and did not run. Use **Reinstall server**.
 - `version_mismatch`: the server that answered is another build. Connect again.
 - `disk_full`: the server folder has less free space than twice the server.
-- `no_hash_tool`: the host has none of `sha256sum`, `shasum` or `openssl`.
+- `no_hash_tool`: the host has none of `shasum`, `sha256sum` or `openssl`.
 - `noexec`: the server folder does not allow programs to run. Set `server_dir` to a folder that does.
 - `server_dir_unsafe`: `server_dir` is the home or the root folder. Choose a folder of its own.
 - `server_crashed`: the server stopped while connected. The log shows its last lines.
@@ -254,6 +254,17 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `gcm_unsupported_remote`: the host does not run GCM, whose sign-in and store need a desktop session. Use a token: see [Remote hosts](credentials.md#remote-hosts).
 - `read_only`: the window refuses the action without sending it, because the server of this remote does not serve it. Every action a remote window offers is served today.
 - `remote_path_invalid`: the folder is not an absolute path of the host, or it holds a control character.
+
+## macOS hosts
+
+A Mac works as a host too, such as a Mac mini without a screen. I test it on Apple silicon.
+
+- **Remote Login.** I turn it on in System Settings › General › Sharing › Remote Login and allow my user there. When the list of allowed users is restricted, macOS lets in only the members of the `com.apple.access_ssh` group.
+- **zsh reads `~/.zshenv`.** For a command over SSH, zsh reads `~/.zshenv`, not `~/.zshrc`. Whatever that file prints counts as banner, so I keep it quiet (see `banner_overflow`).
+- **Git.** In an SSH session the `PATH` holds only the system folders, so a plain `git` is Apple's. The server prefers Homebrew git (`/opt/homebrew/bin/git`) when it is installed, as GitboxApp does on a Mac, and **Run doctor** shows which version answered.
+- **Credentials.** The login keychain stays locked in an SSH session, so remote mode refuses Git Credential Manager with `gcm_unsupported_remote`. Token accounts work, because their token lives in a 0600 file, not in the keychain. SSH accounts work as on Linux.
+- **Privacy-protected folders.** macOS keeps the processes that `sshd` starts out of `~/Documents`, `~/Desktop`, `~/Downloads` and iCloud Drive (TCC). A clone root in one of them fails with `Operation not permitted`, and **Run doctor** names that cause. I move the root to a folder such as `~/git`. The other way is to give `/usr/libexec/sshd-keygen-wrapper` Full Disk Access in System Settings › Privacy & Security › Full Disk Access, but that opens those folders to every SSH login on the Mac.
+- **No quarantine, ad-hoc signature.** GitboxApp streams the server over SSH and nothing downloads it, so the file carries no `com.apple.quarantine` attribute and Gatekeeper never checks it. The Go linker signs it ad hoc, which Apple silicon needs to run it. It has no Developer ID, and a command-line program that its owner runs over SSH needs none. I checked both with `xattr -l` and `codesign -dv` on macOS 27.
 
 ## Windows and macOS clients
 

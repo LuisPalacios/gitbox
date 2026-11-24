@@ -30,6 +30,8 @@ The build is the one a release makes. Each of those lanes compiles the six `gitb
 - **win:** both coordination suites, `go test -short ./...` and `bash scripts/test-bootstrap.sh`, then the build. The lane sets `core.autocrlf=false` and `core.longpaths=true` through `GIT_CONFIG_COUNT` for its own processes, so the host user's global Git config never changes.
 - **remote-it:** `bash scripts/remote-it.sh` on the linux lane's host, at the same time as the linux lane. It builds the `gitbox-sshd` image from `test/sshd`, builds a `linux/amd64` server with the `e2e_sentinel` tag, and runs `go test -race -tags sshd_integration ./pkg/remote/`: the bootstrap scenarios of remote mode, each against a fresh container on an internal Docker network. It builds no GUI. See [Testing › Remote mode tests](testing.md#remote-mode-tests).
 
+The real-host tests of macOS hosts (`scripts/remote-host-it.sh`, #245) are not a lane. They need a disposable account on a Mac with Remote Login, which a clean clone on a lane host cannot assume, and the remote-it lane already proves the protocol on every commit. I run them by hand when a change touches the host side of remote mode (the probe, the install and start scripts, the server or its doctor), and the pull request says so.
+
 ## Hosts and prerequisites
 
 The gate reads the hosts from `.env`, the same file as `ship.sh` and `smoke.sh` (see [Multiplatform](multiplatform.md)). A lane runs locally when this machine matches its platform, and over SSH otherwise:

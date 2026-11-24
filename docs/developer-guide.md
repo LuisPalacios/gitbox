@@ -69,13 +69,13 @@ Remote mode installs `gitbox-server` on the other host from inside GitboxApp and
 
 ```bash
 eval "$(scripts/stamp.sh)"
-GITBOX_SERVER_TARGETS=linux/amd64,linux/arm64 scripts/build-server.sh
+GITBOX_SERVER_TARGETS=linux/amd64,linux/arm64,darwin/arm64 scripts/build-server.sh
 (cd cmd/gui && wails build -tags serverbin -ldflags "$LDFLAGS")
 cmd/gui/build/bin/GitboxApp --list-server-targets   # macOS: GitboxApp.app/Contents/MacOS/GitboxApp
 ```
 
 - `scripts/stamp.sh` prints the build identity: `VERSION`, `COMMIT` (always the full SHA) and the `LDFLAGS` that stamp both into a binary. `VERSION` is `GITBOX_VERSION` when that is set, as CI, the release script and the gate do; otherwise it is `git describe --tags --always --dirty` plus `-dev`. A GitboxApp only talks to a `gitbox-server` of the same version and commit, so every build path takes both from here.
-- `scripts/build-server.sh` cross-compiles the server for each target in `GITBOX_SERVER_TARGETS`. `all` means Linux, macOS and Windows on amd64 and arm64; the default is `linux/amd64,linux/arm64`. It leaves one gzip file per target and `zz_generated.go` in `cmd/gui/serverbin/`, and git ignores both. The generated file pins each binary by the SHA-256 of its uncompressed bytes.
+- `scripts/build-server.sh` cross-compiles the server for each target in `GITBOX_SERVER_TARGETS`. `all` means Linux, macOS and Windows on amd64 and arm64; the default is `linux/amd64,linux/arm64,darwin/arm64`. It leaves one gzip file per target and `zz_generated.go` in `cmd/gui/serverbin/`, and git ignores both. The generated file pins each binary by the SHA-256 of its uncompressed bytes.
 - The `serverbin` build tag embeds them. A build without the tag has no server inside and needs none of those files, which is how `go vet`, `go test` and the health check keep working on a clean checkout.
 - `GitboxApp --list-server-targets` prints the build of the embedded server and one line per target with its size and SHA-256. It reads each binary back against its pin, and it fails when the app could not run remote mode: `unstamped_build`, `server_target_missing` or `server_build_mismatch`.
 
@@ -110,7 +110,7 @@ go test -short ./...    # unit tests (no setup needed beyond the frontend dist f
 go test ./...           # everything (needs test-gitbox.json for the pkg/ops scenario)
 ```
 
-The bootstrap of remote mode has its own integration tests against a containerized `sshd`: `scripts/remote-it.sh` runs them on a Linux host with Docker, from the image in `test/sshd`, and the gate runs it in its `remote-it` lane ([testing.md › Remote mode tests](testing.md#remote-mode-tests)).
+The bootstrap of remote mode has its own integration tests against a containerized `sshd`: `scripts/remote-it.sh` runs them on a Linux host with Docker, from the image in `test/sshd`, and the gate runs it in its `remote-it` lane. `scripts/remote-host-it.sh` runs the tests that need no container against a real host, such as a Mac with a disposable account ([testing.md › Remote mode tests](testing.md#remote-mode-tests)).
 
 I activate the pre-push hook once per clone with `git config core.hooksPath .githooks`. [testing.md](testing.md) covers the test levels, the fixture, the frontend tests, and the pre-PR and release checklists. I use `/test-plan` in Claude Code or `$test-plan` in Codex to automate the pre-PR checks.
 

@@ -1,8 +1,8 @@
 # Modo remoto (experimental)
 
-El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
+El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio o un Mac. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
 
-Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host, cambia su configuración y sus clones, configura en él credenciales de token y SSH, y abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales. Por ahora solo se admiten hosts Linux; los hosts macOS y Windows llegan después.
+Esta versión conecta, instala, verifica y desinstala el servidor, muestra los repositorios del host, cambia su configuración y sus clones, configura en él credenciales de token y SSH, y abre sus carpetas en mi editor, mi terminal y mis harnesses de IA locales. Se admiten hosts Linux y macOS (consulta [Hosts macOS](#hosts-macos)); los hosts Windows llegan después.
 
 ## Antes de empezar: un alias que no pida nada
 
@@ -179,7 +179,7 @@ La instalación solo se ejecuta cuando falta el servidor de este build:
 1. GitboxApp sondea el sistema y la arquitectura del host en un solo comando.
 2. Comprueba el espacio libre con `df` y necesita el doble del tamaño del servidor.
 3. Envía el servidor, que lleva dentro, a un archivo temporal en la carpeta del build.
-4. Comprueba el SHA-256 de ese archivo contra el pin. Si no coincide, borra el archivo antes de que llegue a ejecutarse.
+4. Comprueba el SHA-256 de ese archivo contra el pin, con la primera de `shasum`, `sha256sum` u `openssl` que tenga el host. Si no coincide, borra el archivo antes de que llegue a ejecutarse.
 5. Ejecuta el archivo una vez con `--version`. En un home montado `noexec` esto falla, el archivo se borra, y el error dice que configure `server_dir` con una carpeta que permita ejecutar programas. GitboxApp nunca recurre a `/tmp`.
 6. Renombra el archivo a su sitio, que es atómico. Dos clientes que instalan a la vez acaban con el mismo archivo.
 
@@ -217,7 +217,7 @@ Solo borra lo que puso gitbox: las carpetas de build, los registros de build de 
 - las decisiones de instalación, el hash del archivo subido y el pin;
 - lo que `ssh` y el servidor imprimen en stderr.
 
-**Copiar registro** lo copia. **Diagnosticar** ejecuta `gitbox-server --doctor` en el host en un comando aparte, verificado como un arranque, y muestra el build del servidor, la versión de git, la ruta de la configuración y si esa carpeta permite escribir y ejecutar programas.
+**Copiar registro** lo copia. **Diagnosticar** ejecuta `gitbox-server --doctor` en el host en un comando aparte, verificado como un arranque, y muestra el build del servidor, la versión de git, la ruta de la configuración y si esa carpeta permite escribir y ejecutar programas. Para cada raíz de clonado de la configuración del host, también muestra si el servidor puede leerla, y nombra la causa cuando no puede: la carpeta no existe, la protección de privacidad de macOS la bloquea (consulta [Hosts macOS](#hosts-macos)), los permisos la rechazan, o no se puede leer.
 
 En el host, el servidor también escribe `<root>/logs/<build>.log`, que rota a 1 MiB y guarda tres archivos anteriores.
 
@@ -235,14 +235,14 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `ssh_config`: `ssh` no puede leer la configuración del alias. Corrige `ssh_config`.
 - `ssh_failed`: cualquier otro fallo de `ssh`, como un host desconocido o una conexión rechazada. El registro muestra lo que imprimió `ssh`.
 - `banner_overflow`: el shell de inicio de sesión imprimió más de 1 MiB antes de la respuesta. Silencia los archivos de arranque del shell en las sesiones no interactivas.
-- `unsupported_os`: el host no es Linux. Los hosts macOS y Windows llegan en una versión posterior.
+- `unsupported_os`: el host no es ni Linux ni macOS. Los hosts Windows llegan en una versión posterior.
 - `unsupported_arch`: el host no es ni amd64 ni arm64.
-- `server_target_missing`: este GitboxApp no lleva servidor para ese host. Un build de desarrollo solo lleva los de Linux; vuelve a compilar con los seis destinos.
+- `server_target_missing`: este GitboxApp no lleva servidor para ese host. Un build de desarrollo solo lleva los de Linux y el de Apple silicon; vuelve a compilar con los seis destinos.
 - `server_build_mismatch` y `unstamped_build`: este GitboxApp se compiló sin un sello que coincida. Vuelve a compilarlo como dice la guía de desarrollo.
 - `hash_mismatch`: el servidor del host no coincide con el pin, o no se puede leer para comprobarlo, y no se ejecutó. Usa **Reinstalar servidor**.
 - `version_mismatch`: el servidor que respondió es otro build. Vuelve a conectar.
 - `disk_full`: la carpeta del servidor tiene menos espacio libre que el doble del servidor.
-- `no_hash_tool`: el host no tiene ni `sha256sum`, ni `shasum`, ni `openssl`.
+- `no_hash_tool`: el host no tiene ni `shasum`, ni `sha256sum`, ni `openssl`.
 - `noexec`: la carpeta del servidor no permite ejecutar programas. Configura `server_dir` con una carpeta que lo permita.
 - `server_dir_unsafe`: `server_dir` es la carpeta home o la raíz. Elige una carpeta propia.
 - `server_crashed`: el servidor se detuvo durante la conexión. El registro muestra sus últimas líneas.
@@ -254,6 +254,17 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `gcm_unsupported_remote`: el host no ejecuta GCM, cuyo inicio de sesión y almacén necesitan una sesión de escritorio. Usa un token: consulta [Hosts remotos](credentials.md#hosts-remotos).
 - `read_only`: la ventana rechaza la acción sin enviarla, porque el servidor de este remoto no la ofrece. Hoy se ofrecen todas las acciones de una ventana remota.
 - `remote_path_invalid`: la carpeta no es una ruta absoluta del host, o contiene un carácter de control.
+
+## Hosts macOS
+
+Un Mac también funciona como host, como un Mac mini sin pantalla. Lo pruebo en Apple silicon.
+
+- **Sesión remota.** La activo en Ajustes del Sistema › General › Compartir › Sesión remota y permito allí mi usuario. Cuando la lista de usuarios permitidos está restringida, macOS solo deja entrar a los miembros del grupo `com.apple.access_ssh`.
+- **zsh lee `~/.zshenv`.** Para un comando por SSH, zsh lee `~/.zshenv`, no `~/.zshrc`. Lo que imprima ese archivo cuenta como banner, así que lo mantengo en silencio (consulta `banner_overflow`).
+- **Git.** En una sesión SSH el `PATH` solo contiene las carpetas del sistema, así que un `git` a secas es el de Apple. El servidor prefiere el git de Homebrew (`/opt/homebrew/bin/git`) cuando está instalado, como hace GitboxApp en un Mac, y **Diagnosticar** muestra qué versión respondió.
+- **Credenciales.** El llavero de inicio de sesión sigue bloqueado en una sesión SSH, así que el modo remoto rechaza Git Credential Manager con `gcm_unsupported_remote`. Las cuentas de token funcionan, porque su token vive en un archivo 0600, no en el llavero. Las cuentas SSH funcionan como en Linux.
+- **Carpetas protegidas por la privacidad.** macOS mantiene los procesos que arranca `sshd` fuera de `~/Documents`, `~/Desktop`, `~/Downloads` e iCloud Drive (TCC). Una raíz de clonado en una de ellas falla con `Operation not permitted`, y **Diagnosticar** nombra esa causa. Muevo la raíz a una carpeta como `~/git`. La otra opción es dar a `/usr/libexec/sshd-keygen-wrapper` Acceso total al disco en Ajustes del Sistema › Privacidad y seguridad › Acceso total al disco, pero eso abre esas carpetas a cualquier inicio de sesión SSH en el Mac.
+- **Sin cuarentena, firma ad hoc.** GitboxApp envía el servidor por SSH y nada lo descarga, así que el archivo no lleva el atributo `com.apple.quarantine` y Gatekeeper nunca lo comprueba. El linker de Go lo firma ad hoc, algo que Apple silicon necesita para ejecutarlo. No tiene Developer ID, y un programa de línea de comandos que su propietario ejecuta por SSH no lo necesita. Comprobé ambas cosas con `xattr -l` y `codesign -dv` en macOS 27.
 
 ## Clientes Windows y macOS
 

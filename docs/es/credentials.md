@@ -217,7 +217,7 @@ En una [ventana remota](remote-mode.md), las credenciales viven en el host, porq
   - Windows: el Administrador de credenciales de Windows (`wincredman`) no funciona de forma fiable por SSH.
 - **SSH**: funciona. El host crea el par de claves en su propio `~/.ssh/`, junto a su entrada `Host gitbox-<accountKey>`, y se queda la clave privada: solo la clave pública vuelve a la ventana. **Copiar al portapapeles** la pone en el portapapeles de este ordenador, y el enlace del proveedor se abre en el navegador de este ordenador. Cuando añado la clave en el proveedor, **Verificar conexión** la prueba desde el host. **Regenerar clave SSH** sustituye la clave en el host, y añado la nueva en el proveedor.
 
-Por ahora solo se admiten hosts Linux. En un host Windows el archivo del token tendrá una ACL que solo mi usuario puede leer, que llega con la compatibilidad con hosts Windows.
+Se admiten hosts Linux y macOS. En un Mac, el archivo del token vive en el mismo sitio con los mismos modos, y el llavero bloqueado es el motivo por el que se rechaza GCM. En un host Windows el archivo del token tendrá una ACL que solo mi usuario puede leer, que llega con la compatibilidad con hosts Windows.
 
 ### Reenvío del agente SSH y claves de cuenta
 

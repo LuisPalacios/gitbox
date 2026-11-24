@@ -106,6 +106,12 @@ Per-host logs go to `/tmp/gitbox-ship-<platform>.log`, and the summary shows the
 
 Runs `GitboxApp --version` on every platform: the local `wails build` output and the copies `ship.sh` staged on the remotes. The flag prints `GitboxApp <version> (<sha>)` and exits without opening a window, so it works over plain SSH. The script reports pass or fail per platform and exits non-zero on any failure.
 
+```bash
+./scripts/smoke.sh remote-mac
+```
+
+Runs the remote smoke of [remote mode](remote-mode.md) from this machine against the macOS host in `SSH_REMOTE_MAC_HOST`, an alias of a disposable account set up as [testing.md](testing.md#remote-mode-tests) describes. It builds the embedded servers, connects, which installs the server in a scratch `server_dir`, reads the log, runs the doctor, disconnects and uninstalls. `./scripts/smoke.sh all` includes it when `SSH_REMOTE_MAC_HOST` is set.
+
 ### Interactive testing (test mode)
 
 ```bash
@@ -145,9 +151,10 @@ Copies the local `~/.config/gitbox/gitbox.json` to one remote. It shows a diff a
 | Script                                  | What it does                                                        |
 | --------------------------------------- | ------------------------------------------------------------------- |
 | `ship.sh [short-name]`                  | Build the GUI on each remote and stage it for testing               |
-| `smoke.sh [target]`                     | Non-interactive smoke test (`GitboxApp --version`)                  |
+| `smoke.sh [target]`                     | Non-interactive smoke test (`GitboxApp --version`, `remote-mac`)    |
 | `gate.sh [--only/--skip lane]`          | Verify HEAD on every lane in parallel ([Local gate](local-gate.md)) |
 | `remote-it.sh`                          | sshd integration tests of remote mode (Docker on Linux)             |
+| `remote-host-it.sh [alias]`             | Integration tests of remote mode against a real host (macOS)        |
 | `test-commands.sh [target]`             | Print the test-mode launch commands                                 |
 | `run-commands.sh [target]`              | Print the production-mode launch commands                           |
 | `setup-credentials.sh [target]`         | Verify tokens and set up SSH keys on each target                    |
