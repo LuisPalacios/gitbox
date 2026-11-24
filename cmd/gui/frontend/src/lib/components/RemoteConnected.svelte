@@ -42,6 +42,8 @@
   onMount(async () => {
     offs.push(events.on('remote:state', (s) => { st = s as RemoteState; if (s.state === 'failed') showLog = showLog || !simple; }));
     offs.push(events.on('remote:log', (line: string) => { lines = [...lines.slice(-1999), line]; }));
+    // The Remote hosts window asks for the log (#330).
+    offs.push(events.on('remote:show-log', () => { showLog = true; }));
     try {
       st = await bridge.remoteInfo();
       lines = await bridge.remoteLog();

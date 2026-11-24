@@ -6,6 +6,7 @@ import type { CredentialStepReport } from './types';
 import { ExportDiagnostics, GetScheduledTasks, PreviewDiagnostics, RunTask } from '../../wailsjs/go/main/App';
 import { ApplyRecipeImport, ExportRecipe, OpenRecipeImport, PreviewRecipeExport, PreviewRecipeImport } from '../../wailsjs/go/main/App';
 import { recipe } from '../../wailsjs/go/models';
+import { ListSSHAliases, OpenRemotesWindow, ShowLocalWindow, ShowRemoteLog } from '../../wailsjs/go/main/App';
 import { GetStartupSnapshot, GetConfig, GetCollapsed, SetCollapsed, GetConfigPath, GetAllStatus, RefreshStatus, CloneRepo, PreviewPullAll, PullAll, PullRepo, Discover, AddDiscoveredRepos, CredentialVerify, CredentialDelete, ReloadConfig, StopTrackingRepo, DeleteRepoFolder, AddAccount, SuggestAccountKey, DiscardAccount, UpdateAccount, RenameAccount, CredentialSetupGCM, CredentialStoreToken, CredentialSetupSSH, CredentialRegenerateSSH, CredentialSSHAgentReport, GetTokenGuide, AccountDeletionImpact, DeleteAccount, ChangeCredentialType, OpenAccountFolder, OpenAccountInApp, OpenAccountInAIHarness, OpenFileInEditor, OpenInExplorer, OpenInApp, OpenInAIHarness,  DetectEditors, RefreshAIHarnesses, IsFirstRun, GetConfigLoadError, AcknowledgeConfigError, RepairConfig, ListConfigBackups, RestoreFromBackup, PickFolder, InitRoot, ListRoots, AddRoot, RemoveRoot, SetDefaultRoot, GetAppVersion, GetOS, FetchRepo, FetchAllRepos, GetRepoDetail, GetIdentityProof, RepairRepoIdentity, OpenRepoConfigInEditor, GetLanguage, SetLanguage, GetPeriodicSync, SetPeriodicSync, GetViewMode, SetViewMode, GetUIMode, SetUIMode, SetShowPullPlan, SetTheme, ShowWindow, CheckGlobalIdentity, RemoveGlobalIdentity, IsGlobalGCMConfigNeeded, CheckGlobalGCMConfig, FixGlobalGCMConfig, CheckGlobalGitignore, InstallGlobalGitignore, RecommendedGlobalGitignoreBody, GetCheckGlobalGitignore, SetCheckGlobalGitignore, GetAutostart, SetAutostart, GetMirrorStatus, SetupMirrorRepo, AddMirrorGroup, DeleteMirrorGroup, AddMirrorRepo, DeleteMirrorRepo, CheckMirrorCredentials, ListRemoteRepos, DiscoverMirrors, ApplyDiscoveredMirrors, ListAccountOrgs, CreateNewRepo, IsPositionOnScreen, ApplyUpdate, PreviewSweep, ConfirmSweep, Reconcile, AdoptClones, IgnoreClone, GetPRSettings, SetPRBadgesEnabled, SetPRIncludeDrafts, GetPRsForRepo, RefreshAllPRs, SetRepoContainer, SetRepoWorkspace, RepoWorkspaceFiles, GetNestedScanDepth, SetNestedScanDepth, ScanFolderForClones, AddDiscoveredReposToFolder, RepoNesting, DoctorRun, DoctorPrecheck, ListTerminalApps, ListShells, ListTerminalProfiles, OpenProfile, OpenAccountProfile, SaveTerminalProfilesDTO, RedetectProfiles, MissingModernTerminal, GetWindowMode, OpenTerminalsManagerWindow, RemoteInfo, RemoteLog, RemoteDisconnect, RemoteReconnect, RemoteReinstall, RemoteUninstall, RemoteRunDoctor, ListRemotes, ValidateRemotePath, SetRemoteEditor, AddRemote, RemoveRemote, ConnectRemote } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { createEventRouter } from './events';
@@ -193,6 +194,11 @@ const calls = {
   removeRemote: (alias: string): Promise<RemoteResult> => RemoveRemote(alias) as Promise<RemoteResult>,
   setRemoteEditor: (alias: string, editor: string): Promise<RemoteResult> => SetRemoteEditor(alias, editor) as Promise<RemoteResult>,
   connectRemote: (alias: string): Promise<RemoteResult> => ConnectRemote(alias) as Promise<RemoteResult>,
+  // ── The host switcher and the Remote hosts window (#330) ──
+  openRemotesWindow: (): Promise<RemoteResult> => OpenRemotesWindow() as Promise<RemoteResult>,
+  showLocalWindow: (): Promise<RemoteResult> => ShowLocalWindow() as Promise<RemoteResult>,
+  showRemoteLog: (alias: string): Promise<RemoteResult> => ShowRemoteLog(alias) as Promise<RemoteResult>,
+  listSSHAliases: (): Promise<string[]> => ListSSHAliases() as Promise<string[]>,
 };
 
 // remoteWindow is set once a remote window connects (#240): it refuses the
@@ -304,7 +310,21 @@ export interface RemotePathDTO {
 
 export interface RemotesList {
   enabled: boolean;
-  remotes: { alias: string; serverDir?: string; editor?: string }[];
+  // The alias this window shows, absent in the local window (#330).
+  current?: string;
+  remotes: {
+    alias: string;
+    serverDir?: string;
+    editor?: string;
+    // A window of this remote is running, with this connection state (#330).
+    open?: boolean;
+    state?: RemoteStateName;
+    // What the host reported on its last connection (#330).
+    serverOS?: string;
+    serverArch?: string;
+    serverVersion?: string;
+    lastConnected?: string;
+  }[];
   // The editor commands a remote can be set to (#287).
   remoteEditors?: string[] | null;
 }

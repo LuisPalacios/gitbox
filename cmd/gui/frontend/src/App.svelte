@@ -1471,13 +1471,15 @@
   // (issue #69 — keeps the editor in its own OS window so the parent
   // stays interactive).
   // "remote" is the window of one remote (#239), which shows only the
-  // connected view until P4.
-  let windowMode: 'main' | 'terminals' | 'remote' = 'main';
+  // connected view until P4. "remotes" is the Remote hosts window (#330).
+  let windowMode: 'main' | 'terminals' | 'remote' | 'remotes' = 'main';
   // The remote view loads only in a remote window, so the main bundle
   // does not carry it.
   let RemoteConnected: typeof import('./lib/components/RemoteConnected.svelte').default | null = null;
   // Likewise the Profile editor loads only in the terminals window.
   let TerminalsModal: typeof import('./lib/TerminalsModal.svelte').default | null = null;
+  // And the Remote hosts window's view only in that window (#330).
+  let RemoteHostsWindow: typeof import('./lib/components/RemoteHostsWindow.svelte').default | null = null;
   // A remote window (#240) shows the connection card until the host's data
   // first arrives, then the full UI, limited to what its server serves
   // (#294). After a disconnect it keeps
@@ -1951,6 +1953,8 @@
         windowMode = 'terminals';
       } else if (mode === 'remote') {
         windowMode = 'remote';
+      } else if (mode === 'remotes') {
+        windowMode = 'remotes';
       }
     } catch { /* fall back to main mode */ }
 
@@ -1966,6 +1970,35 @@
       try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
       applyTheme();
       RemoteConnected = (await import('./lib/components/RemoteConnected.svelte')).default;
+    }
+
+    if (windowMode === 'remotes') {
+      // The Remote hosts window (#330): the language and theme of this
+      // computer and its editors, then the view, which loads the remotes
+      // itself and again on every focus. Shown after the first paint, as in
+      // the terminals window below.
+      try { languageStore.set(normalizeLanguage(await bridge.getLanguage())); } catch (e) { console.error(e); }
+      const hydrate = async () => {
+        try {
+          const cfg = await bridge.reloadConfig();
+          configStore.set(cfg);
+          themeChoice = themeChoiceOf(cfg.global?.theme);
+        } catch (e) { console.error(e); }
+        applyTheme();
+      };
+      try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
+      RemoteHostsWindow = (await import('./lib/components/RemoteHostsWindow.svelte')).default;
+      await hydrate();
+      if (lifetime.signal.aborted) return;
+      markStartup('finished');
+      window.addEventListener('focus', () => { hydrate(); }, { signal: lifetime.signal });
+      await tick();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          bridge.showWindow();
+        });
+      });
+      return;
     }
 
     if (windowMode === 'terminals') {
@@ -2461,6 +2494,11 @@
       onClose={() => { /* no-op — closing happens via the OS window chrome */ }}
     />
   </div>
+{/if}
+
+<!-- ── REMOTE HOSTS WINDOW (#330) ── -->
+{#if windowMode === 'remotes' && RemoteHostsWindow}
+  <svelte:component this={RemoteHostsWindow} />
 {/if}
 
 <!-- ── REMOTE WINDOW (#239, #240): the connection card until the host's

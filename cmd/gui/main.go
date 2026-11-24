@@ -353,7 +353,7 @@ func runRemoteWindow(app *App, f remoteFlags) {
 	}
 	prefs := newFilePrefs(path)
 	if _, ok := findRemote(prefs.Get().Remotes, f.alias); !ok {
-		fmt.Fprintf(os.Stderr, "error: no remote named %s is configured; add it in Settings, Remotes (experimental)\n", f.alias)
+		fmt.Fprintf(os.Stderr, "error: no remote named %s is configured; add it in the Remote hosts window\n", f.alias)
 		os.Exit(2)
 	}
 	app.prefs = prefs

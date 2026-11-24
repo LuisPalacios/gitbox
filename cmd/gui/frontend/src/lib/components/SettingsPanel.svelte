@@ -7,12 +7,12 @@
   import { ro, remoteOff } from '../ro';
   import { remoteHost, remoteWindow } from '../stores';
   import FleetRecipe from './FleetRecipe.svelte';
-  import { unavailableOff, remoteEditorChoices, editorName } from '../remotehost';
-  import type { ConfigDTO, EditorInfo } from '../types';
+  import { unavailableOff } from '../remotehost';
+  import type { ConfigDTO } from '../types';
   import { tooltip } from '../tooltip';
   import { openExternal } from '../external';
   import type { ThemeChoice } from '../theme';
-  import type { RemotesList, RemoteResult } from '../bridge';
+  import { errorText } from '../notices';
 
   const pullPlanChoices = ['auto', 'on', 'off'] as const;
   $: pullPlanChoice = $configStore?.global?.show_pull_plan === undefined
@@ -59,78 +59,23 @@
 
   // ── Remotes (experimental, #239) ──
   // Shown only when remote mode is on, by --experimental-remote or the
-  // experimental_remote key. Each remote opens in a window of its own.
-  let remotes: RemotesList = { enabled: false, remotes: [] };
-  let newAlias = '';
-  let newServerDir = '';
-  let remoteBusy = '';
-  let remoteMsg = '';
-  let remoteMsgBad = false;
-  // alias → stage of an inline uninstall confirmation; others is how many
-  // other clients have a live server there.
-  let uninstallAsk: { alias: string; others: number } | null = null;
+  // experimental_remote key. The hosts are managed in the Remote hosts
+  // window (#330); each one opens in a window of its own.
+  let remotesEnabled = false;
+  let remotesError = '';
 
   $: if (showSettings) loadRemotes();
 
   async function loadRemotes() {
-    try { remotes = await bridge.listRemotes(); } catch (e) { console.error(e); }
+    try { remotesEnabled = (await bridge.listRemotes()).enabled; } catch (e) { console.error(e); }
   }
 
-  function say(res: RemoteResult, ok: string): boolean {
-    if (res.error) {
-      remoteMsg = res.hint ? $t(res.hint) : res.error;
-      remoteMsgBad = true;
-      return false;
-    }
-    remoteMsg = ok;
-    remoteMsgBad = false;
-    return true;
-  }
-
-  async function addRemote() {
-    remoteBusy = 'add';
+  async function openRemotesWindow() {
+    remotesError = '';
     try {
-      if (say(await bridge.addRemote(newAlias, newServerDir), $t('settings.remotes.added', { alias: newAlias.trim() }))) {
-        newAlias = '';
-        newServerDir = '';
-        await loadRemotes();
-      }
-    } finally { remoteBusy = ''; }
-  }
-
-  async function connectRemote(alias: string) {
-    remoteBusy = 'connect:' + alias;
-    try { say(await bridge.connectRemote(alias), $t('settings.remotes.opening', { alias })); }
-    finally { remoteBusy = ''; }
-  }
-
-  // The editors a remote can open folders in (#287): the configured ones
-  // whose command opens remote folders.
-  $: remoteEditorOptions = remoteEditorChoices(($configStore?.global?.editors || []) as EditorInfo[], remotes.remoteEditors || []);
-
-  async function setRemoteEditor(alias: string, editor: string) {
-    remoteBusy = 'editor:' + alias;
-    try {
-      if (say(await bridge.setRemoteEditor(alias, editor), $t('settings.remotes.editorSaved', { alias }))) await loadRemotes();
-    } finally { remoteBusy = ''; }
-  }
-
-  async function removeRemote(alias: string) {
-    remoteBusy = 'remove:' + alias;
-    try {
-      if (say(await bridge.removeRemote(alias), $t('settings.remotes.removed', { alias }))) await loadRemotes();
-    } finally { remoteBusy = ''; }
-  }
-
-  async function uninstallRemote(alias: string, force: boolean) {
-    remoteBusy = 'uninstall:' + alias;
-    try {
-      const res = await bridge.remoteUninstall(alias, force);
-      if (res.error) { uninstallAsk = null; say(res, ''); return; }
-      if (res.needsConfirm) { uninstallAsk = { alias, others: res.otherClients }; return; }
-      uninstallAsk = null;
-      say(res, $t('settings.remotes.uninstalled', { alias }));
-    } finally { remoteBusy = ''; }
+      const res = await bridge.openRemotesWindow();
+      if (res.error) remotesError = res.hint ? $t(res.hint) : res.error;
+    } catch (e) { remotesError = errorText(e); }
   }
 </script>
 
@@ -237,49 +182,11 @@
       </button>
     </div>
     {/if}
-    {#if remotes.enabled}
-    <div class="settings-row settings-row-top">
+    {#if remotesEnabled}
+    <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.remotesTip')}>{$t('settings.remotes')}<span class="remote-badge">{$t('settings.remotes.experimental')}</span></span>
-      <div class="remotes">
-        {#each remotes.remotes as r (r.alias)}
-          <div class="remote-row">
-            <span class="remote-alias" translate="no">{r.alias}</span>
-            {#if r.serverDir}<span class="remote-dir" translate="no">{r.serverDir}</span>{/if}
-            <select class="remote-input remote-select" aria-label={$t('settings.remotes.editor')} use:tooltip={$t('settings.remotes.editorTip')}
-              value={r.editor || ''} disabled={remoteBusy !== ''} on:change={(e) => setRemoteEditor(r.alias, e.currentTarget.value)}>
-              <option value="">{$t('settings.remotes.editorAuto')}</option>
-              {#each remoteEditorOptions as ed (ed.command)}
-                <option value={editorName(ed.command)}>{ed.name}</option>
-              {/each}
-              {#if r.editor && !remoteEditorOptions.some((ed) => editorName(ed.command) === r.editor)}
-                <option value={r.editor}>{$t('settings.remotes.editorMissing', { editor: r.editor })}</option>
-              {/if}
-            </select>
-            <button class="settings-action-btn" on:click={() => connectRemote(r.alias)} disabled={remoteBusy !== ''}>{$t('settings.remotes.connect')}</button>
-            <button class="theme-btn" on:click={() => (uninstallAsk = { alias: r.alias, others: 0 })} disabled={remoteBusy !== ''}>{$t('settings.remotes.uninstall')}</button>
-            <button class="theme-btn" on:click={() => removeRemote(r.alias)} disabled={remoteBusy !== ''}>{$t('settings.remotes.remove')}</button>
-          </div>
-          {#if uninstallAsk?.alias === r.alias}
-            <div class="remote-confirm">
-              <span>{uninstallAsk.others > 0 ? $t('remote.uninstallOthers', { n: uninstallAsk.others }) : $t('remote.uninstallConfirm', { alias: r.alias })}</span>
-              <button class="theme-btn remote-danger" on:click={() => uninstallRemote(r.alias, (uninstallAsk?.others ?? 0) > 0)} disabled={remoteBusy !== ''}>
-                {remoteBusy === 'uninstall:' + r.alias ? $t('settings.remotes.working') : $t('settings.remotes.uninstall')}
-              </button>
-              <button class="theme-btn" on:click={() => (uninstallAsk = null)}>{$t('common.cancel')}</button>
-            </div>
-          {/if}
-        {:else}
-          <span class="settings-sublabel remote-none">{$t('settings.remotes.none')}</span>
-        {/each}
-        <form class="remote-add" on:submit|preventDefault={addRemote}>
-          <input class="remote-input" bind:value={newAlias} placeholder={$t('settings.remotes.aliasPlaceholder')} aria-label={$t('settings.remotes.alias')} spellcheck="false" autocapitalize="off" />
-          <input class="remote-input remote-input-dir" bind:value={newServerDir} placeholder={$t('settings.remotes.serverDirPlaceholder')} aria-label={$t('settings.remotes.serverDir')} spellcheck="false" autocapitalize="off" />
-          <button class="settings-action-btn" type="submit" disabled={remoteBusy !== '' || !newAlias.trim()}>
-            {remoteBusy === 'add' ? $t('settings.remotes.checking') : $t('settings.remotes.add')}
-          </button>
-        </form>
-        {#if remoteMsg}<span class="remote-msg" class:remote-msg-bad={remoteMsgBad}>{remoteMsg}</span>{/if}
-      </div>
+      <button class="settings-action-btn" on:click={openRemotesWindow}>{$t('settings.manager')}</button>
+      {#if remotesError}<span class="remote-msg-bad">{remotesError}</span>{/if}
     </div>
     {/if}
     <div class="settings-row">
@@ -370,27 +277,10 @@
   /* .settings-action shared with .settings-btn / .settings-action-btn —
      unified rule lives near .settings-row above. */
   .settings-doctor-summary { margin-left: 8px; }
-  .settings-row-top { align-items: flex-start; }
-  .settings-row-top .settings-label { padding-top: 4px; }
   .remote-badge {
     display: block; width: fit-content; margin-top: 3px; padding: 0 5px; border-radius: 3px;
     font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
     color: #b45309; background: rgba(245, 158, 11, 0.14);
   }
-  .remotes { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
-  .remote-row { display: flex; align-items: center; gap: 8px; }
-  .remote-alias { font-size: 12px; font-family: monospace; color: var(--text-primary); min-width: 90px; }
-  .remote-dir { font-size: 11px; font-family: monospace; color: var(--text-muted); }
-  .remote-none { margin-left: 0; padding-top: 4px; }
-  .remote-confirm { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); padding-left: 2px; }
-  .remote-danger { color: var(--alert); border-color: var(--alert); }
-  .remote-add { display: flex; align-items: center; gap: 6px; }
-  .remote-input {
-    width: 140px; padding: 3px 8px; font-size: 11px; font-family: monospace;
-    border: 1px solid var(--border); border-radius: 5px; background: var(--bg-base); color: var(--text-primary);
-  }
-  .remote-input-dir { width: 170px; }
-  .remote-select { width: auto; font-family: inherit; }
-  .remote-msg { font-size: 11px; color: var(--text-muted); }
-  .remote-msg-bad { color: var(--alert); }
+  .remote-msg-bad { font-size: 11px; color: var(--alert); }
 </style>
