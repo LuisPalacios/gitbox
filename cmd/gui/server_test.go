@@ -21,6 +21,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
+	"github.com/LuisPalacios/gitbox/pkg/remote"
 	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
@@ -350,6 +351,21 @@ func TestDoctorReportSanitizeRoots(t *testing.T) {
 	}
 	if r.Roots[0].State != doctorRootUnreadable || strings.ContainsRune(r.Roots[0].Path, 0x1b) {
 		t.Errorf("first root = %+v, want a scrubbed path and state unreadable", r.Roots[0])
+	}
+}
+
+// A client turns a daemon state or a fallback reason it does not know into
+// unsafe and none (#247).
+func TestDoctorReportSanitizeDaemon(t *testing.T) {
+	r := serverDoctorReport{Daemon: &doctorDaemon{State: "<b>", Running: true, LastFallback: "rm -rf"}}
+	r.sanitize()
+	if r.Daemon.State != doctorDaemonUnsafe || r.Daemon.LastFallback != "" {
+		t.Errorf("daemon = %+v, want unsafe and no fallback", r.Daemon)
+	}
+	r = serverDoctorReport{Daemon: &doctorDaemon{State: doctorDaemonOK, LastFallback: remote.ReasonUnreachable}}
+	r.sanitize()
+	if r.Daemon.State != doctorDaemonOK || r.Daemon.LastFallback != remote.ReasonUnreachable {
+		t.Errorf("a known state and reason changed: %+v", r.Daemon)
 	}
 }
 

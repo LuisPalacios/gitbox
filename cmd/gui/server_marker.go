@@ -20,19 +20,13 @@ func init() {
 	onServe = func(clientID string, log io.Writer) func() {
 		return startInUse(installedExe(), clientID, log, time.Now)
 	}
-}
-
-// installedExe is the path of the running binary with links resolved, or
-// empty.
-func installedExe() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
+	installedBuild = func() string {
+		root, build, ok := remote.Locate(installedExe())
+		if !ok {
+			return ""
+		}
+		return filepath.Join(root, build)
 	}
-	if real, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = real
-	}
-	return exe
 }
 
 // gcWait bounds how long a server that is stopping waits for its garbage

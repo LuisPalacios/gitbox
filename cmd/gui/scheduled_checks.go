@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,8 +21,19 @@ func (a *App) ensureWindowTasks() {
 // The window owns the fleet cadence, including for a remote fleet. A
 // headless server registers only host tool detection.
 func (a *App) startWindowTasks() {
+	tasks := a.fleetTasks()
+	if !a.remoteWindow() {
+		tasks = append(tasks, a.hostHarnessTask(), &scheduledTask{name: taskUpdate, every: updateCheckInterval, next: time.Now(), run: a.checkForUpdate})
+	}
+	a.tasks.start(a.ctx, tasks)
+}
+
+// fleetTasks are fetch-all, mirror status and PR refresh, with no interval
+// until one is set. A window runs them on its backend; the daemon of a host
+// runs them on its own (#247).
+func (a *App) fleetTasks() []*scheduledTask {
 	var tasks []*scheduledTask
-	for _, name := range []string{taskFetch, taskMirrors, taskPRs} {
+	for _, name := range fleetTaskNames {
 		tasks = append(tasks, &scheduledTask{name: name, run: func(ctx context.Context) error {
 			if a.remote != nil && !a.remote.connected() {
 				return errTaskOffline
@@ -28,11 +41,11 @@ func (a *App) startWindowTasks() {
 			return a.be().RunFleetCheck(ctx, name)
 		}})
 	}
-	if !a.remoteWindow() {
-		tasks = append(tasks, a.hostHarnessTask(), &scheduledTask{name: taskUpdate, every: updateCheckInterval, next: time.Now(), run: a.checkForUpdate})
-	}
-	a.tasks.start(a.ctx, tasks)
+	return tasks
 }
+
+// fleetTaskNames are the checks that follow the periodic_sync interval.
+var fleetTaskNames = []string{taskFetch, taskMirrors, taskPRs}
 
 func (s *remoteSession) connected() bool {
 	s.mu.Lock()
@@ -132,3 +145,76 @@ func (b localBackend) RunFleetCheck(ctx context.Context, name string) error {
 func (r *RemoteBackend) RunFleetCheck(ctx context.Context, name string) error {
 	return r.invokeContext(ctx, "RunFleetCheck", nil, name)
 }
+
+// testFleetInterval, set only in the e2e_sentinel build of the server,
+// accepts the short intervals the sshd tests need (#247).
+var testFleetInterval func(string) (time.Duration, bool)
+
+// fleetInterval reads a periodic_sync value: off, or one of the intervals
+// a window offers.
+func fleetInterval(v string) (time.Duration, bool) {
+	switch {
+	case v == "" || v == "off":
+		return 0, true
+	case validPeriodicSync(v):
+		d, err := time.ParseDuration(v)
+		return d, err == nil
+	case testFleetInterval != nil:
+		return testFleetInterval(v)
+	}
+	return 0, false
+}
+
+// errFleetInterval refuses an interval no window offers.
+var errFleetInterval = errors.New("invalid periodic sync interval")
+
+// SetFleetSchedule sets the interval of the fleet checks that a host's
+// daemon runs on its own, connected client or not (#247). A window sends
+// its periodic_sync preference when it connects and whenever it changes;
+// with several windows, the last one wins. A server for one session has no
+// such checks, and the call changes nothing there.
+func (b localBackend) SetFleetSchedule(interval string) error {
+	every, ok := fleetInterval(interval)
+	if !ok {
+		return errFleetInterval
+	}
+	b.a.tasks.setFleetInterval(every)
+	return nil
+}
+
+// FleetSchedule is the state of those checks.
+func (b localBackend) FleetSchedule() []ScheduledTaskDTO {
+	out := []ScheduledTaskDTO{}
+	for _, t := range b.a.tasks.snapshot() {
+		if slices.Contains(fleetTaskNames, t.Name) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func (r *RemoteBackend) SetFleetSchedule(interval string) error {
+	return r.callErr("SetFleetSchedule", interval)
+}
+
+// FleetSchedule keeps only the fleet tasks, once each, with a result this
+// build knows: the host is untrusted.
+func (r *RemoteBackend) FleetSchedule() []ScheduledTaskDTO {
+	out := []ScheduledTaskDTO{}
+	for _, t := range remoteValue[[]ScheduledTaskDTO](r, "FleetSchedule") {
+		if !slices.Contains(fleetTaskNames, t.Name) || slices.ContainsFunc(out, func(o ScheduledTaskDTO) bool { return o.Name == t.Name }) {
+			continue
+		}
+		if !slices.Contains(taskResults, t.LastResult) {
+			t.LastResult = ""
+		}
+		if t.NextAt < 0 || t.NextAt >= 1<<53 {
+			t.NextAt = 0
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// taskResults are the LastResult values of a task.
+var taskResults = []string{"", "ok", "failed", "offline", "cancelled"}

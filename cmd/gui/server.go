@@ -86,6 +86,7 @@ var servedMethods = []string{
 	"FetchAllRepos",
 	"FetchRepo",
 	"FixGlobalGCMConfig",
+	"FleetSchedule",
 	"GetAllStatus",
 	"GetCheckGlobalGitignore",
 	"GetCollapsed",
@@ -139,6 +140,7 @@ var servedMethods = []string{
 	"ScanFolderForClones",
 	"SetCheckGlobalGitignore",
 	"SetDefaultRoot",
+	"SetFleetSchedule",
 	"SetNestedScanDepth",
 	"SetPRBadgesEnabled",
 	"SetPRIncludeDrafts",
@@ -379,6 +381,9 @@ var (
 	// onServe runs when serving starts and returns what runs when it ends:
 	// the in-use marker and garbage collection (server_marker.go).
 	onServe func(clientID string, log io.Writer) (stop func())
+	// installedBuild is the build folder of the installed binary, or empty
+	// (server_marker.go).
+	installedBuild func() string
 )
 
 // Exit codes of gitbox-server. A client tells a build mismatch (reinstall
@@ -392,6 +397,8 @@ const (
 
 const serverUsage = `usage:
   gitbox-server serve --stdio [--client-id <id>]   serve one client on stdin and stdout
+  gitbox-server proxy --client-id <id>             relay stdin and stdout to this build's daemon
+  gitbox-server run [--idle <duration>]            run this build's daemon (default idle 24h)
   gitbox-server --version                          print "<version> <commit>"
   gitbox-server --doctor                           print a JSON report about this host
 `
@@ -425,6 +432,14 @@ func serverMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return serverExitUsage
 		}
 		return serve(newServerApp(""), clientID, stdin, stdout, stderr)
+	case len(args) == 3 && args[0] == "proxy" && args[1] == "--client-id" && clientIDRE.MatchString(args[2]):
+		return proxyMain(args[2], stdin, stdout, stderr)
+	case len(args) >= 1 && args[0] == "run":
+		idle, ok := parseRunArgs(args[1:])
+		if !ok {
+			break
+		}
+		return daemonMain(idle, stderr)
 	}
 	fmt.Fprint(stderr, serverUsage)
 	return serverExitUsage
@@ -434,8 +449,6 @@ func serverMain(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 // only shutdown signal: it cancels everything in flight, git processes and
 // what they started included, and the process exits.
 func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) int {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	// When the ssh connection drops, a write to stdout or stderr would end
 	// the process with SIGPIPE at once, maybe while a save holds the config
 	// lock. Ignored, the write fails instead: the connection ends, and the
@@ -446,10 +459,20 @@ func serve(a *App, clientID string, stdin io.Reader, stdout, stderr io.Writer) i
 	if serverLog != nil {
 		log = serverLog(stderr)
 	}
+	return serveSession(a, clientID, "", stdin, stdout, log)
+}
+
+// serveSession is serve with its log already open. fallback, when set, is
+// why a proxy serves this session itself instead of the daemon (#247); the
+// handshake tells the client.
+func serveSession(a *App, clientID, fallback string, stdin io.Reader, stdout, log io.Writer) int {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	if onServe != nil {
 		defer onServe(clientID, log)()
 	}
 	srv := newRPCServer(a, log)
+	srv.Self.Fallback = fallback
 	backend := a.be()
 	backend.Init(ctx)
 	// Detect tools on this host and save through its config guard. The
@@ -491,6 +514,8 @@ type serverDoctorReport struct {
 	// Roots has one entry per clone root of the host's config, when the
 	// config loads (#245).
 	Roots []doctorRoot `json:"roots,omitempty"`
+	// Daemon is the state of this build's daemon (#247).
+	Daemon *doctorDaemon `json:"daemon,omitempty"`
 }
 
 // doctorRoot is whether the server can read one clone root.
@@ -519,6 +544,12 @@ func serverDoctor(cfgPath string) serverDoctorReport {
 		CredentialFindings: credential.AuditCredentialDir(),
 		Roots:              doctorRoots(cfgPath),
 	}
+	buildDir := ""
+	if installedBuild != nil {
+		buildDir = installedBuild()
+	}
+	daemon := daemonDoctor(buildDir)
+	report.Daemon = &daemon
 	report.ConfigDirWritable, report.ConfigDirExec = probeDir(nearestDir(filepath.Dir(cfgPath)))
 	if res, err := git.Run(context.Background(), git.Request{Args: []string{"--version"}, Env: git.Inherit}); err == nil {
 		report.GitVersion = strings.TrimSpace(string(res.Stdout))

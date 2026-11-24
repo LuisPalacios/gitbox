@@ -227,6 +227,11 @@ var backendOnlyClass = map[string]methodInfo{
 	// window: the host resolves the folder, this computer opens it (#243).
 	"AccountFolder": {classRemote, "P6", false},
 	"RunFleetCheck": {classRemote, "scheduler", false},
+	// The interval and state of the fleet checks a host's daemon runs
+	// while no window is connected (#247). Setting the interval changes
+	// only the daemon's memory, and the same value twice changes nothing.
+	"SetFleetSchedule": {classRemote, "P10", false},
+	"FleetSchedule":    {classRemote, "P10", false},
 }
 
 // classOf is the classification of a Backend method, bound or not.

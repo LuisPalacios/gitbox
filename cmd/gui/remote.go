@@ -541,6 +541,13 @@ func (a *App) RemoteRunDoctor() RemoteDoctorDTO {
 	for _, r := range report.Roots {
 		s.log.Printf("doctor: root %s: %s", r.Path, r.State)
 	}
+	if d := report.Daemon; d != nil {
+		fallback := d.LastFallback
+		if fallback == "" {
+			fallback = "none"
+		}
+		s.log.Printf("doctor: daemon state %s, running %v, last fallback %s", d.State, d.Running, fallback)
+	}
 	return RemoteDoctorDTO{Report: &report}
 }
 
@@ -563,6 +570,14 @@ func (r *serverDoctorReport) sanitize() {
 		r.Roots[i].Path = userText(r.Roots[i].Path)
 		if !slices.Contains(doctorRootStates, r.Roots[i].State) {
 			r.Roots[i].State = doctorRootUnreadable
+		}
+	}
+	if d := r.Daemon; d != nil {
+		if !slices.Contains(doctorDaemonStates, d.State) {
+			d.State = doctorDaemonUnsafe
+		}
+		if !slices.Contains(fallbackReasons, d.LastFallback) {
+			d.LastFallback = ""
 		}
 	}
 }

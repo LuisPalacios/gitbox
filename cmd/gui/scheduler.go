@@ -199,6 +199,18 @@ func (r *taskRegistry) stop() {
 	}
 }
 
+// busy reports whether a task is running.
+func (r *taskRegistry) busy() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, t := range r.tasks {
+		if t.busy {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *taskRegistry) snapshot() []ScheduledTaskDTO {
 	r.mu.Lock()
 	defer r.mu.Unlock()
