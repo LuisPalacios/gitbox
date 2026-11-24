@@ -2,7 +2,7 @@
 
 Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server or a Mac. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
 
-This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config and its clones, sets up token and SSH credentials on it, and opens its folders in my local editor, terminal and AI harnesses. Linux and macOS hosts are supported (see [macOS hosts](#macos-hosts)); Windows hosts follow.
+This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config and its clones, sets up token and SSH credentials on it, opens its folders in my local editor, terminal and AI harnesses, and carries on through a dropped link: a daemon on the host keeps the work going, and the window connects to it again. Linux and macOS hosts are supported (see [macOS hosts](#macos-hosts)); Windows hosts follow.
 
 ## Before I start: an alias that needs no prompt
 
@@ -54,7 +54,7 @@ A text that speaks of this computer names the host instead, because the action r
 
 These work, all run on the host:
 
-- the status of every repository, **Fetch all**, **Fetch** on one repository and the periodic status check;
+- the status of every repository, **Fetch all**, **Fetch** on one repository and the periodic status check, which the host runs on its own (see [The daemon](#the-daemon));
 - the repository details, the pull request badges and their lists, and the mirror status;
 - **Find projects** of an account, which lists the repositories of the provider without adding them;
 - credential checks, the sweep preview and the move preflight;
@@ -104,20 +104,26 @@ If the connection drops while a change is being saved, the host's `gitbox.json` 
 
 ### When the connection drops during a long action
 
-A clone, pull, move or mirror setup runs on the host while the window that started it stays connected. Closing the window, disconnecting or losing the connection stops it there, together with its git processes:
+A clone, pull, move or mirror setup runs on the host, in its daemon (see [The daemon](#the-daemon)). Closing the window, **Disconnect** or a dropped link only detaches the window: the action goes on there, together with its git processes, and nothing on this computer cancels it.
+
+When the link drops, the window connects again by itself, as [The badge and the connection](#the-badge-and-the-connection) describes. The new connection gets the results of what finished meanwhile, and an action still in flight asks the host again with the same request id: the host answers with the outcome of the first attempt and never runs it twice. After **Disconnect**, the next **Connect** does the same. An action fails in the window only when the window gives up connecting again or closes.
+
+A session that the host serves without the daemon behaves as before: closing the window, disconnecting or losing the connection stops the action there, together with its git processes:
 
 - A clone stops, and git removes the folder it created. If the host killed git outright, the folder stays: the next reconcile reports it as a clone that stopped before it finished, and I delete the folder and clone again. Gitbox never deletes it for me.
 - A pull stops, and git leaves the clone as it was or fast-forwarded.
 - A move stops between two steps and never starts deleting the source repository or the local clone. A destination it already created stays on the provider, and the move reports it; once the origin points at the destination, the config says so too.
 - A mirror setup stops, and what the provider already created stays.
 
-The window marks the action as failed with the connection error, so nothing waits for an answer that will not come.
+The window then marks the action as failed with the connection error, so nothing waits for an answer that will not come.
 
 ### The badge and the connection
 
 The title bar shows a badge with the alias, the system of the host in Advanced mode, and the connection state. Clicking it opens the connection log.
 
-When the connection drops, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server.** and a **Connect** button. While it is disconnected, the window starts no background reload or periodic check, so no other error appears. **Connect** runs the same connection again, clears what the disconnection left behind and reloads everything. The window then reconciles the host's clones and refreshes their status before it offers actions again, under **Reconnected to my-server. Reading its clones before the actions come back…**
+When the link to the daemon drops, from a dead `ssh`, a closed laptop lid or three missed heartbeats 10 seconds apart, the window connects again by itself. It makes three attempts, after 2, 5 and 10 seconds, and says **The link dropped; the host keeps running its work. Connecting again, attempt 1 of 3…** meanwhile. A new connection must reach the same build of the server, as a first one does. When every attempt fails, or when the host serves the session without the daemon, the window shows the failure as follows.
+
+When the connection is down, the window keeps the last state it got, dimmed and inert, under **Disconnected from my-server.** and a **Connect** button. While it is disconnected, the window starts no background reload or periodic check, so no other error appears. **Connect** runs the same connection again, clears what the disconnection left behind and reloads everything. The window then reconciles the host's clones and refreshes their status before it offers actions again, under **Reconnected to my-server. Reading its clones before the actions come back…**
 
 ### What the window trusts
 
@@ -163,7 +169,12 @@ Everything lives under the **server root**: `server_dir` of the remote if I set 
 
 ```text
 <root>/<build>/gitbox-server       the server, mode 0700
-<root>/<build>/in-use.<client id>  one per running server
+<root>/<build>/in-use.<client id>  one per connected session
+<root>/<build>/state/              the daemon's state folder, mode 0700
+<root>/<build>/state/rpc.sock      the daemon's socket, mode 0600
+<root>/<build>/state/daemon.pid    the daemon's process id; daemon.lock is its lock
+<root>/<build>/state/events.log    the last 1,000 events that ended an operation
+<root>/<build>/daemon.fallback     why the last session ran without the daemon
 <root>/.gc.lock/                   the garbage-collection lock
 <root>/logs/<build>.log[.1..3]     the server log
 ```
@@ -191,21 +202,32 @@ Every start verifies the server and starts it in the same remote command, so a c
 
 This catches corruption, a truncated upload and a file replaced by mistake. It cannot stop an attacker who already runs code as my remote user and swaps the file between the check and the start. Against that attacker, the client treats everything the server says as untrusted.
 
+### The daemon
+
+The verified start runs `gitbox-server proxy`, not the server itself. The proxy connects to the daemon of its build through `state/rpc.sock`, and when none answers it starts `gitbox-server run` from the same verified file. Then it relays the session. There is one daemon per user and build, shared by every window of that build, and it keeps one copy of the host's state for all of them. When the session ends, the proxy exits and the daemon stays.
+
+- **What it keeps.** The work that a window started goes on when the window leaves. The result of a request that changes the host stays for 10 minutes after it finishes, kept per window, so a window that asks again gets the same answer. The last 1,000 events that ended an operation go to `state/events.log`, and a window that connects again gets those it missed. The file holds what the window would have shown, and never a token.
+- **Sync with no window connected.** The daemon runs fetch-all, the mirror status and the pull request refresh at the interval of the periodic status check. Each window sends its own interval when it connects and when I change it, and the last one wins. A window connected to a daemon runs no timer of its own. The fetch never touches a working tree.
+- **How long it lives.** The daemon ends when no window has been connected for 24 hours and nothing is running. Uninstall, **Reinstall server** and the garbage collection of its build stop it first. To stop it by hand, I run `kill $(cat ~/.gitbox-server/<build>/state/daemon.pid)` on the host. The next connection starts a new daemon, which has none of the old one's events to give.
+- **Who can reach it.** The socket has mode 0600 and sits in a folder of mode 0700, both mine. The daemon also checks the user id of every connection, refuses any other user and logs only that id. It opens no TCP port. When it starts, it logs the SHA-256 of its own file; that value is informational only, because the process reports it about itself.
+- **When it cannot run.** When the state folder is not mine alone, or the daemon does not start or answer, the proxy serves the session in its own process, as before the daemon, and the work stops when the link drops. The server log says why, the connection log says **the host serves this session without the daemon (…): work stops if the link drops**, and **Run doctor** shows the reason. A Windows host has no daemon yet.
+- **Logging out.** On a Linux host whose systemd-logind sets `KillUserProcesses=yes`, logging out of the last session ends the daemon. `loginctl enable-linger` for my user keeps it running.
+
 ### Garbage collection
 
 After each start, the server deletes what nobody uses any more:
 
-- every other build folder with no in-use marker refreshed in the last 10 minutes and no upload in progress;
+- every other build folder with no in-use marker refreshed in the last 10 minutes and no upload in progress, after it stops that build's daemon; a build whose daemon does not stop stays;
 - temporary upload files older than one hour;
 - the logs of builds that are gone.
 
-A running server refreshes its marker every minute and deletes its own marker, and no other, when it stops. Garbage collection takes the lock by creating `.gc.lock`, which works on NFS too, and breaks a lock older than 5 minutes, saying so in the log. It touches only names that gitbox creates, so other files in the server root stay.
+A connected session refreshes its marker every minute and deletes its own marker, and no other, when it stops. Garbage collection takes the lock by creating `.gc.lock`, which works on NFS too, and breaks a lock older than 5 minutes, saying so in the log. It touches only names that gitbox creates, so other files in the server root stay.
 
 ## Uninstalling
 
 **Uninstall server**, in the remote window or next to the remote in Settings, disconnects and removes the server from the host. If another window still uses the server there, GitboxApp asks again first.
 
-It deletes only what gitbox put there: the build folders, the build logs in `logs/`, `.gc.lock/` and temporary upload files. It removes `logs/` and then the server root only when they are empty. A file I put in the server root myself stays, and so does the root that holds it. The repositories and the `gitbox.json` of the host are not touched.
+It stops the daemon of every build first. It deletes only what gitbox put there: the build folders, the build logs in `logs/`, `.gc.lock/` and temporary upload files. It removes `logs/` and then the server root only when they are empty. A file I put in the server root myself stays, and so does the root that holds it. The repositories and the `gitbox.json` of the host are not touched.
 
 **Remove** in Settings only forgets the remote on this computer.
 
@@ -215,9 +237,10 @@ It deletes only what gitbox put there: the build folders, the build logs in `log
 
 - every step with its exit code and duration, and the size of the login banner as `[banner: N bytes]`;
 - the install decisions, the hash of the uploaded file and the pin;
-- what `ssh` and the server print on stderr.
+- what `ssh` and the server print on stderr;
+- whether the host started its daemon or joined the one already running, how many missed events a reconnect brought, and when the host serves the session without the daemon.
 
-**Copy log** copies it, and I can also select and copy any part of the log or of the doctor's report, which scroll together. **Run doctor** runs `gitbox-server --doctor` on the host in a separate command, verified like a start, and shows the server build, the git version, the config path and whether that folder allows writing and running programs. For each clone root of the host's config, it also shows whether the server can read it, and names the cause when it cannot: the folder is missing, macOS privacy protection blocks it (see [macOS hosts](#macos-hosts)), the permissions refuse it, or it cannot be read.
+**Copy log** copies it, and I can also select and copy any part of the log or of the doctor's report, which scroll together. **Run doctor** runs `gitbox-server --doctor` on the host in a separate command, verified like a start, and shows the server build, the git version, the config path and whether that folder allows writing and running programs. For each clone root of the host's config, it also shows whether the server can read it, and names the cause when it cannot: the folder is missing, macOS privacy protection blocks it (see [macOS hosts](#macos-hosts)), the permissions refuse it, or it cannot be read. It also shows the daemon of this build: whether its state folder is safe, whether it runs, and why the last session ran without it, if one did.
 
 On the host, the server also writes `<root>/logs/<build>.log`, rotated at 1 MiB with three older files kept.
 
