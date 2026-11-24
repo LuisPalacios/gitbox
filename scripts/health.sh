@@ -11,10 +11,14 @@
 #   ./scripts/health.sh go svelte       # only the named checks ("go" = all Go checks)
 #   HEALTH_FUZZ=1 ./scripts/health.sh fuzz # mutation passes (10s per target)
 #   ./scripts/health.sh -v              # print every finding, not just the first 15
+#   ./scripts/health.sh -h              # this help
 #
 # Checks: gofmt vet server staticcheck modernize govulncheck deadcode test
 #         svelte frontend-test build funnel npm-install npm-audit shellcheck actionlint markdown
-#         docs-parity harness bootstrap fuzz (fuzz requires HEALTH_FUZZ=1)
+#         docs-parity harness bootstrap selftest fuzz (fuzz requires HEALTH_FUZZ=1)
+#
+# An unknown check or option, or fuzz without HEALTH_FUZZ=1, exits 2 before
+# any check runs. A run in which no check ran fails.
 #
 # Go analyzers are fetched at pinned versions (go run / go install into the
 # run's temp dir), so they need no install and give the same results
@@ -24,7 +28,17 @@
 
 set -uo pipefail
 
+# Resolved before the cd below, so -h finds this file from any directory.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
 cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# Every name the command line accepts: one per check, plus the "go" group.
+# Each check has one "want" line in Main; the selftest check keeps both in step.
+CHECKS="gofmt vet server staticcheck modernize govulncheck deadcode test fuzz
+svelte frontend-test build funnel npm-install npm-audit
+shellcheck bootstrap actionlint markdown docs-parity harness selftest"
+CHECK_GROUPS="go"
 
 # Pinned tool versions. Bump deliberately; a new release can add findings.
 STATICCHECK="honnef.co/go/tools/cmd/staticcheck@v0.8.1"
@@ -97,6 +111,7 @@ else
 fi
 
 failed=()
+ran=0
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -106,6 +121,7 @@ check() {
     local name="$1"; shift
     local out="$tmp/$name.log"
     local rc=0
+    ran=$((ran + 1))
     "$@" >"$out.raw" 2>&1 || rc=$?
     # Cold module caches announce downloads, also under per_os's [os] prefix;
     # that is not a finding.
@@ -130,6 +146,7 @@ check() {
 need() {
     if ! command -v "$1" >/dev/null 2>&1; then
         printf '  %bFAIL%b  %s %b(%s not installed)%b\n' "$R" "$N" "$2" "$D" "$1" "$N"
+        ran=$((ran + 1))
         failed+=("$2")
         return 1
     fi
@@ -145,15 +162,46 @@ want() {
     return 1
 }
 
+# usage — prints this file's header comment, from "Usage:" to the blank
+# line before the notes on Go analyzers.
+usage() {
+    sed -n '/^# Usage:/,/^# Go analyzers/p' "$SELF" | sed '$d' | sed -E 's/^# ?//'
+}
+
+# known NAME — true when NAME is a check or a group.
+known() {
+    local c
+    for c in $CHECKS $CHECK_GROUPS; do
+        [[ "$c" == "$1" ]] && return 0
+    done
+    return 1
+}
+
 verbose=0
 MAX_LINES=15
 selected=()
+bad=()
 for arg in "$@"; do
     case "$arg" in
+        -h|--help) usage; exit 0 ;;
         -v|--verbose) verbose=1 ;;
-        *) selected+=("$arg") ;;
+        -*) bad+=("unknown option: $arg") ;;
+        *) if known "$arg"; then selected+=("$arg"); else bad+=("unknown check: $arg"); fi ;;
     esac
 done
+for s in "${selected[@]}"; do
+    if [[ "$s" == fuzz && ${HEALTH_FUZZ:-0} != 1 ]]; then
+        bad+=("fuzz requires HEALTH_FUZZ=1")
+    fi
+done
+if [[ ${#bad[@]} -gt 0 ]]; then
+    {
+        printf 'health.sh: %s\n' "${bad[@]}"
+        printf 'Valid checks: %s\n' "${CHECKS//$'\n'/ }"
+        printf 'Groups: %s. Options: -v, --verbose, -h, --help.\n' "$CHECK_GROUPS"
+    } >&2
+    exit 2
+fi
 
 # ── Check bodies (quiet on success) ──────────────────────────────────
 
@@ -349,6 +397,11 @@ run_shellcheck() {
     shellcheck -f gcc -x -P SCRIPTDIR "${files[@]}"
 }
 
+run_selftest() {
+    bash scripts/test-health-args.sh >"$tmp/selftest.full" 2>&1 \
+        || { cat "$tmp/selftest.full"; return 1; }
+}
+
 run_bootstrap() {
     bash scripts/test-bootstrap.sh >"$tmp/bootstrap.full" 2>&1 \
         || { cat "$tmp/bootstrap.full"; return 1; }
@@ -409,6 +462,7 @@ want npm-install fe && check npm-install run_npm_install
 want npm-audit fe   && check npm-audit   run_npm_audit
 want shellcheck x   && need shellcheck shellcheck        && check shellcheck run_shellcheck
 want bootstrap x    && need ssh-keygen bootstrap        && check bootstrap run_bootstrap
+want selftest x     && check selftest run_selftest
 want actionlint x   && need actionlint actionlint        && check actionlint run_actionlint
 want markdown x     && need pnpm markdown               && check markdown   run_markdown
 want docs-parity x  && need uv docs-parity && check docs-parity run_docs_parity
@@ -416,7 +470,10 @@ want harness x      && need uv harness && need pnpm harness && need node harness
                     && check harness run_harness
 
 echo ""
-if [[ ${#failed[@]} -eq 0 ]]; then
+if [[ $ran -eq 0 ]]; then
+    printf '  %bFAIL%b  no check ran\n' "$R" "$N"
+    exit 1
+elif [[ ${#failed[@]} -eq 0 ]]; then
     printf '  %bok%b    all checks clean\n' "$G" "$N"
 else
     printf '  %bFAIL%b  %d check(s) with findings: %s\n' "$R" "$N" "${#failed[@]}" "${failed[*]}"
