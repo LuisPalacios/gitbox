@@ -208,8 +208,7 @@ func (j *Journal) since(after, before uint64, budget int) (events []json.RawMess
 	defer j.mu.Unlock()
 	gap = after < j.evicted
 	used := 0
-	for i := len(j.entries) - 1; i >= 0; i-- {
-		e := j.entries[i]
+	for _, e := range slices.Backward(j.entries) {
 		if e.Seq <= after {
 			break
 		}

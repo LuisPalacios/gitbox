@@ -133,13 +133,6 @@ func (s *Server) unregister(c *serverConn) {
 	delete(s.conns, c)
 }
 
-// lastSeq is the number of the last event emitted.
-func (s *Server) lastSeq() uint64 {
-	s.emitMu.Lock()
-	defer s.emitMu.Unlock()
-	return s.seq
-}
-
 // sharedResults is the result store of a persistent server.
 func (s *Server) sharedResults() *resultStore {
 	s.mu.Lock()

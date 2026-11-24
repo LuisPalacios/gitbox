@@ -122,7 +122,7 @@ func Dial(in io.Reader, out io.WriteCloser, opts ClientOptions) (*Client, error)
 func (c *Client) resume(p ResumePoint) error {
 	ctx, cancel := context.WithTimeout(context.Background(), resumeWait)
 	defer cancel()
-	raw, err := json.Marshal(resumeParams{Instance: p.Instance, After: p.After})
+	raw, err := json.Marshal(resumeParams(p))
 	if err != nil {
 		return err
 	}
