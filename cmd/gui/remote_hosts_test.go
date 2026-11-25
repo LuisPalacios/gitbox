@@ -87,11 +87,11 @@ func TestListRemotesFreshAndOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.SetState(remoteConnected); err != nil {
+	if err := p.SetState(config.PresenceState{State: remoteConnecting, Waiting: "1password"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := a.ListRemotes().Remotes[0]; !got.Open || got.State != remoteConnected {
-		t.Errorf("my-server with its window open = %+v", got)
+	if got := a.ListRemotes().Remotes[0]; !got.Open || got.State != remoteConnecting || got.Waiting != "1password" {
+		t.Errorf("my-server with its window open and waiting for 1Password = %+v", got)
 	}
 	p.Release()
 	if got := a.ListRemotes().Remotes[0]; got.Open || got.State != "" {
@@ -110,13 +110,13 @@ func TestRemoteWindowPresenceAndFacts(t *testing.T) {
 	a.events = sink
 
 	a.remote.holdPresence(dir)
-	if open, state := config.WindowOpen(dir, "my-server"); !open || state != remoteDisconnected {
+	if open, state := config.WindowOpen(dir, "my-server"); !open || state.State != remoteDisconnected {
 		t.Fatalf("before connecting: open=%v state=%q", open, state)
 	}
 	before := time.Now().Add(-time.Second)
 	a.remote.start()
 	st := waitState(t, a, remoteConnected)
-	if open, state := config.WindowOpen(dir, "my-server"); !open || state != remoteConnected {
+	if open, state := config.WindowOpen(dir, "my-server"); !open || state.State != remoteConnected || state.Waiting != "" {
 		t.Errorf("connected: open=%v state=%q", open, state)
 	}
 	entry, ok := findRemote(loadConfig(t, prefsFile).Global.Remotes, "my-server")
@@ -134,7 +134,7 @@ func TestRemoteWindowPresenceAndFacts(t *testing.T) {
 
 	a.RemoteDisconnect()
 	waitState(t, a, remoteDisconnected)
-	if _, state := config.WindowOpen(dir, "my-server"); state != remoteDisconnected {
+	if _, state := config.WindowOpen(dir, "my-server"); state.State != remoteDisconnected {
 		t.Errorf("after disconnect: state=%q", state)
 	}
 	a.remote.presence.Release()

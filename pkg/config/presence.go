@@ -27,9 +27,16 @@ type WindowPresence struct {
 	statePath string
 }
 
+// PresenceState is what a remote window last recorded: its connection state
+// and, while it connects, what the login waits for ("agent", "1password").
+type PresenceState struct {
+	State   string `json:"state"`
+	Waiting string `json:"waiting,omitempty"`
+}
+
 // windowState is the content of a presence state file.
 type windowState struct {
-	State     string    `json:"state"`
+	PresenceState
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
@@ -63,11 +70,11 @@ func HoldWindow(dir, alias string) (*WindowPresence, error) {
 }
 
 // SetState records the connection state of the window.
-func (p *WindowPresence) SetState(state string) error {
+func (p *WindowPresence) SetState(st PresenceState) error {
 	if p == nil {
 		return nil
 	}
-	data, err := json.Marshal(windowState{State: state, UpdatedAt: time.Now().UTC()})
+	data, err := json.Marshal(windowState{PresenceState: st, UpdatedAt: time.Now().UTC()})
 	if err != nil {
 		return err
 	}
@@ -96,31 +103,31 @@ func (p *WindowPresence) Release() {
 
 // WindowOpen reports whether a process holds the presence of alias, and the
 // state it last recorded (empty when it recorded none).
-func WindowOpen(dir, alias string) (bool, string) {
+func WindowOpen(dir, alias string) (bool, PresenceState) {
 	lock, state, err := presencePaths(dir, alias)
 	if err != nil {
-		return false, ""
+		return false, PresenceState{}
 	}
 	f, err := os.OpenFile(lock, os.O_RDWR, 0)
 	if err != nil {
-		return false, ""
+		return false, PresenceState{}
 	}
 	defer f.Close()
 	if err := tryLock(f); err == nil {
 		unlock(f)
-		return false, ""
+		return false, PresenceState{}
 	} else if !errors.Is(err, errLocked) {
-		return false, ""
+		return false, PresenceState{}
 	}
 	data, err := os.ReadFile(state)
 	if err != nil {
-		return true, ""
+		return true, PresenceState{}
 	}
 	var ws windowState
 	if json.Unmarshal(data, &ws) != nil {
-		return true, ""
+		return true, PresenceState{}
 	}
-	return true, ws.State
+	return true, ws.PresenceState
 }
 
 // errLocked is what tryLock returns when another holder has the lock.

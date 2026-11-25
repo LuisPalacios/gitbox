@@ -37,7 +37,15 @@
   // The editors a remote can open folders in (#287): the configured ones
   // whose command opens remote folders.
   $: editorOptions = remoteEditorChoices(($configStore?.global?.editors || []) as EditorInfo[], remotes.remoteEditors || []);
-  $: stateText = (r: RemotesList['remotes'][number]) => (r.open ? $t(`remote.state.${r.state || 'connecting'}`) : $t('switcher.closed'));
+  $: stateText = (r: RemotesList['remotes'][number]) =>
+    !r.open ? $t('switcher.closed')
+    : waitingOf(r) ? $t('remotesWindow.waitingApproval')
+    : $t(`remote.state.${r.state || 'connecting'}`);
+  // The login of a host that is still connecting may wait for the ssh agent:
+  // 1Password, for one, asks for approval in its menu bar icon. The window
+  // of that host says so, but I may be looking at this one.
+  const waitingOf = (r: RemotesList['remotes'][number]) => (r.open && r.state === 'connecting' && r.waiting) || '';
+  $: waitingText = current && waitingOf(current) ? $t(`remote.waiting.${waitingOf(current)}`) : '';
   $: when = (iso?: string) => {
     if (!iso) return $t('remotesWindow.never');
     const d = new Date(iso);
@@ -49,6 +57,17 @@
     try { remotes = await bridge.listRemotes(); } catch (e) { say({ error: errorText(e) }, ''); }
     if (!remotes.remotes.some((r) => r.alias === selected)) selected = remotes.remotes[0]?.alias || '';
   }
+
+  // Only the hosts, without the ssh lines: what the quick refresh reads.
+  async function loadHosts() {
+    try { remotes = await bridge.listRemotes(); } catch (e) { console.error(e); }
+  }
+
+  // After Connect, and while a host connects or installs, the states are
+  // read every second, so the window that opens and a login that waits for
+  // approval show here at once.
+  let watchUntil = 0;
+  $: settling = remotes.remotes.some((r) => r.open && (r.state === 'connecting' || r.state === 'installing'));
 
   async function loadSSH() {
     try { suggestions = await bridge.listSSHHosts(); } catch (e) { console.error(e); } finally { sshLoading = false; }
@@ -62,7 +81,8 @@
     // the hosts current and tells the process the window is in use: hidden
     // for ten minutes without one, it ends (#330).
     const beat = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 60_000);
-    return () => { window.removeEventListener('focus', refresh); clearInterval(beat); };
+    const quick = setInterval(() => { if (busy === '' && (settling || Date.now() < watchUntil)) loadHosts(); }, 1_000);
+    return () => { window.removeEventListener('focus', refresh); clearInterval(beat); clearInterval(quick); };
   });
 
   function say(res: RemoteResult, ok: string): boolean {
@@ -90,8 +110,11 @@
     selected = alias;
     return true;
   });
-  const connect = (alias: string, open: boolean) => run('connect', async () =>
-    say(await bridge.connectRemote(alias), open ? '' : $t('settings.remotes.opening', { alias })));
+  const connect = (alias: string, open: boolean) => run('connect', async () => {
+    if (!say(await bridge.connectRemote(alias), open ? '' : $t('settings.remotes.opening', { alias }))) return false;
+    watchUntil = Date.now() + 15_000;
+    return true;
+  });
   const showLog = (alias: string) => run('log', async () => say(await bridge.showRemoteLog(alias), ''));
   const setEditor = (alias: string, editor: string) => run('editor', async () =>
     say(await bridge.setRemoteEditor(alias, editor), $t('settings.remotes.editorSaved', { alias })));
@@ -204,6 +227,13 @@
           {current.open ? $t('remotesWindow.goTo') : $t('settings.remotes.connect')}
         </button>
       </div>
+
+      {#if waitingText}
+        <div class="waiting" role="status">
+          <span class="waiting-icon" aria-hidden="true">&#9888;</span>
+          <span>{waitingText}</span>
+        </div>
+      {/if}
 
       <dl class="facts">
         <div><dt>{$t('remotesWindow.system')}</dt><dd translate="no">{current.serverOS ? `${current.serverOS}/${current.serverArch || '?'}` : $t('remotesWindow.unknown')}</dd></div>
@@ -326,6 +356,14 @@
   .btn-danger-quiet { background: none; color: var(--alert); border-color: var(--alert); }
   .btn-danger { background: var(--alert); border-color: var(--alert); color: #fff; }
   .confirm { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
+  /* The colors of the global warnings (Banners.svelte): an action waits. */
+  .waiting {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: #431407; border: 1px solid #c2410c; border-radius: 8px;
+    font-size: 13px; color: #fdba74; line-height: 1.4;
+  }
+  :global([data-theme="light"]) .waiting { background: #fff7ed; border-color: #c2410c; color: #7c2d12; }
+  .waiting-icon { font-size: 15px; flex-shrink: 0; }
   .msg { margin: 0; font-size: 12px; color: var(--text-muted); }
   .msg.bad { color: var(--alert); }
 </style>

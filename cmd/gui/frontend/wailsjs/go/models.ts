@@ -1708,6 +1708,7 @@ export namespace main {
 	    editor?: string;
 	    open: boolean;
 	    state?: string;
+	    waiting?: string;
 	    serverOS?: string;
 	    serverArch?: string;
 	    serverVersion?: string;
@@ -1724,6 +1725,7 @@ export namespace main {
 	        this.editor = source["editor"];
 	        this.open = source["open"];
 	        this.state = source["state"];
+	        this.waiting = source["waiting"];
 	        this.serverOS = source["serverOS"];
 	        this.serverArch = source["serverArch"];
 	        this.serverVersion = source["serverVersion"];

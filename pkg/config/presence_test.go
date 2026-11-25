@@ -16,13 +16,13 @@ func TestWindowPresence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if open, state := WindowOpen(dir, "my-server"); !open || state != "" {
+	if open, state := WindowOpen(dir, "my-server"); !open || state != (PresenceState{}) {
 		t.Fatalf("held, no state: open=%v state=%q", open, state)
 	}
-	if err := p.SetState("connected"); err != nil {
+	if err := p.SetState(PresenceState{State: "connected", Waiting: "1password"}); err != nil {
 		t.Fatal(err)
 	}
-	if open, state := WindowOpen(dir, "my-server"); !open || state != "connected" {
+	if open, state := WindowOpen(dir, "my-server"); !open || state != (PresenceState{State: "connected", Waiting: "1password"}) {
 		t.Fatalf("after SetState: open=%v state=%q", open, state)
 	}
 	if _, err := HoldWindow(dir, "my-server"); err == nil {
@@ -33,7 +33,7 @@ func TestWindowPresence(t *testing.T) {
 	}
 	p.Release()
 	p.Release()
-	if open, state := WindowOpen(dir, "my-server"); open || state != "" {
+	if open, state := WindowOpen(dir, "my-server"); open || state != (PresenceState{}) {
 		t.Fatalf("after Release: open=%v state=%q", open, state)
 	}
 	again, err := HoldWindow(dir, "my-server")
@@ -55,7 +55,7 @@ func TestWindowPresenceStale(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if open, st := WindowOpen(dir, "box"); open || st != "" {
+	if open, st := WindowOpen(dir, "box"); open || st != (PresenceState{}) {
 		t.Fatalf("stale files: open=%v state=%q", open, st)
 	}
 }

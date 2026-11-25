@@ -326,6 +326,9 @@ export interface RemotesList {
     // A window of this remote is running, with this connection state (#330).
     open?: boolean;
     state?: RemoteStateName;
+    // While it connects, what its login waits for: the ssh agent may be
+    // asking for approval, 1Password's in its menu bar or tray icon.
+    waiting?: 'agent' | '1password';
     // What the host reported on its last connection (#330).
     serverOS?: string;
     serverArch?: string;

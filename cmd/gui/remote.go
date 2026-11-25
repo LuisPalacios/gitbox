@@ -113,6 +113,9 @@ type RemoteEntryDTO struct {
 	// State is the connection state it last recorded (#330).
 	Open  bool   `json:"open"`
 	State string `json:"state,omitempty"`
+	// Waiting is what its login waits for while it connects: "agent" or
+	// "1password" when the ssh agent may be asking for approval.
+	Waiting string `json:"waiting,omitempty"`
 	// The last-known facts of the host, from its last connection (#330).
 	ServerOS      string `json:"serverOS,omitempty"`
 	ServerArch    string `json:"serverArch,omitempty"`
@@ -244,7 +247,7 @@ func (s *remoteSession) set(gen int, change func(*RemoteStateDTO)) {
 	s.state.Editor = editor
 	st := s.state
 	s.mu.Unlock()
-	_ = s.presence.SetState(st.State)
+	_ = s.presence.SetState(config.PresenceState{State: st.State, Waiting: st.Waiting})
 	emit(s.a.newOperation(), "remote:state", st)
 }
 
@@ -257,7 +260,8 @@ func (s *remoteSession) holdPresence(dir string) {
 		return
 	}
 	s.presence = p
-	_ = p.SetState(s.info().State)
+	st := s.info()
+	_ = p.SetState(config.PresenceState{State: st.State, Waiting: st.Waiting})
 }
 
 // rememberFacts saves what the host reported to this remote's entry, for
@@ -791,10 +795,11 @@ func (a *App) ListRemotes() RemotesDTO {
 	for _, r := range a.freshPrefs().Remotes {
 		open, state := config.WindowOpen(dir, r.Alias)
 		if r.Alias == a.remoteAlias && a.remote != nil {
-			open, state = true, a.remote.info().State
+			st := a.remote.info()
+			open, state = true, config.PresenceState{State: st.State, Waiting: st.Waiting}
 		}
 		out.Remotes = append(out.Remotes, RemoteEntryDTO{Alias: r.Alias, ServerDir: r.ServerDir, Editor: r.Editor,
-			Open: open, State: state, ServerOS: r.ServerOS, ServerArch: r.ServerArch, ServerVersion: r.ServerVersion, LastConnected: r.LastConnected})
+			Open: open, State: state.State, Waiting: state.Waiting, ServerOS: r.ServerOS, ServerArch: r.ServerArch, ServerVersion: r.ServerVersion, LastConnected: r.LastConnected})
 	}
 	return out
 }

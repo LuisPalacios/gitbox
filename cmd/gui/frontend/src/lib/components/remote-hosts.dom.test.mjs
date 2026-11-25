@@ -171,6 +171,28 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   assert.deepEqual(native.unexpected, [])
 })
 
+// After Connect the window reads the states every second, so the host's
+// window that opens and a login waiting for 1Password show here too.
+test('the Remote hosts window shows a login that waits for approval', async (t) => {
+  const ui = await mount(t)
+  const { RemoteHostsWindow, render, screen, fireEvent, waitFor } = ui
+  let opened = false
+  const native = bridge(ui, {
+    ListRemotes: async () => ({ enabled: true, remoteEditors: [], remotes: [
+      opened ? { alias: 'nas', open: true, state: 'connecting', waiting: '1password' } : { alias: 'nas', open: false },
+    ] }),
+    ListSSHHosts: async () => [],
+    // The window comes up after the reload that follows Connect.
+    ConnectRemote: async () => { setTimeout(() => { opened = true }, 300); return {} },
+  })
+  render(RemoteHostsWindow)
+  await waitFor(() => assert.ok(screen.getByRole('heading', { name: 'nas' })))
+  await fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+  await waitFor(() => assert.ok(screen.getByText(/1Password is waiting for your approval/)), { timeout: 3000 })
+  assert.ok(screen.getAllByText('waiting for your approval').length >= 1)
+  assert.deepEqual(native.unexpected, [])
+})
+
 // The hosts are managed only from the switcher: Settings has no Remote hosts
 // row in either window, and does not even ask whether remote mode is on.
 for (const remote of [false, true]) {
