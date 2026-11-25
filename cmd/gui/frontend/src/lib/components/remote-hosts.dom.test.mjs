@@ -153,6 +153,14 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   const nasMenu = within(await waitFor(() => screen.getByRole('menu', { name: 'Actions for nas' })))
   assert.equal(nasMenu.getByRole('menuitem', { name: 'Connection log' }).disabled, true)
   await fireEvent.click(nasMenu.getByRole('menuitem', { name: /Remove from this list/ }))
+  // Remove asks first too: Cancel forgets nothing.
+  assert.ok(screen.getByText('Remove nas from this list? Nothing changes on the host.'))
+  await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  assert.equal(screen.queryByText(/Remove nas from this list/), null)
+  assert.deepEqual(called(native, 'RemoveRemote'), [])
+  await fireEvent.contextMenu(list.getByRole('option', { name: /nas/ }))
+  await fireEvent.click(within(await waitFor(() => screen.getByRole('menu'))).getByRole('menuitem', { name: /Remove from this list/ }))
+  await fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
   await waitFor(() => assert.deepEqual(called(native, 'RemoveRemote'), [['nas']]))
 
   // One line per Host entry, with every name on it; choosing it fills the
@@ -216,6 +224,9 @@ test('the Remote hosts window uninstalls and removes several hosts at once', asy
   assert.equal(menu.queryByRole('menuitem', { name: 'Connect' }), null, 'one host actions stay out')
   assert.match(menu.getByRole('menuitem', { name: /Uninstall/ }).textContent, /these 2 hosts/)
   await fireEvent.click(menu.getByRole('menuitem', { name: /Remove from this list/ }))
+  assert.ok(screen.getByText('Remove alpha, gamma from this list? Nothing changes on those hosts.'))
+  assert.deepEqual(called(native, 'RemoveRemote'), [], 'nothing runs before the answer')
+  await fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
   await waitFor(() => assert.deepEqual(called(native, 'RemoveRemote'), [['alpha'], ['gamma']]))
   await waitFor(() => assert.ok(screen.getByText('alpha, gamma removed.')))
 

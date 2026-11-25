@@ -44,6 +44,8 @@
   // others are the hosts where other clients still use the server, with how
   // many: the second question.
   let uninstallAsk: { targets: string[]; others: { alias: string; n: number }[] } | null = null;
+  // The inline confirmation of Remove: the hosts it would forget.
+  let removeAsk: string[] | null = null;
 
   $: current = remotes.remotes.find((r) => r.alias === selected) || null;
   // The selected hosts in list order.
@@ -146,9 +148,15 @@
   }
   const failure = (alias: string, res: RemoteResult) => `${alias}: ${res.hint ? $t(res.hint) : res.error}`;
 
-  const removeAll = (aliases: string[]) => run('remove', async () => {
+  function askRemove(aliases: string[]) {
     menu = null;
+    msg = '';
     uninstallAsk = null;
+    removeAsk = aliases;
+  }
+
+  const removeAll = (aliases: string[]) => run('remove', async () => {
+    removeAsk = null;
     const done: string[] = [];
     const failed: string[] = [];
     for (const alias of aliases) {
@@ -163,6 +171,7 @@
   function askUninstall(aliases: string[]) {
     menu = null;
     msg = '';
+    removeAsk = null;
     uninstallAsk = { targets: aliases, others: [] };
   }
 
@@ -249,6 +258,7 @@
     }
     selected = chosen.includes(alias) ? alias : chosen.at(-1) || alias;
     uninstallAsk = null;
+    removeAsk = null;
     msg = '';
   }
 
@@ -411,6 +421,16 @@
         <button class="btn" on:click={() => (uninstallAsk = null)}>{$t('common.cancel')}</button>
       </div>
     {/if}
+    {#if removeAsk}
+      {@const forget = removeAsk}
+      <div class="confirm" role="group" aria-label={$t('remotesWindow.menu.remove')}>
+        <span>{forget.length === 1 ? $t('remotesWindow.removeConfirm', { alias: forget[0] }) : $t('remotesWindow.removeConfirmMany', { list: forget.join(', ') })}</span>
+        <button class="btn btn-danger" on:click={() => removeAll(forget)} disabled={busy !== ''}>
+          {busy === 'remove' ? $t('settings.remotes.working') : $t('remotesWindow.remove')}
+        </button>
+        <button class="btn" on:click={() => (removeAsk = null)}>{$t('common.cancel')}</button>
+      </div>
+    {/if}
     {#if msg}<p class="msg" class:bad={msgBad} role="status">{msg}</p>{/if}
   </main>
 </div>
@@ -435,7 +455,7 @@
       <span class="ctx-name danger">{$t('remotesWindow.menu.uninstall')}</span>
       <span class="ctx-help">{menu.targets.length === 1 ? $t('remotesWindow.menu.uninstallHelp', { alias: menu.targets[0] }) : $t('remotesWindow.menu.uninstallHelpMany', { n: menu.targets.length })}</span>
     </button>
-    <button class="ctx-item" role="menuitem" on:click={() => menu && removeAll(menu.targets)} disabled={busy !== ''}>
+    <button class="ctx-item" role="menuitem" on:click={() => menu && askRemove(menu.targets)} disabled={busy !== ''}>
       <span class="ctx-name">{$t('remotesWindow.menu.remove')}</span>
       <span class="ctx-help">{menu.targets.length === 1 ? $t('remotesWindow.menu.removeHelp', { alias: menu.targets[0] }) : $t('remotesWindow.menu.removeHelpMany', { n: menu.targets.length })}</span>
     </button>

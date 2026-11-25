@@ -228,7 +228,7 @@ Una sesión conectada refresca su marcador cada minuto y borra su propio marcado
 
 Antes detiene el daemon de cada build. Solo borra lo que puso gitbox: las carpetas de build, los registros de build de `logs/`, `.gc.lock/` y los archivos temporales de subida. Quita `logs/` y después la raíz del servidor solo cuando están vacías. Un archivo que yo mismo puse en la raíz del servidor se queda, y también la raíz que lo contiene. Los repositorios y el `gitbox.json` del host no se tocan.
 
-**Quitar de esta lista**, en el mismo menú contextual, solo olvida el remoto en este ordenador.
+**Quitar de esta lista**, en el mismo menú contextual, pregunta antes y después solo olvida el remoto en este ordenador.
 
 ## Leer el registro de conexión
 
