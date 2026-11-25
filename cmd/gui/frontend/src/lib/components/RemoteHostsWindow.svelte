@@ -4,7 +4,9 @@
   // Remotes block of Settings and keeps every action it had: add (now with
   // suggestions from the ssh configuration), connect, editor, uninstall the
   // server and remove; it adds the host's facts and its connection log.
-  import { onMount } from 'svelte';
+  // Uninstall and Remove live in the context menu of the list, which acts on
+  // every selected host.
+  import { onMount, tick } from 'svelte';
   import { bridge } from '../bridge';
   import type { RemoteResult, RemotesList, SSHHost } from '../bridge';
   import { configStore } from '../stores';
@@ -23,17 +25,30 @@
   // field proposes after it.
   let query = '';
   let aliasInput: HTMLInputElement;
+  // selected is the host the details show: the last one I picked. chosen
+  // is every selected host: a click selects one, ⌘-click (Ctrl elsewhere)
+  // adds or drops one, Shift-click selects a range from the anchor.
   let selected = '';
+  let chosen: string[] = [];
+  let anchor = '';
+  const isMac = navigator.userAgent.includes('Mac');
+  // The context menu of the selection, where it opened.
+  let menu: { x: number; y: number; targets: string[] } | null = null;
+  let menuEl: HTMLDivElement | undefined;
   let newAlias = '';
   let newServerDir = '';
   let busy = '';
   let msg = '';
   let msgBad = false;
-  // The inline uninstall confirmation; others is how many other clients
-  // have a live server there.
-  let uninstallAsk: { alias: string; others: number } | null = null;
+  // The inline uninstall confirmation of the hosts the menu acted on.
+  // others are the hosts where other clients still use the server, with how
+  // many: the second question.
+  let uninstallAsk: { targets: string[]; others: { alias: string; n: number }[] } | null = null;
 
   $: current = remotes.remotes.find((r) => r.alias === selected) || null;
+  // The selected hosts in list order.
+  $: targets = remotes.remotes.map((r) => r.alias).filter((a) => chosen.includes(a));
+  $: menuHost = menu?.targets.length === 1 ? remotes.remotes.find((r) => r.alias === menu?.targets[0]) || null : null;
   // The editors a remote can open folders in (#287): the configured ones
   // whose command opens remote folders.
   $: editorOptions = remoteEditorChoices(($configStore?.global?.editors || []) as EditorInfo[], remotes.remoteEditors || []);
@@ -55,7 +70,10 @@
   export async function load() {
     loadSSH();
     try { remotes = await bridge.listRemotes(); } catch (e) { say({ error: errorText(e) }, ''); }
-    if (!remotes.remotes.some((r) => r.alias === selected)) selected = remotes.remotes[0]?.alias || '';
+    const aliases = remotes.remotes.map((r) => r.alias);
+    chosen = chosen.filter((a) => aliases.includes(a));
+    if (!aliases.includes(selected)) selected = chosen.at(-1) || aliases[0] || '';
+    if (!chosen.length && selected) chosen = [selected];
   }
 
   // Only the hosts, without the ssh lines: what the quick refresh reads.
@@ -118,14 +136,65 @@
   const showLog = (alias: string) => run('log', async () => say(await bridge.showRemoteLog(alias), ''));
   const setEditor = (alias: string, editor: string) => run('editor', async () =>
     say(await bridge.setRemoteEditor(alias, editor), $t('settings.remotes.editorSaved', { alias })));
-  const remove = (alias: string) => run('remove', async () => say(await bridge.removeRemote(alias), $t('settings.remotes.removed', { alias })));
-  const uninstall = (alias: string, force: boolean) => run('uninstall', async () => {
-    const res = await bridge.remoteUninstall(alias, force);
-    if (res.error) { uninstallAsk = null; say(res, ''); return false; }
-    if (res.needsConfirm) { uninstallAsk = { alias, others: res.otherClients }; return false; }
+
+  // report says what a batch did: the hosts it did, in one sentence, and
+  // each failure with its host.
+  function report(done: string[], failed: string[], one: string, many: string) {
+    const ok = done.length === 1 ? $t(one, { alias: done[0] }) : done.length ? $t(many, { list: done.join(', ') }) : '';
+    msg = [ok, ...failed].filter(Boolean).join(' ');
+    msgBad = failed.length > 0;
+  }
+  const failure = (alias: string, res: RemoteResult) => `${alias}: ${res.hint ? $t(res.hint) : res.error}`;
+
+  const removeAll = (aliases: string[]) => run('remove', async () => {
+    menu = null;
     uninstallAsk = null;
-    return say(res, $t('settings.remotes.uninstalled', { alias }));
+    const done: string[] = [];
+    const failed: string[] = [];
+    for (const alias of aliases) {
+      const res = await bridge.removeRemote(alias);
+      if (res.error) failed.push(failure(alias, res)); else done.push(alias);
+    }
+    chosen = chosen.filter((a) => !done.includes(a));
+    report(done, failed, 'settings.remotes.removed', 'remotesWindow.removedMany');
+    return done.length > 0;
   });
+
+  function askUninstall(aliases: string[]) {
+    menu = null;
+    msg = '';
+    uninstallAsk = { targets: aliases, others: [] };
+  }
+
+  // The first answer uninstalls from every host the menu named; the hosts
+  // where other clients still use the server come back as a second
+  // question, and its answer forces it there.
+  const uninstallAll = () => run('uninstall', async () => {
+    const ask = uninstallAsk;
+    if (!ask) return false;
+    const force = ask.others.length > 0;
+    const done: string[] = [];
+    const failed: string[] = [];
+    const others: { alias: string; n: number }[] = [];
+    for (const alias of force ? ask.others.map((o) => o.alias) : ask.targets) {
+      const res = await bridge.remoteUninstall(alias, force);
+      if (res.error) failed.push(failure(alias, res));
+      else if (res.needsConfirm) others.push({ alias, n: res.otherClients });
+      else done.push(alias);
+    }
+    uninstallAsk = others.length ? { targets: others.map((o) => o.alias), others } : null;
+    report(done, failed, 'settings.remotes.uninstalled', 'remotesWindow.uninstalledMany');
+    return done.length > 0;
+  });
+
+  $: uninstallQuestion = !uninstallAsk ? ''
+    : uninstallAsk.others.length === 0
+      ? (uninstallAsk.targets.length === 1
+        ? $t('remote.uninstallConfirm', { alias: uninstallAsk.targets[0] })
+        : $t('remotesWindow.uninstallMany', { list: uninstallAsk.targets.join(', ') }))
+      : (uninstallAsk.others.length === 1
+        ? `${uninstallAsk.others[0].alias}: ${$t('remote.uninstallOthers', { n: uninstallAsk.others[0].n })}`
+        : $t('remotesWindow.uninstallOthersMany', { list: uninstallAsk.others.map((o) => `${o.alias} (${o.n})`).join(', ') }));
 
   // The ssh lines that contain what I typed, in any of their names.
   $: shown = query.trim()
@@ -164,10 +233,68 @@
     aliasInput?.focus();
   }
 
-  function pick(alias: string) {
-    selected = alias;
+  function pick(alias: string, e?: MouseEvent | KeyboardEvent) {
+    const aliases = remotes.remotes.map((r) => r.alias);
+    if (e?.shiftKey && anchor && aliases.includes(anchor)) {
+      const [from, to] = [aliases.indexOf(anchor), aliases.indexOf(alias)].sort((x, y) => x - y);
+      chosen = aliases.slice(from, to + 1);
+    } else if (e && (isMac ? e.metaKey : e.ctrlKey)) {
+      // The last selected host stays: the details always show one.
+      if (!chosen.includes(alias)) chosen = [...chosen, alias];
+      else if (chosen.length > 1) chosen = chosen.filter((a) => a !== alias);
+      anchor = alias;
+    } else {
+      chosen = [alias];
+      anchor = alias;
+    }
+    selected = chosen.includes(alias) ? alias : chosen.at(-1) || alias;
     uninstallAsk = null;
     msg = '';
+  }
+
+  // The context menu acts on the selection; a right-click outside it
+  // selects that host alone first, as file managers do.
+  async function openMenu(alias: string, x: number, y: number) {
+    if (!chosen.includes(alias)) pick(alias);
+    // From chosen itself: the reactive targets update only after this call.
+    menu = { x, y, targets: remotes.remotes.map((r) => r.alias).filter((a) => chosen.includes(a)) };
+    await tick();
+    if (!menuEl) return;
+    const box = menuEl.getBoundingClientRect();
+    menu = { ...menu, x: Math.max(4, Math.min(x, window.innerWidth - box.width - 8)), y: Math.max(4, Math.min(y, window.innerHeight - box.height - 8)) };
+    menuItems()[0]?.focus();
+  }
+
+  function onHostMenu(e: MouseEvent, alias: string) {
+    e.preventDefault();
+    openMenu(alias, e.clientX, e.clientY);
+  }
+
+  // The menu key and Shift+F10 open it from the keyboard, under the row.
+  function onHostKey(e: KeyboardEvent, alias: string) {
+    if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+    e.preventDefault();
+    const row = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    openMenu(alias, row.left + 24, row.bottom);
+  }
+
+  const menuItems = () => Array.from(menuEl?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || []);
+
+  function onMenuKey(e: KeyboardEvent) {
+    const items = menuItems();
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'Escape') { e.preventDefault(); menu = null; }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); items[(at + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length]?.focus(); }
+  }
+
+  function onWindowDown(e: MouseEvent) {
+    if (menu && menuEl && !menuEl.contains(e.target as Node)) menu = null;
+  }
+
+  function fromMenu(action: () => void) {
+    menu = null;
+    action();
   }
 </script>
 
@@ -177,9 +304,10 @@
       <h1>{$t('remotesWindow.title')}<span class="badge">{$t('settings.remotes.experimental')}</span></h1>
       <p>{$t('remotesWindow.intro')}</p>
     </header>
-    <div class="rh-list" role="listbox" aria-label={$t('remotesWindow.title')}>
+    <div class="rh-list" role="listbox" aria-label={$t('remotesWindow.title')} aria-multiselectable="true">
       {#each remotes.remotes as r (r.alias)}
-        <button class="rh-host" class:selected={r.alias === selected} role="option" aria-selected={r.alias === selected} on:click={() => pick(r.alias)}>
+        <button class="rh-host" class:selected={chosen.includes(r.alias)} class:current={r.alias === selected} role="option" aria-selected={chosen.includes(r.alias)}
+          on:click={(e) => pick(r.alias, e)} on:contextmenu={(e) => onHostMenu(e, r.alias)} on:keydown={(e) => onHostKey(e, r.alias)}>
           <svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4.5" rx="1" /><rect x="2" y="9" width="12" height="4.5" rx="1" /></svg>
           <span class="two"><span class="alias" translate="no">{r.alias}</span><small>{stateText(r)}</small></span>
           {#if r.open}<span class="live state-{r.state || 'connecting'}" aria-hidden="true"></span>{/if}
@@ -188,6 +316,9 @@
         <p class="rh-none">{$t('remotesWindow.none')}</p>
       {/each}
     </div>
+    {#if remotes.remotes.length}
+      <p class="rh-hint">{$t('remotesWindow.hint', { mod: isMac ? '⌘' : 'Ctrl' })}</p>
+    {/if}
     <form class="rh-add" on:submit|preventDefault={add}>
       <span class="rh-label">{$t('remotesWindow.addHeading')}</span>
       <div class="rh-add-row">
@@ -219,7 +350,13 @@
   </aside>
 
   <main class="rh-main">
-    {#if current}
+    {#if targets.length > 1}
+      <div class="rh-title"><h2>{$t('remotesWindow.selectedMany', { n: targets.length })}</h2></div>
+      <ul class="many" translate="no">
+        {#each targets as a (a)}<li>{a}</li>{/each}
+      </ul>
+      <p class="rh-note">{$t('remotesWindow.manyHint')}</p>
+    {:else if current}
       <div class="rh-title">
         <h2 translate="no">{current.alias}</h2>
         <span class="pill"><span class="live state-{current.open ? current.state || 'connecting' : 'closed'}" aria-hidden="true"></span>{stateText(current)}</span>
@@ -261,25 +398,49 @@
         <span use:tooltip={current.open ? '' : $t('remotesWindow.logClosedTip')}>
           <button class="btn" on:click={() => current && showLog(current.alias)} disabled={busy !== '' || !current.open}>{$t('remotesWindow.showLog')}</button>
         </span>
-        <span class="grow"></span>
-        <button class="btn btn-danger-quiet" on:click={() => current && (uninstallAsk = { alias: current.alias, others: 0 })} disabled={busy !== ''}>{$t('settings.remotes.uninstall')}</button>
-        <button class="btn" on:click={() => current && remove(current.alias)} disabled={busy !== ''}>{$t('settings.remotes.remove')}</button>
       </div>
-      {#if uninstallAsk?.alias === current.alias}
-        <div class="confirm">
-          <span>{uninstallAsk.others > 0 ? $t('remote.uninstallOthers', { n: uninstallAsk.others }) : $t('remote.uninstallConfirm', { alias: current.alias })}</span>
-          <button class="btn btn-danger" on:click={() => current && uninstall(current.alias, (uninstallAsk?.others ?? 0) > 0)} disabled={busy !== ''}>
-            {busy === 'uninstall' ? $t('settings.remotes.working') : $t('settings.remotes.uninstall')}
-          </button>
-          <button class="btn" on:click={() => (uninstallAsk = null)}>{$t('common.cancel')}</button>
-        </div>
-      {/if}
     {:else}
       <p class="rh-empty">{$t('remotesWindow.none')}</p>
+    {/if}
+    {#if uninstallAsk}
+      <div class="confirm" role="group" aria-label={$t('remotesWindow.menu.uninstall')}>
+        <span>{uninstallQuestion}</span>
+        <button class="btn btn-danger" on:click={uninstallAll} disabled={busy !== ''}>
+          {busy === 'uninstall' ? $t('settings.remotes.working') : $t('settings.remotes.uninstall')}
+        </button>
+        <button class="btn" on:click={() => (uninstallAsk = null)}>{$t('common.cancel')}</button>
+      </div>
     {/if}
     {#if msg}<p class="msg" class:bad={msgBad} role="status">{msg}</p>{/if}
   </main>
 </div>
+
+<svelte:window on:mousedown={onWindowDown} on:blur={() => (menu = null)} on:resize={() => (menu = null)} />
+
+{#if menu}
+  <div class="ctx" role="menu" tabindex="-1" bind:this={menuEl} style="left: {menu.x}px; top: {menu.y}px"
+    aria-label={menu.targets.length === 1 ? $t('remotesWindow.menu.label', { alias: menu.targets[0] }) : $t('remotesWindow.menu.labelMany', { n: menu.targets.length })}
+    on:keydown={onMenuKey}>
+    {#if menuHost}
+      {@const host = menuHost}
+      <button class="ctx-item" role="menuitem" on:click={() => fromMenu(() => connect(host.alias, !!host.open))} disabled={busy !== ''}>
+        <span class="ctx-name">{host.open ? $t('remotesWindow.goTo') : $t('settings.remotes.connect')}</span>
+      </button>
+      <button class="ctx-item" role="menuitem" on:click={() => fromMenu(() => showLog(host.alias))} disabled={busy !== '' || !host.open}>
+        <span class="ctx-name">{$t('remotesWindow.showLog')}</span>
+      </button>
+      <div class="ctx-sep" role="separator"></div>
+    {/if}
+    <button class="ctx-item" role="menuitem" on:click={() => menu && askUninstall(menu.targets)} disabled={busy !== ''}>
+      <span class="ctx-name danger">{$t('remotesWindow.menu.uninstall')}</span>
+      <span class="ctx-help">{menu.targets.length === 1 ? $t('remotesWindow.menu.uninstallHelp', { alias: menu.targets[0] }) : $t('remotesWindow.menu.uninstallHelpMany', { n: menu.targets.length })}</span>
+    </button>
+    <button class="ctx-item" role="menuitem" on:click={() => menu && removeAll(menu.targets)} disabled={busy !== ''}>
+      <span class="ctx-name">{$t('remotesWindow.menu.remove')}</span>
+      <span class="ctx-help">{menu.targets.length === 1 ? $t('remotesWindow.menu.removeHelp', { alias: menu.targets[0] }) : $t('remotesWindow.menu.removeHelpMany', { n: menu.targets.length })}</span>
+    </button>
+  </div>
+{/if}
 
 <style>
   .rh { position: fixed; inset: 0; display: flex; background: var(--bg-base); color: var(--text-primary); font-size: 13px; }
@@ -297,7 +458,9 @@
     background: none; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer;
   }
   .rh-host:hover { background: var(--bg-hover); }
-  .rh-host.selected { background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--border-hover); }
+  .rh-host.selected { background: var(--bg-hover); }
+  .rh-host.current { box-shadow: inset 0 0 0 1px var(--border-hover); }
+  .rh-hint { margin: 2px 18px 10px; font-size: 11px; color: var(--text-dim); line-height: 1.4; }
   .rh-host:focus-visible, .btn:focus-visible, .ssh-line:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
   .glyph { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--text-workspace); stroke-width: 1.4; }
   .two { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.35; }
@@ -347,7 +510,23 @@
   .pref span { width: 150px; }
   .pref select { flex: 1; }
   .actions { display: flex; align-items: center; gap: 8px; }
-  .grow { flex: 1; }
+  .many { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+  .many li { padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  .rh-note { margin: 0; font-size: 12px; color: var(--text-muted); }
+  /* The context menu of the host list. */
+  .ctx {
+    position: fixed; z-index: 50; width: 300px; padding: 4px; display: flex; flex-direction: column;
+    background: var(--bg-card); border: 1px solid var(--border-hover); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  }
+  .ctx-item {
+    display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border: none; border-radius: 5px;
+    background: none; color: var(--text-primary); font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+  }
+  .ctx-item:hover:not(:disabled), .ctx-item:focus-visible { background: var(--bg-hover); outline: none; }
+  .ctx-item:disabled { opacity: 0.45; cursor: default; }
+  .ctx-name.danger { color: var(--alert); }
+  .ctx-help { font-size: 11px; color: var(--text-muted); line-height: 1.35; }
+  .ctx-sep { height: 1px; margin: 4px 6px; background: var(--border); }
   .btn {
     height: 30px; padding: 0 12px; border: 1px solid var(--border-hover); border-radius: 6px; background: var(--bg-card);
     color: var(--text-primary); font: inherit; font-size: 12px; cursor: pointer;
@@ -355,7 +534,6 @@
   .btn:disabled { opacity: 0.5; cursor: default; }
   .btn-primary { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 600; }
   .btn-action { background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.4); }
-  .btn-danger-quiet { background: none; color: var(--alert); border-color: var(--alert); }
   .btn-danger { background: var(--alert); border-color: var(--alert); color: #fff; }
   .confirm { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); }
   /* The colors of the global warnings (Banners.svelte): an action waits. */

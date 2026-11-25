@@ -123,9 +123,21 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   await fireEvent.change(editor)
   await waitFor(() => assert.deepEqual(called(native, 'SetRemoteEditor'), [['my-server', '']]))
 
+  // Uninstall and Remove are not on the details: they live in the context
+  // menu of the list, each with what it does.
+  assert.equal(screen.queryByRole('button', { name: 'Uninstall' }), null)
+  assert.equal(screen.queryByRole('button', { name: 'Remove' }), null)
+  await fireEvent.contextMenu(list.getByRole('option', { name: /my-server/ }))
+  const menu = within(await waitFor(() => screen.getByRole('menu', { name: 'Actions for my-server' })))
+  const uninstallItem = menu.getByRole('menuitem', { name: /Uninstall the gitbox server/ })
+  assert.match(uninstallItem.textContent, /Deletes the gitbox server installed on my-server\. Its repositories and its gitbox\.json stay/)
+  assert.match(menu.getByRole('menuitem', { name: /Remove from this list/ }).textContent, /Nothing changes on the host/)
+
   // Uninstall asks first, then again when other clients still use the server.
-  await fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }))
-  const confirm = () => screen.getAllByRole('button', { name: 'Uninstall' }).at(-1)
+  await fireEvent.click(uninstallItem)
+  assert.equal(screen.queryByRole('menu'), null, 'the menu closes')
+  assert.deepEqual(called(native, 'RemoteUninstall'), [], 'nothing runs before the answer')
+  const confirm = () => screen.getByRole('button', { name: 'Uninstall' })
   await fireEvent.click(confirm())
   await waitFor(() => assert.deepEqual(called(native, 'RemoteUninstall'), [['my-server', false]]))
   await waitFor(() => assert.ok(screen.getByText(/2 other/)))
@@ -137,7 +149,10 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   await waitFor(() => assert.ok(screen.getByRole('heading', { name: 'nas' })))
   assert.equal(screen.getByRole('button', { name: 'Connection log' }).disabled, true)
   assert.ok(screen.getByRole('button', { name: 'Connect' }))
-  await fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+  await fireEvent.contextMenu(list.getByRole('option', { name: /nas/ }))
+  const nasMenu = within(await waitFor(() => screen.getByRole('menu', { name: 'Actions for nas' })))
+  assert.equal(nasMenu.getByRole('menuitem', { name: 'Connection log' }).disabled, true)
+  await fireEvent.click(nasMenu.getByRole('menuitem', { name: /Remove from this list/ }))
   await waitFor(() => assert.deepEqual(called(native, 'RemoveRemote'), [['nas']]))
 
   // One line per Host entry, with every name on it; choosing it fills the
@@ -168,6 +183,61 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   await fireEvent.input(alias, { inputType: 'insertText', data: 'z' })
   assert.equal(alias.value, 'zz')
   assert.ok(sshList.getByText('No line of your ssh configuration matches.'))
+  assert.deepEqual(native.unexpected, [])
+})
+
+// Several hosts selected with Ctrl-click (⌘ on a Mac) or Shift-click share
+// one context menu: its Uninstall and Remove act on all of them.
+test('the Remote hosts window uninstalls and removes several hosts at once', async (t) => {
+  const ui = await mount(t)
+  const { RemoteHostsWindow, render, screen, fireEvent, waitFor, within } = ui
+  const three = [{ alias: 'alpha', open: false }, { alias: 'beta', open: false }, { alias: 'gamma', open: false }]
+  const native = bridge(ui, {
+    ListRemotes: async () => ({ enabled: true, remoteEditors: [], remotes: three }),
+    ListSSHHosts: async () => [],
+    RemoteUninstall: async (alias, force) => (alias === 'beta' && !force
+      ? { needsConfirm: true, otherClients: 1, done: false, rootKept: false }
+      : { needsConfirm: false, otherClients: 0, done: true, rootKept: false }),
+    RemoveRemote: ok,
+  })
+  render(RemoteHostsWindow)
+  const list = within(await waitFor(() => screen.getByRole('listbox')))
+  await waitFor(() => assert.equal(list.getAllByRole('option').length, 3))
+  assert.ok(screen.getByText(/Right-click a host for more/))
+  await fireEvent.click(list.getByRole('option', { name: /alpha/ }))
+  await fireEvent.click(list.getByRole('option', { name: /gamma/ }), { shiftKey: true })
+  await waitFor(() => assert.ok(screen.getByRole('heading', { name: '3 hosts selected' })))
+  await fireEvent.click(list.getByRole('option', { name: /beta/ }), { ctrlKey: true })
+  await waitFor(() => assert.ok(screen.getByRole('heading', { name: '2 hosts selected' })))
+  assert.deepEqual(list.getAllByRole('option').map((o) => o.getAttribute('aria-selected')), ['true', 'false', 'true'])
+
+  await fireEvent.contextMenu(list.getByRole('option', { name: /gamma/ }))
+  const menu = within(await waitFor(() => screen.getByRole('menu', { name: 'Actions for 2 hosts' })))
+  assert.equal(menu.queryByRole('menuitem', { name: 'Connect' }), null, 'one host actions stay out')
+  assert.match(menu.getByRole('menuitem', { name: /Uninstall/ }).textContent, /these 2 hosts/)
+  await fireEvent.click(menu.getByRole('menuitem', { name: /Remove from this list/ }))
+  await waitFor(() => assert.deepEqual(called(native, 'RemoveRemote'), [['alpha'], ['gamma']]))
+  await waitFor(() => assert.ok(screen.getByText('alpha, gamma removed.')))
+
+  // A right-click outside the selection selects that host alone; Uninstall
+  // asks a second time only for the hosts where other windows use it.
+  await fireEvent.click(list.getByRole('option', { name: /alpha/ }))
+  await fireEvent.click(list.getByRole('option', { name: /beta/ }), { ctrlKey: true })
+  await fireEvent.contextMenu(list.getByRole('option', { name: /beta/ }))
+  await fireEvent.click(within(await waitFor(() => screen.getByRole('menu'))).getByRole('menuitem', { name: /Uninstall/ }))
+  assert.ok(screen.getByText('Remove gitbox from alpha, beta? Your repositories and settings there stay.'))
+  await fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }))
+  await waitFor(() => assert.deepEqual(called(native, 'RemoteUninstall'), [['alpha', false], ['beta', false]]))
+  await waitFor(() => assert.ok(screen.getByText(/beta: 1 other window/)))
+  await fireEvent.click(await waitFor(() => screen.getByRole('button', { name: 'Uninstall' })))
+  await waitFor(() => assert.deepEqual(called(native, 'RemoteUninstall').at(-1), ['beta', true]))
+  await waitFor(() => assert.equal(screen.queryByRole('button', { name: 'Uninstall' }), null))
+
+  // Escape closes the menu without acting.
+  await fireEvent.contextMenu(list.getByRole('option', { name: /gamma/ }))
+  const open = await waitFor(() => screen.getByRole('menu', { name: 'Actions for gamma' }))
+  await fireEvent.keyDown(open, { key: 'Escape' })
+  assert.equal(screen.queryByRole('menu'), null)
   assert.deepEqual(native.unexpected, [])
 })
 
