@@ -1,0 +1,174 @@
+# Startup, window geometry and preferences
+GetAutostart - Read whether Gitbox starts at login.
+GetLanguage - Read the window's interface language.
+GetOS - Identify the operating system showing the window.
+GetPeriodicSync - Read the configured fleet-check interval.
+GetStartupSnapshot - Load the initial config, nesting and event watermark together.
+GetStartupTiming - Read timing marks for the current startup.
+GetUIMode - Read the preference for simple or advanced controls.
+GetWindowMode - Select the main, remote, terminal or host-management view.
+IsFirstRun - Decide whether to show onboarding.
+IsPositionOnScreen - Check whether the saved geometry is visible.
+MarkStartup - Record a renderer startup milestone.
+SetAutostart - Enable or disable launching Gitbox at login.
+SetCollapsed - Save the selected view, tree folds and sidebar state.
+SetLanguage - Save the window's interface language.
+SetPeriodicSync - Change the fleet-check interval.
+SetShowPullPlan - Save whether Pull all opens its plan.
+SetTheme - Save the light, dark or system theme preference.
+SetUIMode - Change which controls the interface shows.
+SetViewMode - Switch between the full and compact layouts.
+ShowWindow - Reveal the window after the renderer applies its layout.
+
+# Configuration, onboarding and clone roots
+AcknowledgeConfigError - Dismiss the configuration load error for the session.
+AddRoot - Register another directory for local clones.
+AdoptFirstProject - Link an existing clone during onboarding.
+GetConfig - Read the effective config with local window preferences.
+GetConfigLoadError - Read the error that prevented loading the configuration.
+GetConfigPath - Locate the active configuration file.
+InitRoot - Create the initial configuration with a selected clone root.
+ListConfigBackups - List backups available for configuration recovery.
+ListRoots - List registered clone roots and their availability.
+PickFolder - Ask the user to select a local directory.
+PreviewClonePath - Resolve the planned destination for a project.
+PreviewRoot - Inspect a clone-root candidate before accepting it.
+ReloadConfig - Re-read configuration and preferences from disk.
+RemoveRoot - Remove a clone root and optionally forget its tracked clones.
+RepairConfig - Salvage usable entries from a damaged configuration.
+RestoreFromBackup - Recover configuration from the selected backup.
+SetDefaultRoot - Select the default destination for new clones.
+
+# Accounts and credentials
+AccountDeletionImpact - Preview the clones and folders affected by deleting an account.
+AddAccount - Add a Git provider account and its identity.
+ChangeCredentialType - Switch the account's authentication method and reconfigure its clones.
+CredentialDelete - Remove saved credentials for an account.
+CredentialRegenerateSSH - Replace the SSH key used by an account.
+CredentialSetupGCM - Prepare Git Credential Manager for the account.
+CredentialSetupSSH - Set up SSH authentication and return instructions.
+CredentialSSHAgentReport - Report the account key's SSH agent state.
+CredentialStoreToken - Store a provider token for an account.
+CredentialVerify - Check the account's configured credential.
+DeleteAccount - Remove an account and optionally delete its clone folders.
+DiscardAccount - Roll back an account left unfinished by setup.
+GetTokenGuide - Read the provider's token creation instructions.
+RenameAccount - Rename an account and update its references.
+SuggestAccountKey - Suggest an unused key for a provider identity.
+UpdateAccount - Save account changes and propagate them to its clones.
+
+# Git checks and scheduled work
+CheckGlobalGCMConfig - Inspect the global Git credential helper setup.
+CheckGlobalGitignore - Inspect the managed global ignore configuration.
+CheckGlobalIdentity - Detect a global identity that may interfere with account identities.
+DoctorPrecheck - Check the tools required by the selected credential method.
+DoctorRun - Run the environment diagnostics shown in the Doctor dialog.
+FixGlobalGCMConfig - Repair the global Git Credential Manager configuration.
+GetCheckGlobalGitignore - Read whether to check the global ignore setup at startup.
+GetIdentityProof - Show the effective Git identity and authorization evidence for a clone.
+GetScheduledTasks - Show configured task intervals and recent task state.
+InstallGlobalGitignore - Install or update the managed global ignore block.
+IsGlobalGCMConfigNeeded - Decide whether the fleet requires global Git Credential Manager setup.
+OpenRepoConfigInEditor - Open a clone's Git config in a local editor for inspection.
+RemoveGlobalIdentity - Remove the global Git identity entries on request.
+RepairRepoIdentity - Reapply the tracked account identity to a clone.
+RunTask - Request a run of a named scheduled task.
+SetCheckGlobalGitignore - Save whether to check the global ignore setup at startup.
+
+# Repository discovery, cloning and updates
+AddDiscoveredRepos - Track selected provider repositories in a source.
+BeginStatus - Start an initial status scan or join the active scan.
+CloneRepo - Create a tracked clone in the chosen root.
+ConfirmSweep - Apply the reviewed branch sweep after checking the preview is current.
+CreateNewRepo - Create a provider repository and optionally clone it.
+DeleteRepoFolder - Delete a tracked repository's local clone folder.
+Discover - Start discovery of provider repositories for an account.
+FetchRepo - Fetch a single tracked clone.
+GetAllStatus - Read the current fleet status results.
+GetRepoDetail - Show a clone's branch, working tree and incoming history.
+ListAccountOrgs - List organizations the account can select as repository owners.
+ListRemoteRepos - List provider repositories visible to an account.
+PreviewPullAll - Prepare a pull plan with eligible and skipped clones.
+PreviewSweep - Inspect a clone and prepare a branch sweep preview.
+PullAll - Run the reviewed pull plan for the fleet.
+PullRepo - Update a single tracked clone.
+RefreshStatus - Request a new status scan.
+StopTrackingRepo - Remove a repository from tracking while leaving its folder in place.
+
+# Workspaces, adoption and pull request badges
+AdoptClones - Track selected existing clones with the selected accounts.
+GetNestedScanDepth - Read the discovery depth for nested clones.
+GetPRSettings - Read whether PR badges and draft PRs are shown.
+IgnoreClone - Exclude or re-include a folder in clone reconciliation.
+Reconcile - Reattach recognized clones and report unmatched folders.
+RepoNesting - Read which tracked repositories appear under other clones.
+RepoWorkspaceFiles - List workspace files at a container's root.
+ScanFolderForClones - Find existing clones inside a selected directory.
+SetNestedScanDepth - Save how far to scan for nested clones.
+SetPRBadgesEnabled - Toggle PR badges for tracked clones.
+SetPRIncludeDrafts - Toggle draft PRs in badge summaries.
+SetRepoContainer - Mark a repository as containing other clone folders.
+SetRepoWorkspace - Select the workspace file to open for a container.
+
+# Mirrors
+AddMirrorGroup - Define a mirror group for two accounts.
+AddMirrorRepo - Add a repository and direction to a mirror group.
+ApplyDiscoveredMirrors - Save mirror relationships found during discovery.
+CheckMirrorCredentials - Check the credentials and scopes needed for mirroring.
+DeleteMirrorGroup - Remove a mirror group from configuration.
+DeleteMirrorRepo - Remove a repository from a mirror group.
+DiscoverMirrors - Look for existing provider mirror relationships.
+GetMirrorStatus - Request status for a mirror group.
+SetupMirrorRepo - Set up the configured mirror through the provider.
+
+# Launchers and terminal manager
+MissingModernTerminal - Decide whether to show the Windows Terminal notice.
+OpenAccountFolder - Reveal an account's clone directory in the file manager.
+OpenAccountInAIHarness - Launch the selected harness for an account folder.
+OpenAccountInApp - Launch the selected editor for an account folder.
+OpenAccountInBrowser - Open the provider page for an account through the link confirmation flow.
+OpenAccountProfile - Launch a terminal profile in an account folder.
+OpenFileInEditor - Open a selected local file in the editor.
+OpenInAIHarness - Launch the selected harness in a clone folder.
+OpenInApp - Launch the selected editor in a clone folder.
+OpenInBrowser - Open an external link through the link confirmation flow.
+OpenInExplorer - Reveal a local path in the file manager.
+OpenProfile - Launch a terminal profile at a selected path.
+OpenRepoInBrowser - Open a repository's provider page through the link confirmation flow.
+OpenTerminalsManagerWindow - Show the standalone terminal profile manager.
+RedetectProfiles - Detect terminals and shells and return the refreshed config.
+RefreshAIHarnesses - Refresh available harnesses where the clone workflows run.
+SaveTerminalProfilesDTO - Persist terminal apps, shells and profiles from the terminal manager.
+
+# Remote hosts and windows
+AddRemote - Save a new SSH host in the remote host list.
+ConnectRemote - Open or focus a window for the selected SSH host.
+GetRemoteTint - Read the local tint preference for remote windows.
+ListRemotes - Read saved remotes and their client-side status.
+ListSSHHosts - List SSH config aliases that can be added as remote hosts.
+OpenRemotesWindow - Show the standalone remote hosts manager.
+RemoteDisconnect - End this window's connection to its host.
+RemoteInfo - Read the remote window's connection state and host metadata.
+RemoteLog - Read recent connection log lines for the current remote window.
+RemoteReconnect - Reconnect this window to its saved host.
+RemoteReinstall - Reinstall the host's matching Gitbox server and reconnect.
+RemoteRunDoctor - Run diagnostics on the connected host.
+RemoteUninstall - Remove the Gitbox server installation from a selected host.
+RemoveRemote - Forget a remote host from the local list.
+SetRemoteEditor - Save the editor command used for a specific remote host.
+SetRemoteTint - Save the tint color for remote windows.
+ShowLocalWindow - Bring the local fleet window to the front.
+ShowRemoteLog - Open the selected host's window with its connection log visible.
+ValidateRemotePath - Check whether a typed path is valid on the connected host.
+
+# Diagnostics, recipes and application updates
+ApplyRecipeImport - Apply a reviewed add-only fleet recipe import.
+ApplyUpdate - Install the available application update.
+CheckUpdateRecovery - Offer a rollback after a failed launch or confirm a healthy startup.
+ExportDiagnostics - Save the inspected diagnostics bundle to a chosen file.
+ExportRecipe - Save a portable fleet recipe to a chosen file.
+OpenRecipeImport - Choose and read a fleet recipe file.
+PreviewDiagnostics - Prepare a diagnostics bundle for review before saving.
+PreviewRecipeExport - Prepare a portable recipe for review.
+PreviewRecipeImport - Show the changes proposed by a recipe and its slot mappings.
+ResolveUpdateRecovery - Decide whether to restore the previous application build.

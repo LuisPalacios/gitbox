@@ -622,7 +622,7 @@ func describeFetchFailure(payload *fetchEventDTO, err error) {
 }
 
 // FetchAllRepos joins the active cycle, including its final status and provider work.
-func (a *App) FetchAllRepos() error { return a.be().FetchAllRepos() }
+func (a *App) fetchAllRepos() error { return a.be().FetchAllRepos() }
 
 // fetchAllReposLocal is the local backend's FetchAllRepos.
 func (a *App) fetchAllReposLocal() error {

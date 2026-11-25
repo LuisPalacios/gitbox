@@ -107,7 +107,7 @@ func (a *App) initRootLocal(folder string) error {
 	a.cfg.SetDefaultRoot(folder)
 	// Onboarding completes here: promote the in-memory config to "loaded"
 	// before the first save so saveConfig() accepts it. Only reachable on
-	// the os.ErrNotExist branch of Startup — if the config file existed but
+	// the os.ErrNotExist branch of startup — if the config file existed but
 	// failed to parse, cfgLoadError is non-empty and onboarding is blocked
 	// by the frontend until the user repairs or replaces it.
 	if a.cfgLoadError != "" {

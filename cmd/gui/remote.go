@@ -23,7 +23,7 @@ import (
 // Remote mode on the client (#233, #239). A remote window is its own
 // process, GitboxApp --remote <alias> --experimental-remote: it loads only
 // the client preferences, shows its window at once, and connects from
-// DomReady through pkg/remote to a gitbox-server it installs and verifies.
+// domReady through pkg/remote to a gitbox-server it installs and verifies.
 // Once connected it shows the host's data read-only (P4, #240). The main window lists
 // the remotes in Settings, adds and removes them, uninstalls the server and
 // starts the remote windows.
@@ -984,7 +984,7 @@ func (a *App) RemoveRemote(alias string) RemoteResultDTO {
 
 // ConnectRemote opens the window of a remote: a new GitboxApp process,
 // spawned like the terminals manager but independent of this one. It gets
-// no --parent-pid and this window's Shutdown leaves it running. A second
+// no --parent-pid and this window's shutdown leaves it running. A second
 // Connect reaches the single-instance lock of that alias, which focuses the
 // open window.
 func (a *App) ConnectRemote(alias string) RemoteResultDTO {

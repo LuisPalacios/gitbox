@@ -136,9 +136,6 @@ func (r *RemoteBackend) BeginStatus(passID uint64) error { return r.invoke("Begi
 func (r *RemoteBackend) GetAllStatus() []StatusResult {
 	return capList(r, "statuses", remoteValue[[]StatusResult](r, "GetAllStatus"), maxRemoteRepos)
 }
-func (r *RemoteBackend) GetAppVersion() string {
-	return remoteValue[string](r, "GetAppVersion")
-}
 func (r *RemoteBackend) GetCheckGlobalGitignore() bool {
 	return remoteValue[bool](r, "GetCheckGlobalGitignore")
 }

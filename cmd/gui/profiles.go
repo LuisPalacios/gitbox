@@ -4,8 +4,8 @@ package main
 //
 // Detection, OS-aware composition, and merge logic now live in
 // pkg/terminals — this file only exposes the Wails bridge surface that
-// the Svelte frontend talks to: DTOs, list/save/open methods, and the
-// SyncProfiles + RedetectProfiles + MissingModernTerminal entry points.
+// the Svelte frontend talks to: DTOs, save/open methods, and the
+// RedetectProfiles and MissingModernTerminal entry points.
 // It is the only terminal launch path; the v2.0 global.terminals list is
 // only read to migrate old configs (pkg/config.MigrateLegacyTerminals).
 
@@ -56,63 +56,10 @@ type TerminalProfileInfo struct {
 	Source     string   `json:"source"` // internal — never display
 }
 
-// ─── List bridges (read snapshots) ────────────────────────────────────────
-
-// ListTerminalApps returns the persisted TerminalApp list as a DTO slice.
-func (a *App) ListTerminalApps() []TerminalAppInfo {
-	apps := a.clientPrefs().Get().TerminalApps
-	out := make([]TerminalAppInfo, 0, len(apps))
-	for _, app := range apps {
-		out = append(out, TerminalAppInfo{
-			ID:           app.ID,
-			Name:         app.Name,
-			Command:      app.Command,
-			ArgsTemplate: append([]string(nil), app.ArgsTemplate...),
-		})
-	}
-	return out
-}
-
-// ListShells returns the persisted Shell list as a DTO slice.
-func (a *App) ListShells() []ShellInfo {
-	shells := a.clientPrefs().Get().Shells
-	out := make([]ShellInfo, 0, len(shells))
-	for _, s := range shells {
-		out = append(out, ShellInfo{
-			ID:      s.ID,
-			Name:    s.Name,
-			Command: s.Command,
-			Args:    append([]string(nil), s.Args...),
-		})
-	}
-	return out
-}
-
-// ListTerminalProfiles returns the persisted TerminalProfile list as a DTO
-// slice in on-disk order.
-func (a *App) ListTerminalProfiles() []TerminalProfileInfo {
-	profiles := a.clientPrefs().Get().TerminalProfiles
-	out := make([]TerminalProfileInfo, 0, len(profiles))
-	for _, p := range profiles {
-		out = append(out, TerminalProfileInfo{
-			ID:         p.ID,
-			Name:       p.Name,
-			TerminalID: p.TerminalID,
-			ShellID:    p.ShellID,
-			Args:       append([]string(nil), p.Args...),
-			Default:    p.Default,
-			Preferred:  p.Preferred,
-			Hidden:     p.Hidden,
-			Source:     p.Source,
-		})
-	}
-	return out
-}
-
 // ─── Save bridges ─────────────────────────────────────────────────────────
 
-// SaveTerminalProfilesDTO is the bridge-friendly counterpart to
-// SaveTerminalProfiles — accepts the DTO shape the frontend already speaks
+// SaveTerminalProfilesDTO is the entry point for the terminal settings. It accepts
+// the DTO shape the frontend already speaks
 // (JSON-tagged structs, no nil slices) and converts to config types before
 // persisting.
 func (a *App) SaveTerminalProfilesDTO(apps []TerminalAppInfo, shells []ShellInfo, profiles []TerminalProfileInfo) error {
@@ -148,13 +95,13 @@ func (a *App) SaveTerminalProfilesDTO(apps []TerminalAppInfo, shells []ShellInfo
 			Source:     p.Source,
 		})
 	}
-	return a.SaveTerminalProfiles(cfgApps, cfgShells, cfgProfiles)
+	return a.saveTerminalProfiles(cfgApps, cfgShells, cfgProfiles)
 }
 
-// SaveTerminalProfiles overwrites the persisted terminal-profile arrays with
+// saveTerminalProfiles overwrites the persisted terminal-profile arrays with
 // the caller-supplied set, normalises the Default flag (exactly one), and
 // persists.
-func (a *App) SaveTerminalProfiles(apps []config.TerminalApp, shells []config.ShellEntry, profiles []config.TerminalProfile) error {
+func (a *App) saveTerminalProfiles(apps []config.TerminalApp, shells []config.ShellEntry, profiles []config.TerminalProfile) error {
 	terminals.EnforceSingleDefault(profiles)
 	return a.clientPrefs().Update(func(p *config.ClientPrefs) {
 		p.TerminalApps = append([]config.TerminalApp(nil), apps...)
@@ -165,10 +112,10 @@ func (a *App) SaveTerminalProfiles(apps []config.TerminalApp, shells []config.Sh
 
 // ─── Sync / re-detect / missing-modern bridges ────────────────────────────
 
-// SyncProfiles reconciles config's TerminalApps + Shells + TerminalProfiles
+// syncProfiles reconciles config's TerminalApps + Shells + TerminalProfiles
 // arrays with what the host catalog reports as installed. Idempotent — only
 // writes when the resulting payload differs from what's already persisted.
-func (a *App) SyncProfiles() {
+func (a *App) syncProfiles() {
 	detected := terminals.Detect(runtime.GOOS)
 	// ApplyDetection works on a Config and only touches the terminal keys,
 	// so it runs on a scratch one that holds just the preferences.
@@ -188,17 +135,17 @@ func (a *App) SyncProfiles() {
 	_ = store.Update(func(p *config.ClientPrefs) { apply(p) })
 }
 
-// RedetectProfiles re-runs SyncProfiles and returns the refreshed config DTO.
+// RedetectProfiles re-runs terminal profile detection and returns the refreshed config DTO.
 // Detection is local, so it never asks the backend; the config it returns
 // is the backend's with the refreshed preferences laid over it.
 func (a *App) RedetectProfiles() (ConfigDTO, error) {
-	a.SyncProfiles()
+	a.syncProfiles()
 	return a.GetConfig()
 }
 
 // redetectProfilesLocal is the local backend's RedetectProfiles.
 func (a *App) redetectProfilesLocal() (ConfigDTO, error) {
-	a.SyncProfiles()
+	a.syncProfiles()
 	return a.GetConfig()
 }
 

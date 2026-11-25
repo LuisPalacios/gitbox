@@ -1077,15 +1077,12 @@ func TestStartupSnapshotCarriesTheServerVersion(t *testing.T) {
 		}),
 	})
 	a := &App{backend: link.Remote, prefs: newFilePrefs(seedConfig(t, "client.json", nil))}
-	if got := a.GetAppVersion(); got != a.getAppVersionLocal() {
-		t.Errorf("GetAppVersion = %q, want this build's own %q", got, a.getAppVersionLocal())
-	}
 	remoteSnap, err := a.GetStartupSnapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if remoteSnap.AppVersion != a.getAppVersionLocal() {
-		t.Errorf("the snapshot's AppVersion = %q, want this build's own %q", remoteSnap.AppVersion, a.getAppVersionLocal())
+	if remoteSnap.AppVersion != a.getAppVersion() {
+		t.Errorf("the snapshot's AppVersion = %q, want this build's own %q", remoteSnap.AppVersion, a.getAppVersion())
 	}
 	if want := formatAppVersion(version, commit); remoteSnap.ServerVersion != want {
 		t.Errorf("the snapshot's ServerVersion = %q, want %q", remoteSnap.ServerVersion, want)

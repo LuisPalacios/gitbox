@@ -142,15 +142,7 @@ func (a *App) setPRIncludeDraftsLocal(enabled bool) error {
 	return a.saveConfig()
 }
 
-// GetPRsForRepo returns the cached PR summary for a specific clone.
-// sourceKey maps to one account; repoKey is the "owner/repo" string used in
-// config.Source.Repos. Returns an empty summary when nothing is cached or
-// when the feature is disabled.
-func (a *App) GetPRsForRepo(sourceKey, repoKey string) PRSummaryDTO {
-	return a.be().GetPRsForRepo(sourceKey, repoKey)
-}
-
-// getPRsForRepoLocal is the local backend's GetPRsForRepo.
+// getPRsForRepoLocal returns the cached PR summary for a clone.
 func (a *App) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDTO {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -168,9 +160,6 @@ func (a *App) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDTO {
 	}
 	return lookupRepoSummary(entry.data, repoKey)
 }
-
-// RefreshAllPRs schedules an incremental refresh for each account.
-func (a *App) RefreshAllPRs() { a.be().RefreshAllPRs() }
 
 // refreshAllPRsLocal is the local backend's RefreshAllPRs.
 func (a *App) refreshAllPRsLocal() { a.queuePRs(false) }

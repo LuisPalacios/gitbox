@@ -94,7 +94,7 @@ func TestFilePrefsUpdateUnderLock(t *testing.T) {
 		if _, err := io.ReadAll(os.Stdin); err != nil {
 			t.Fatal(err)
 		}
-		err := child.SaveTerminalProfiles(
+		err := child.saveTerminalProfiles(
 			[]config.TerminalApp{{ID: "term", Name: "Terminal", Command: "term"}}, nil,
 			[]config.TerminalProfile{{ID: "fixture", Name: "Fixture", TerminalID: "term", Source: "user"}})
 		if err != nil {

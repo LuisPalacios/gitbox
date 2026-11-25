@@ -83,7 +83,7 @@ func TestFetchAllStopsWhenTheServerIsUnreachable(t *testing.T) {
 		}
 
 		started := time.Now()
-		err := a.FetchAllRepos()
+		err := a.fetchAllRepos()
 		if err == nil {
 			t.Fatal("a cycle that reached no server must report a failure")
 		}
@@ -136,7 +136,7 @@ func TestNetworkWatcherResumesWhenTheServerIsBack(t *testing.T) {
 			fetches.Add(1)
 			return "", nil
 		}
-		if err := a.FetchAllRepos(); err == nil {
+		if err := a.fetchAllRepos(); err == nil {
 			t.Fatal("the first cycle must fail")
 		}
 		synctest.Wait()
@@ -172,7 +172,7 @@ func TestNetworkWatcherResumesWhenTheServerIsBack(t *testing.T) {
 
 		// A second outage starts exactly one watcher again.
 		up.Store(false)
-		if err := a.FetchAllRepos(); err == nil {
+		if err := a.fetchAllRepos(); err == nil {
 			t.Fatal("the cycle during the second outage must fail")
 		}
 		synctest.Wait()
@@ -203,11 +203,11 @@ func TestFetchAllRetriesTheNetwork(t *testing.T) {
 			fetches.Add(1)
 			return "", nil
 		}
-		if err := a.FetchAllRepos(); err == nil {
+		if err := a.fetchAllRepos(); err == nil {
 			t.Fatal("the first cycle must fail")
 		}
 		up.Store(true)
-		if err := a.FetchAllRepos(); err != nil {
+		if err := a.fetchAllRepos(); err != nil {
 			t.Fatalf("the retry must succeed: %v", err)
 		}
 		if offline, _, count := networkState(t, events); offline || count != 2 || fetches.Load() != 2 {
@@ -229,7 +229,7 @@ func TestFetchAllSkipsTheQueueOfALostServer(t *testing.T) {
 			time.Sleep(time.Second)
 			return "", &git.GitError{Op: "fetch", Code: git.CodeOffline}
 		}
-		if err := a.FetchAllRepos(); err == nil {
+		if err := a.fetchAllRepos(); err == nil {
 			t.Fatal("the cycle must fail")
 		}
 		if got := fetches.Load(); got < 1 || got > fetchPerHostConcurrency {
@@ -257,7 +257,7 @@ func TestFetchAllKeepsGoingOnOtherFailures(t *testing.T) {
 			fetches.Add(1)
 			return "", &git.GitError{Op: "fetch", Code: git.CodeAuthFailed}
 		}
-		_ = a.FetchAllRepos()
+		_ = a.fetchAllRepos()
 		if fetches.Load() != 12 {
 			t.Errorf("%d of 12 clones were fetched; an authentication failure must not stop the queue", fetches.Load())
 		}
@@ -329,7 +329,7 @@ func TestFetchAllStopsWhenTheNetworkDiesMidway(t *testing.T) {
 		}
 
 		started := time.Now()
-		if err := a.FetchAllRepos(); err == nil {
+		if err := a.fetchAllRepos(); err == nil {
 			t.Fatal("the cycle must fail")
 		}
 		if spent := time.Since(started); spent > networkMonitorInterval+time.Second {

@@ -80,7 +80,7 @@ func main() {
 		// --version prints the build version and exits without opening a
 		// window, so scripts can smoke-test an installed GitboxApp.
 		if arg == "--version" {
-			fmt.Printf("GitboxApp %s\n", app.GetAppVersion())
+			fmt.Printf("GitboxApp %s\n", app.getAppVersion())
 			return
 		}
 		// --list-server-targets prints the gitbox-server binaries this
@@ -242,10 +242,10 @@ func main() {
 				wailsrt.WindowShow(app.ctx)
 			},
 		},
-		OnStartup:      app.Startup,
-		OnShutdown:     app.Shutdown,
-		OnBeforeClose:  app.BeforeClose,
-		OnDomReady:     app.DomReady,
+		OnStartup:      app.startup,
+		OnShutdown:     app.shutdown,
+		OnBeforeClose:  app.beforeClose,
+		OnDomReady:     app.domReady,
 		ErrorFormatter: localWindowError,
 		Bind: []any{
 			app,
@@ -271,8 +271,8 @@ func localWindowError(err error) any {
 //   - Uses a distinct SingleInstanceLock id so it can coexist with the main
 //     gitbox process (and so launching a second Manager focuses the first
 //     instead of opening a duplicate).
-//   - Skips the default-window bootstrapping in DomReady (no editor sync,
-//     no workspace discovery, no probe loops) — App.DomReady checks
+//   - Skips the default-window bootstrapping in domReady (no editor sync,
+//     no workspace discovery, no probe loops) — App.domReady checks
 //     a.windowMode and short-circuits when set to "terminals".
 //   - Opens a smaller window sized for the editor.
 //   - Writes only client preferences, through a store of its own
@@ -295,7 +295,7 @@ func runTerminalsWindow(app *App) {
 		MinHeight: minH,
 		// StartHidden prevents the dark-empty-webview flash users see before
 		// Svelte mounts and paints the editor (issue #69 user feedback).
-		// DomReady reveals the window once SyncProfiles has populated the
+		// domReady reveals the window once syncProfiles has populated the
 		// detected lists and the DOM is ready to render.
 		StartHidden: true,
 		// HideWindowOnClose makes the X button hide the editor instead of
@@ -305,7 +305,7 @@ func runTerminalsWindow(app *App) {
 		// instead of paying the full Wails+webview cold-start every time
 		// (issue #69 user feedback — close-then-reopen on Win/Linux
 		// flashed an init window before the real window finally arrived
-		// 1-2s later). The parent's Shutdown still kills the subprocess
+		// 1-2s later). The parent's shutdown still kills the subprocess
 		// so the user can't end up with an orphan when they quit gitbox.
 		HideWindowOnClose: true,
 		AssetServer: &assetserver.Options{
@@ -323,15 +323,15 @@ func runTerminalsWindow(app *App) {
 				// after the user installed a new shell or edited
 				// wezterm.lua. Then nudge the frontend to reload from
 				// disk and reveal the window.
-				app.SyncProfiles()
+				app.syncProfiles()
 				emit(app.newOperation(), "profiles:reloaded", any(nil))
 				wailsrt.WindowUnminimise(app.ctx)
 				wailsrt.WindowShow(app.ctx)
 			},
 		},
-		OnStartup:      app.Startup,
-		OnShutdown:     app.Shutdown,
-		OnDomReady:     app.DomReady,
+		OnStartup:      app.startup,
+		OnShutdown:     app.shutdown,
+		OnDomReady:     app.domReady,
 		ErrorFormatter: localWindowError,
 		Bind: []any{
 			app,
@@ -345,7 +345,7 @@ func runTerminalsWindow(app *App) {
 // runRemoteWindow runs the window of one remote (#239): its own process,
 // with a single-instance lock per alias, so a second Connect focuses it.
 // It loads only the client preferences, from this machine's gitbox.json
-// (the test window's, in test mode), and connects from DomReady.
+// (the test window's, in test mode), and connects from domReady.
 func runRemoteWindow(app *App, f remoteFlags) {
 	path := f.prefsFile
 	if path == "" {
@@ -409,10 +409,10 @@ func runRemoteWindow(app *App, f remoteFlags) {
 				}
 			},
 		},
-		OnStartup:     app.Startup,
-		OnShutdown:    app.Shutdown,
-		OnBeforeClose: app.BeforeClose,
-		OnDomReady:    app.DomReady,
+		OnStartup:     app.startup,
+		OnShutdown:    app.shutdown,
+		OnBeforeClose: app.beforeClose,
+		OnDomReady:    app.domReady,
 		// A failed call carries its code and catalog hint, so the window
 		// translates what the host's backend raised (#240).
 		ErrorFormatter: windowError,
@@ -475,9 +475,9 @@ func runRemotesWindow(app *App, f remoteFlags) {
 				wailsrt.WindowShow(app.ctx)
 			},
 		},
-		OnStartup:      app.Startup,
-		OnShutdown:     app.Shutdown,
-		OnDomReady:     app.DomReady,
+		OnStartup:      app.startup,
+		OnShutdown:     app.shutdown,
+		OnDomReady:     app.domReady,
 		ErrorFormatter: localWindowError,
 		Bind: []any{
 			app,

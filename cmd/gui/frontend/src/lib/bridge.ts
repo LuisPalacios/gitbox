@@ -7,7 +7,7 @@ import { ExportDiagnostics, GetScheduledTasks, PreviewDiagnostics, RunTask } fro
 import { ApplyRecipeImport, ExportRecipe, OpenRecipeImport, PreviewRecipeExport, PreviewRecipeImport } from '../../wailsjs/go/main/App';
 import { recipe } from '../../wailsjs/go/models';
 import { ListSSHHosts, OpenRemotesWindow, ShowLocalWindow, ShowRemoteLog, GetRemoteTint, SetRemoteTint } from '../../wailsjs/go/main/App';
-import { GetStartupSnapshot, GetConfig, GetCollapsed, SetCollapsed, GetConfigPath, GetAllStatus, RefreshStatus, CloneRepo, PreviewPullAll, PullAll, PullRepo, Discover, AddDiscoveredRepos, CredentialVerify, CredentialDelete, ReloadConfig, StopTrackingRepo, DeleteRepoFolder, AddAccount, SuggestAccountKey, DiscardAccount, UpdateAccount, RenameAccount, CredentialSetupGCM, CredentialStoreToken, CredentialSetupSSH, CredentialRegenerateSSH, CredentialSSHAgentReport, GetTokenGuide, AccountDeletionImpact, DeleteAccount, ChangeCredentialType, OpenAccountFolder, OpenAccountInApp, OpenAccountInAIHarness, OpenFileInEditor, OpenInExplorer, OpenInApp, OpenInAIHarness,  DetectEditors, RefreshAIHarnesses, IsFirstRun, GetConfigLoadError, AcknowledgeConfigError, RepairConfig, ListConfigBackups, RestoreFromBackup, PickFolder, InitRoot, ListRoots, AddRoot, RemoveRoot, SetDefaultRoot, GetAppVersion, GetOS, FetchRepo, FetchAllRepos, GetRepoDetail, GetIdentityProof, RepairRepoIdentity, OpenRepoConfigInEditor, GetLanguage, SetLanguage, GetPeriodicSync, SetPeriodicSync, GetViewMode, SetViewMode, GetUIMode, SetUIMode, SetShowPullPlan, SetTheme, ShowWindow, CheckGlobalIdentity, RemoveGlobalIdentity, IsGlobalGCMConfigNeeded, CheckGlobalGCMConfig, FixGlobalGCMConfig, CheckGlobalGitignore, InstallGlobalGitignore, RecommendedGlobalGitignoreBody, GetCheckGlobalGitignore, SetCheckGlobalGitignore, GetAutostart, SetAutostart, GetMirrorStatus, SetupMirrorRepo, AddMirrorGroup, DeleteMirrorGroup, AddMirrorRepo, DeleteMirrorRepo, CheckMirrorCredentials, ListRemoteRepos, DiscoverMirrors, ApplyDiscoveredMirrors, ListAccountOrgs, CreateNewRepo, IsPositionOnScreen, ApplyUpdate, PreviewSweep, ConfirmSweep, Reconcile, AdoptClones, IgnoreClone, GetPRSettings, SetPRBadgesEnabled, SetPRIncludeDrafts, GetPRsForRepo, RefreshAllPRs, SetRepoContainer, SetRepoWorkspace, RepoWorkspaceFiles, GetNestedScanDepth, SetNestedScanDepth, ScanFolderForClones, AddDiscoveredReposToFolder, RepoNesting, DoctorRun, DoctorPrecheck, ListTerminalApps, ListShells, ListTerminalProfiles, OpenProfile, OpenAccountProfile, SaveTerminalProfilesDTO, RedetectProfiles, MissingModernTerminal, GetWindowMode, OpenTerminalsManagerWindow, RemoteInfo, RemoteLog, RemoteDisconnect, RemoteReconnect, RemoteReinstall, RemoteUninstall, RemoteRunDoctor, ListRemotes, ValidateRemotePath, SetRemoteEditor, AddRemote, RemoveRemote, ConnectRemote } from '../../wailsjs/go/main/App';
+import { GetStartupSnapshot, GetConfig, SetCollapsed, GetConfigPath, GetAllStatus, RefreshStatus, CloneRepo, PreviewPullAll, PullAll, PullRepo, Discover, AddDiscoveredRepos, CredentialVerify, CredentialDelete, ReloadConfig, StopTrackingRepo, DeleteRepoFolder, AddAccount, SuggestAccountKey, DiscardAccount, UpdateAccount, RenameAccount, CredentialSetupGCM, CredentialStoreToken, CredentialSetupSSH, CredentialRegenerateSSH, CredentialSSHAgentReport, GetTokenGuide, AccountDeletionImpact, DeleteAccount, ChangeCredentialType, OpenAccountFolder, OpenAccountInApp, OpenAccountInAIHarness, OpenFileInEditor, OpenInExplorer, OpenInApp, OpenInAIHarness, RefreshAIHarnesses, IsFirstRun, GetConfigLoadError, AcknowledgeConfigError, RepairConfig, ListConfigBackups, RestoreFromBackup, PickFolder, InitRoot, ListRoots, AddRoot, RemoveRoot, SetDefaultRoot, GetOS, FetchRepo, GetRepoDetail, GetIdentityProof, RepairRepoIdentity, OpenRepoConfigInEditor, GetLanguage, SetLanguage, GetPeriodicSync, SetPeriodicSync, SetViewMode, GetUIMode, SetUIMode, SetShowPullPlan, SetTheme, ShowWindow, CheckGlobalIdentity, RemoveGlobalIdentity, IsGlobalGCMConfigNeeded, CheckGlobalGCMConfig, FixGlobalGCMConfig, CheckGlobalGitignore, InstallGlobalGitignore, GetCheckGlobalGitignore, SetCheckGlobalGitignore, GetAutostart, SetAutostart, GetMirrorStatus, SetupMirrorRepo, AddMirrorGroup, DeleteMirrorGroup, AddMirrorRepo, DeleteMirrorRepo, CheckMirrorCredentials, ListRemoteRepos, DiscoverMirrors, ApplyDiscoveredMirrors, ListAccountOrgs, CreateNewRepo, IsPositionOnScreen, ApplyUpdate, PreviewSweep, ConfirmSweep, Reconcile, AdoptClones, IgnoreClone, GetPRSettings, SetPRBadgesEnabled, SetPRIncludeDrafts, SetRepoContainer, SetRepoWorkspace, RepoWorkspaceFiles, GetNestedScanDepth, SetNestedScanDepth, ScanFolderForClones, RepoNesting, DoctorRun, DoctorPrecheck, OpenProfile, OpenAccountProfile, SaveTerminalProfilesDTO, RedetectProfiles, MissingModernTerminal, GetWindowMode, OpenTerminalsManagerWindow, RemoteInfo, RemoteLog, RemoteDisconnect, RemoteReconnect, RemoteReinstall, RemoteUninstall, RemoteRunDoctor, ListRemotes, ValidateRemotePath, SetRemoteEditor, AddRemote, RemoveRemote, ConnectRemote } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 import { createEventRouter } from './events';
 import { get } from 'svelte/store';
@@ -18,7 +18,7 @@ import { CheckUpdateRecovery, ResolveUpdateRecovery } from '../../wailsjs/go/mai
 
 import { BeginStatus, GetStartupTiming, MarkStartup, AdoptFirstProject, PreviewClonePath, PreviewRoot } from '../../wailsjs/go/main/App';
 
-import type { CredentialFinding, StartupSnapshot, ConfigDTO, CollapsedState, StatusResult, CredentialStatus, EditorInfo, OrphanRepoDTO, ReconcileDTO, AccountDeletionImpactDTO, ConfigRepairResult, ConfigBackupInfo, PRSettingsDTO, PRSummaryDTO, RootDTO, RemoveRootDTO, TerminalAppInfo, ShellInfo, TerminalProfileInfo } from './types';
+import type { CredentialFinding, StartupSnapshot, ConfigDTO, CollapsedState, StatusResult, CredentialStatus, OrphanRepoDTO, ReconcileDTO, AccountDeletionImpactDTO, ConfigRepairResult, ConfigBackupInfo, PRSettingsDTO, RootDTO, RemoveRootDTO, TerminalAppInfo, ShellInfo, TerminalProfileInfo } from './types';
 
 import type { AgentReport } from './sshAgent';
 
@@ -75,7 +75,6 @@ const calls = {
   openAccountFolder: (accountKey: string): Promise<void> => OpenAccountFolder(accountKey),
   openAccountInApp: (accountKey: string, command: string): Promise<void> => OpenAccountInApp(accountKey, command),
   openAccountInAIHarness: (accountKey: string, command: string, args: string[]): Promise<void> => OpenAccountInAIHarness(accountKey, command, args),
-  detectEditors: (): Promise<EditorInfo[]> => DetectEditors(),
   refreshAIHarnesses: (): Promise<void> => RefreshAIHarnesses(),
   isFirstRun: (): Promise<boolean> => IsFirstRun(),
   getConfigLoadError: (): Promise<string> => GetConfigLoadError(),
@@ -95,10 +94,8 @@ const calls = {
   addRoot: (path: string): Promise<void> => AddRoot(path),
   removeRoot: (path: string, forget: boolean): Promise<RemoveRootDTO> => RemoveRoot(path, forget) as Promise<RemoveRootDTO>,
   setDefaultRoot: (path: string): Promise<void> => SetDefaultRoot(path),
-  getAppVersion: (): Promise<string> => GetAppVersion(),
   getOS: (): Promise<string> => GetOS(),
   fetchRepo: (sourceKey: string, repoKey: string): Promise<void> => FetchRepo(sourceKey, repoKey),
-  fetchAllRepos: (): Promise<void> => FetchAllRepos(),
   getIdentityProof: (source: string, repo: string): Promise<import('./types').IdentityProof> => GetIdentityProof(source, repo),
   repairRepoIdentity: (source: string, repo: string): Promise<void> => RepairRepoIdentity(source, repo),
   openRepoConfigInEditor: (source: string, repo: string): Promise<void> => OpenRepoConfigInEditor(source, repo),
@@ -107,7 +104,6 @@ const calls = {
   setLanguage: (lang: string): Promise<void> => SetLanguage(lang),
   getPeriodicSync: (): Promise<string> => GetPeriodicSync(),
   setPeriodicSync: (interval: string): Promise<void> => SetPeriodicSync(interval),
-  getViewMode: (): Promise<string> => GetViewMode(),
   setViewMode: (mode: string): Promise<any> => SetViewMode(mode),
   getUIMode: (): Promise<string> => GetUIMode(),
   setUIMode: (mode: string): Promise<void> => SetUIMode(mode),
@@ -122,7 +118,6 @@ const calls = {
   fixGlobalGCMConfig: (): Promise<void> => FixGlobalGCMConfig(),
   checkGlobalGitignore: (): Promise<any> => CheckGlobalGitignore(),
   installGlobalGitignore: (): Promise<any> => InstallGlobalGitignore(),
-  recommendedGlobalGitignoreBody: (): Promise<string> => RecommendedGlobalGitignoreBody(),
   getCheckGlobalGitignore: (): Promise<boolean> => GetCheckGlobalGitignore(),
   setCheckGlobalGitignore: (enabled: boolean): Promise<void> => SetCheckGlobalGitignore(enabled),
   getAutostart: (): Promise<boolean> => GetAutostart(),
@@ -151,8 +146,6 @@ const calls = {
   getPRSettings: (): Promise<PRSettingsDTO> => GetPRSettings() as Promise<PRSettingsDTO>,
   setPRBadgesEnabled: (enabled: boolean): Promise<void> => SetPRBadgesEnabled(enabled),
   setPRIncludeDrafts: (enabled: boolean): Promise<void> => SetPRIncludeDrafts(enabled),
-  getPRsForRepo: (sourceKey: string, repoKey: string): Promise<PRSummaryDTO> => GetPRsForRepo(sourceKey, repoKey) as Promise<PRSummaryDTO>,
-  refreshAllPRs: (): Promise<void> => RefreshAllPRs(),
   // Multi-repo containers + non-standard clone locations.
   setRepoContainer: (source: string, repo: string, container: boolean): Promise<void> => SetRepoContainer(source, repo, container),
   // The .code-workspace file a container opens with (one at its root).
@@ -161,16 +154,11 @@ const calls = {
   getNestedScanDepth: (): Promise<number> => GetNestedScanDepth() as Promise<number>,
   setNestedScanDepth: (depth: number): Promise<void> => SetNestedScanDepth(depth),
   scanFolderForClones: (path: string): Promise<OrphanRepoDTO[]> => ScanFolderForClones(path) as Promise<OrphanRepoDTO[]>,
-  addDiscoveredReposToFolder: (key: string, repos: string[], cloneFolder: string): Promise<void> => AddDiscoveredReposToFolder(key, repos, cloneFolder),
   repoNesting: (): Promise<Record<string, string>> => RepoNesting() as Promise<Record<string, string>>,
-  getCollapsed: (): Promise<CollapsedState> => GetCollapsed(),
   setCollapsed: (state: CollapsedState): Promise<void> => SetCollapsed(state),
   doctorRun: (): Promise<DoctorReport> => DoctorRun() as Promise<DoctorReport>,
   doctorPrecheck: (credentialType: string): Promise<DoctorPrecheckDTO> => DoctorPrecheck(credentialType) as Promise<DoctorPrecheckDTO>,
   // ── v2.1 Terminal Profile bridges (issue #69) ──
-  listTerminalApps: (): Promise<TerminalAppInfo[]> => ListTerminalApps() as unknown as Promise<TerminalAppInfo[]>,
-  listShells: (): Promise<ShellInfo[]> => ListShells() as unknown as Promise<ShellInfo[]>,
-  listTerminalProfiles: (): Promise<TerminalProfileInfo[]> => ListTerminalProfiles() as unknown as Promise<TerminalProfileInfo[]>,
   openProfile: (path: string, profileID: string): Promise<void> => OpenProfile(path, profileID),
   openAccountProfile: (accountKey: string, profileID: string): Promise<void> => OpenAccountProfile(accountKey, profileID),
   saveTerminalProfiles: (apps: TerminalAppInfo[], shells: ShellInfo[], profiles: TerminalProfileInfo[]): Promise<void> => SaveTerminalProfilesDTO(apps as any, shells as any, profiles as any),

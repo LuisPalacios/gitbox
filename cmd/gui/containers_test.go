@@ -87,14 +87,14 @@ func TestAddDiscoveredReposToFolder_StoresAbsoluteCloneFolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.AddDiscoveredReposToFolder("github-alice", []string{"team/newrepo", "team/another"}, custom); !errors.Is(err, config.ErrPathCollision) {
+	if err := a.be().AddDiscoveredReposToFolder("github-alice", []string{"team/newrepo", "team/another"}, custom); !errors.Is(err, config.ErrPathCollision) {
 		t.Fatalf("shared custom destination = %v", err)
 	}
 	after, err := os.ReadFile(cfgPath)
 	if err != nil || string(before) != string(after) || len(a.cfg.Sources["github-alice"].Repos) != 2 {
 		t.Fatal("refused batch changed the config")
 	}
-	if err := a.AddDiscoveredReposToFolder("github-alice", []string{"team/newrepo"}, custom); err != nil {
+	if err := a.be().AddDiscoveredReposToFolder("github-alice", []string{"team/newrepo"}, custom); err != nil {
 		t.Fatalf("AddDiscoveredReposToFolder: %v", err)
 	}
 	reloaded, _ := config.Load(cfgPath)
@@ -109,9 +109,12 @@ func TestAddDiscoveredReposToFolder_StoresAbsoluteCloneFolder(t *testing.T) {
 
 func TestCollapsed_DefaultEmpty(t *testing.T) {
 	a, _ := newWorkspaceTestApp(t)
-	got := a.GetCollapsed()
-	if len(got.Sources) != 0 || len(got.Repos) != 0 {
-		t.Errorf("GetCollapsed() = %+v, want empty", got)
+	cfg, err := a.GetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Global.Collapsed; got != nil && (len(got.Sources) != 0 || len(got.Repos) != 0) {
+		t.Errorf("GetConfig collapsed = %+v, want empty", got)
 	}
 }
 
@@ -158,8 +161,10 @@ func TestSetCollapsed_SidebarAndView(t *testing.T) {
 	if c := reloaded.Global.Collapsed; c == nil || !c.Sidebar || c.View != "account:github-alice" {
 		t.Errorf("persisted Collapsed = %+v, want sidebar and the account view", c)
 	}
-	if got := a.GetCollapsed(); !got.Sidebar || got.View != "account:github-alice" {
-		t.Errorf("GetCollapsed() = %+v, want sidebar and the account view", got)
+	if cfg, err := a.GetConfig(); err != nil {
+		t.Fatal(err)
+	} else if got := cfg.Global.Collapsed; got == nil || !got.Sidebar || got.View != "account:github-alice" {
+		t.Errorf("GetConfig collapsed = %+v, want sidebar and the account view", got)
 	}
 
 	// A view naming a missing account is pruned on save.

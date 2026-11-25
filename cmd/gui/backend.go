@@ -67,7 +67,6 @@ type Backend interface {
 	FixGlobalGCMConfig() error
 	BeginStatus(passID uint64) error
 	GetAllStatus() []StatusResult
-	GetAppVersion() string
 	GetCheckGlobalGitignore() bool
 	GetCollapsed() config.CollapsedState
 	GetConfig() (ConfigDTO, error)
@@ -248,7 +247,6 @@ func (b localBackend) BeginStatus(passID uint64) error {
 	return nil
 }
 func (b localBackend) GetAllStatus() []StatusResult        { return b.a.getAllStatusLocal() }
-func (b localBackend) GetAppVersion() string               { return b.a.getAppVersionLocal() }
 func (b localBackend) GetCheckGlobalGitignore() bool       { return b.a.getCheckGlobalGitignoreLocal() }
 func (b localBackend) GetCollapsed() config.CollapsedState { return b.a.getCollapsedLocal() }
 func (b localBackend) GetConfig() (ConfigDTO, error)       { return b.a.getConfigLocal() }

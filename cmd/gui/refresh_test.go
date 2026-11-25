@@ -93,7 +93,7 @@ func TestRefresh_ConcurrentFetchAllSharesCompleteCycle(t *testing.T) {
 		}
 		results := make(chan error, 20)
 		for range 20 {
-			go func() { results <- a.FetchAllRepos() }()
+			go func() { results <- a.fetchAllRepos() }()
 		}
 		synctest.Wait()
 		if fetches.Load() != 1 || len(events.named("fetch:allstart")) != 1 || len(events.named("fetch:alldone")) != 0 {
@@ -128,7 +128,7 @@ func TestRefresh_SingleRepoAndFetchAllShareTransfer(t *testing.T) {
 			return "", nil
 		}
 		done := make(chan error, 1)
-		go func() { done <- a.FetchAllRepos() }()
+		go func() { done <- a.fetchAllRepos() }()
 		synctest.Wait()
 		a.FetchRepo("source-a", "org/repo-0")
 		synctest.Wait()
@@ -235,7 +235,7 @@ func TestRefresh_MixedSingleAndFullFetchesRespectGlobalWorkerLimit(t *testing.T)
 		}
 
 		done := make(chan error, 1)
-		go func() { done <- a.FetchAllRepos() }()
+		go func() { done <- a.fetchAllRepos() }()
 		synctest.Wait()
 		if got := active.Load(); got != fetchAllConcurrency {
 			t.Fatalf("mixed requests started %d simultaneous transfers, want %d", got, fetchAllConcurrency)
@@ -280,7 +280,7 @@ func TestRefresh_FetchAllHealthyHostFinishesWhileSlowHostWaits(t *testing.T) {
 		}
 
 		done := make(chan error, 1)
-		go func() { done <- a.FetchAllRepos() }()
+		go func() { done <- a.fetchAllRepos() }()
 		synctest.Wait()
 		if got := slowStarted.Load(); got != fetchPerHostConcurrency {
 			t.Fatalf("slow hostname started %d fetches before it was released, want %d", got, fetchPerHostConcurrency)
@@ -416,7 +416,7 @@ func TestRefresh_LocalStatusPrecedesRemoteChecksAndCompletionWaitsForBoth(t *tes
 			return refreshCredentialOK()
 		}
 		done := make(chan error, 1)
-		go func() { done <- a.FetchAllRepos() }()
+		go func() { done <- a.fetchAllRepos() }()
 		synctest.Wait()
 		if len(events.named("status:updated")) != 1 || len(events.named("fetch:alldone")) != 0 || len(events.named("credentials:updated")) != 0 {
 			t.Fatalf("slow remote checks blocked local status or finished early: %v", events.events)
@@ -454,7 +454,7 @@ func TestRefresh_ShutdownCancelsWorkersAndRejectsNewWork(t *testing.T) {
 			return credential.StatusResult{Overall: credential.StatusOffline}
 		}
 		done := make(chan error, 1)
-		go func() { done <- a.FetchAllRepos() }()
+		go func() { done <- a.fetchAllRepos() }()
 		synctest.Wait()
 		if active.Load() != 2 {
 			t.Fatalf("test did not reach both blocked workers: %d", active.Load())
@@ -466,7 +466,7 @@ func TestRefresh_ShutdownCancelsWorkersAndRejectsNewWork(t *testing.T) {
 		if active.Load() != 0 || a.fetchRun != nil || len(a.repoFetches) != 0 || len(a.credentialRuns) != 0 {
 			t.Fatal("shutdown returned while refresh workers were still active")
 		}
-		if err := a.FetchAllRepos(); !errors.Is(err, context.Canceled) {
+		if err := a.fetchAllRepos(); !errors.Is(err, context.Canceled) {
 			t.Fatalf("fetch after shutdown returned %v", err)
 		}
 		a.FetchRepo("source-a", "org/repo-0")
@@ -488,7 +488,7 @@ func TestRefresh_MaintenanceFailureSkipsNetworkAndSurfacesError(t *testing.T) {
 			transfers.Add(1)
 			return "", nil
 		}
-		err := a.FetchAllRepos()
+		err := a.fetchAllRepos()
 		if err == nil || !strings.Contains(err.Error(), "credential isolation repair failed") || transfers.Load() != 0 {
 			t.Fatalf("unsafe maintenance allowed network work or lost its error: transfers=%d err=%v", transfers.Load(), err)
 		}
@@ -589,7 +589,7 @@ func TestRefresh_RetriesAConnectRefusedRightAway(t *testing.T) {
 			}
 			return "", nil
 		}
-		if err := a.FetchAllRepos(); err != nil {
+		if err := a.fetchAllRepos(); err != nil {
 			t.Fatalf("FetchAllRepos() = %v, want the retry to succeed", err)
 		}
 		if calls.Load() != 2 {
@@ -611,7 +611,7 @@ func TestRefresh_DoesNotRetryOtherFetchErrors(t *testing.T) {
 			calls.Add(1)
 			return "", errors.New("git fetch: exit status 128: fatal: Authentication failed")
 		}
-		if err := a.FetchAllRepos(); err == nil {
+		if err := a.fetchAllRepos(); err == nil {
 			t.Fatal("FetchAllRepos() = nil, want the authentication error")
 		}
 		if calls.Load() != 1 {
@@ -699,7 +699,7 @@ func TestRefresh_BacksOffOnAPersistentRefusal(t *testing.T) {
 			calls.Add(1)
 			return "", errors.New("fatal: unable to access 'https://h.lan/a.git/': Failed to connect to h.lan port 443 after 3 ms: Couldn't connect to server")
 		}
-		if err := a.FetchAllRepos(); err == nil {
+		if err := a.fetchAllRepos(); err == nil {
 			t.Fatal("FetchAllRepos() = nil, want the refusal to surface after the retries")
 		}
 		if want := int32(1 + len(retryDelays)); calls.Load() != want {

@@ -120,7 +120,7 @@ func TestRemoteLifecycle(t *testing.T) {
 	}
 
 	// Startup returns without dialing.
-	a.Startup(context.Background())
+	a.startup(context.Background())
 	a.events = sink
 	if dials() != 0 {
 		t.Fatal("Startup dialed")
@@ -188,7 +188,7 @@ func TestRemoteLifecycle(t *testing.T) {
 	if _, err := a.GetConfig(); !codeIs(err, "not_connected") {
 		t.Errorf("GetConfig after the crash = %v, want not_connected", err)
 	}
-	a.Shutdown(context.Background())
+	a.shutdown(context.Background())
 }
 
 func TestRemoteLifecycleDialFailure(t *testing.T) {
