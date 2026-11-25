@@ -43,6 +43,8 @@ async function remoteWindow(t) {
     MarkStartup: async () => {},
     GetWindowMode: async () => 'remote',
     RemoteInfo: async () => connected,
+    // The top bar asks whether remote mode is on before the window knows it is a remote one (#330).
+    ListRemotes: async () => ({ enabled: true, current: alias, remotes: [{ alias, open: true, state: 'connected' }], remoteEditors: [] }),
     GetConfigLoadError: async () => '',
     IsFirstRun: async () => false,
     GetStartupSnapshot: async () => snapshot(),

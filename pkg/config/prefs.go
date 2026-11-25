@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // RemoteEntry is one remote-mode destination (#233). Alias is an ssh_config
@@ -17,6 +18,14 @@ type RemoteEntry struct {
 	ServerDir string `json:"server_dir,omitempty"`
 	// Editor is the remote-capable editor command. Empty means auto.
 	Editor string `json:"editor,omitempty"`
+	// ServerOS, ServerArch and ServerVersion are what the host's server
+	// reported the last time this remote's window connected, and
+	// LastConnected when (RFC 3339). The Remote hosts window shows them
+	// (#330); nothing else depends on them.
+	ServerOS      string `json:"server_os,omitempty"`
+	ServerArch    string `json:"server_arch,omitempty"`
+	ServerVersion string `json:"server_version,omitempty"`
+	LastConnected string `json:"last_connected,omitempty"`
 	// Window and CompactWindow hold the geometry of this remote's own
 	// window, so it never fights the local window over global.window.
 	Window        *WindowState `json:"window,omitempty"`
@@ -153,6 +162,24 @@ func (p *ClientPrefs) SetWindow(alias string, compact bool, ws *WindowState) boo
 	return true
 }
 
+// RemoteFacts are the last-known facts of a remote (#330).
+type RemoteFacts struct {
+	ServerOS, ServerArch, ServerVersion string
+	LastConnected                       time.Time
+}
+
+// SetRemoteFacts records what a remote's server reported on connecting. It
+// reports false when alias names no remote.
+func (p *ClientPrefs) SetRemoteFacts(alias string, f RemoteFacts) bool {
+	r := p.remote(alias)
+	if r == nil {
+		return false
+	}
+	r.ServerOS, r.ServerArch, r.ServerVersion = f.ServerOS, f.ServerArch, f.ServerVersion
+	r.LastConnected = f.LastConnected.UTC().Format(time.RFC3339)
+	return true
+}
+
 func (p *ClientPrefs) remote(alias string) *RemoteEntry {
 	for i := range p.Remotes {
 		if p.Remotes[i].Alias == alias {
@@ -206,6 +233,12 @@ func cloneWindow(ws *WindowState) *WindowState {
 // as an option or carry shell syntax.
 var remoteAliasRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
+// ValidRemoteAlias reports whether alias may name a remote: 1 to 64 letters,
+// digits, '.', '_' or '-', not starting with '-'.
+func ValidRemoteAlias(alias string) bool {
+	return remoteAliasRE.MatchString(alias) && !strings.HasPrefix(alias, "-")
+}
+
 // remoteDriveRE matches the start of an absolute path on a Windows remote.
 var remoteDriveRE = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 
@@ -214,7 +247,7 @@ var remoteDriveRE = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 func ValidateRemotes(remotes []RemoteEntry) error {
 	seen := make(map[string]bool, len(remotes))
 	for i, r := range remotes {
-		if !remoteAliasRE.MatchString(r.Alias) || strings.HasPrefix(r.Alias, "-") {
+		if !ValidRemoteAlias(r.Alias) {
 			return fmt.Errorf("global.remotes[%d]: alias %q must be 1 to 64 letters, digits, '.', '_' or '-', and not start with '-'", i, r.Alias)
 		}
 		if seen[r.Alias] {

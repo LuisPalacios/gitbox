@@ -89,6 +89,23 @@
                                 "type": "string",
                                 "description": "Remote-capable editor command for this remote. Absent means automatic."
                             },
+                            "server_os": {
+                                "type": "string",
+                                "description": "Operating system the host's server reported on the last connection, as Go spells it. Saved automatically."
+                            },
+                            "server_arch": {
+                                "type": "string",
+                                "description": "Architecture the host's server reported on the last connection, as Go spells it. Saved automatically."
+                            },
+                            "server_version": {
+                                "type": "string",
+                                "description": "Version of the host's server on the last connection. Saved automatically."
+                            },
+                            "last_connected": {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "When this remote's window last connected (RFC 3339). Saved automatically."
+                            },
                             "window": {
                                 "type": "object",
                                 "description": "Position and size of this remote's own window in full view. Saved automatically.",

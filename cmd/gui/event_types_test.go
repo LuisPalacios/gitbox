@@ -40,6 +40,7 @@ var eventPayloadTypes = map[string]reflect.Type{
 	"pull:done":                reflect.TypeFor[pullDoneDTO](),
 	"reconcile:done":           reflect.TypeFor[ReconcileDTO](),
 	"remote:log":               reflect.TypeFor[string](),
+	"remote:show-log":          nil,
 	"remote:state":             reflect.TypeFor[RemoteStateDTO](),
 	"status:batch":             reflect.TypeFor[StatusBatch](),
 	"status:one":               reflect.TypeFor[StatusResult](),

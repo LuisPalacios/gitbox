@@ -68,6 +68,7 @@ func (a *App) Shutdown(_ context.Context) {
 	// A remote window stops its server: closing its input is the signal.
 	if a.remote != nil {
 		a.remote.disconnect()
+		a.remote.presence.Release()
 	}
 	// Stop the backend's workers before test cleanup removes the temp
 	// config dir, so a late pass can't recreate it via config.Save.
@@ -127,13 +128,18 @@ func (a *App) DomReady(_ context.Context) {
 		}
 		wailsrt.WindowShow(a.ctx)
 		a.ensureWindowTasks()
+		a.remote.holdPresence(config.WindowsDir(a.prefsPath()))
 		a.remote.start()
 		return
 	}
-	if a.windowMode == "terminals" {
+	// The Remote hosts window (#330) shows itself like the terminals
+	// window, and runs no worker either.
+	if a.windowMode == "terminals" || a.windowMode == "remotes" {
 		// Refresh the detected terminal/shell list before painting so the
 		// editor opens with a real table on first show.
-		a.SyncProfiles()
+		if a.windowMode == "terminals" {
+			a.SyncProfiles()
+		}
 		// runTerminalsWindow sets StartHidden so the user doesn't see a
 		// dark-empty-webview flash before Svelte paints. We *don't*
 		// reveal the window here — DomReady fires before the browser

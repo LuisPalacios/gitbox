@@ -1,9 +1,10 @@
 <script lang="ts">
   // The view of a remote window before its first connection, and when the
   // host has no config to show (#239, #240): who it talks to and how the
-  // connection is doing, with Disconnect, Show log, Run doctor (in the
-  // log) and Uninstall server. Simple mode says it in one plain sentence;
-  // error codes appear only in the connection log.
+  // connection is doing, with Disconnect, Show log and Run doctor (in the
+  // log). Uninstalling the server lives in the context menu of the Remote
+  // hosts window (#330). Simple mode says it in one plain sentence; error
+  // codes appear only in the connection log.
   import { onMount, onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
   import { bridge, events } from '../bridge';
@@ -22,16 +23,12 @@
   let busy = false;
   let actionError = '';
   // Two-step confirmations, inline: the webview has no reliable confirm().
-  let confirmUninstall = false;
-  let othersLive = 0;
   let confirmReinstall = false;
-  let uninstalled = false;
   const offs: (() => void)[] = [];
 
   $: working = st.state === 'connecting' || st.state === 'installing';
   $: headline =
-    uninstalled ? $t('remote.uninstalled', { alias: st.alias })
-    : st.state === 'connected' ? $t('remote.connectedTo', { alias: st.alias })
+    st.state === 'connected' ? $t('remote.connectedTo', { alias: st.alias })
     : st.state === 'installing' ? $t('remote.installing', { alias: st.alias })
     : st.state === 'connecting' ? $t('remote.connecting', { alias: st.alias })
     : st.state === 'failed' ? $t('remote.failed', { alias: st.alias })
@@ -42,6 +39,8 @@
   onMount(async () => {
     offs.push(events.on('remote:state', (s) => { st = s as RemoteState; if (s.state === 'failed') showLog = showLog || !simple; }));
     offs.push(events.on('remote:log', (line: string) => { lines = [...lines.slice(-1999), line]; }));
+    // The Remote hosts window asks for the log (#330).
+    offs.push(events.on('remote:show-log', () => { showLog = true; }));
     try {
       st = await bridge.remoteInfo();
       lines = await bridge.remoteLog();
@@ -56,7 +55,7 @@
   }
 
   const disconnect = () => run(() => bridge.remoteDisconnect());
-  const reconnect = () => run(async () => { uninstalled = false; await bridge.remoteReconnect(); });
+  const reconnect = () => run(() => bridge.remoteReconnect());
 
   function reinstall() {
     confirmReinstall = false;
@@ -65,23 +64,12 @@
       if (res.error) actionError = res.hint ? $t(res.hint) : res.error;
     });
   }
-
-  function uninstall(force: boolean) {
-    run(async () => {
-      const res = await bridge.remoteUninstall(st.alias, force);
-      if (res.error) { actionError = res.hint ? $t(res.hint) : res.error; confirmUninstall = false; return; }
-      if (res.needsConfirm) { othersLive = res.otherClients; return; }
-      confirmUninstall = false;
-      othersLive = 0;
-      uninstalled = res.done;
-    });
-  }
 </script>
 
 <div class="remote-window">
   <main class="remote-card" in:fade={{ duration: 180 }}>
     <div class="status-line">
-      <span class="dot dot-{uninstalled ? 'disconnected' : st.state}" class:pulse={working} aria-hidden="true"></span>
+      <span class="dot dot-{st.state}" class:pulse={working} aria-hidden="true"></span>
       <h1>{headline}</h1>
     </div>
     {#if reason}<p class="reason">{reason}</p>{/if}
@@ -115,7 +103,6 @@
       {#if st.state === 'failed' && st.code === 'hash_mismatch'}
         <button class="btn" on:click={() => (confirmReinstall = true)} disabled={busy}>{$t('remote.reinstall')}</button>
       {/if}
-      <button class="btn btn-quiet-danger" on:click={() => { confirmUninstall = true; othersLive = 0; }} disabled={busy || working}>{$t('remote.uninstall')}</button>
     </div>
 
     {#if confirmReinstall}
@@ -123,13 +110,6 @@
         <p>{$t('remote.reinstallConfirm', { alias: st.alias })}</p>
         <button class="btn btn-danger" on:click={reinstall} disabled={busy}>{$t('remote.reinstall')}</button>
         <button class="btn" on:click={() => (confirmReinstall = false)}>{$t('common.cancel')}</button>
-      </div>
-    {/if}
-    {#if confirmUninstall}
-      <div class="confirm" transition:fade={{ duration: 120 }}>
-        <p>{othersLive > 0 ? $t('remote.uninstallOthers', { n: othersLive }) : $t('remote.uninstallConfirm', { alias: st.alias })}</p>
-        <button class="btn btn-danger" on:click={() => uninstall(othersLive > 0)} disabled={busy}>{$t('remote.uninstall')}</button>
-        <button class="btn" on:click={() => { confirmUninstall = false; othersLive = 0; }}>{$t('common.cancel')}</button>
       </div>
     {/if}
   </main>
@@ -193,5 +173,4 @@
   .btn-primary:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; }
   .btn-danger { background: #dc2626; border-color: #dc2626; color: #fff; }
   .btn-danger:hover:not(:disabled) { background: #b91c1c; }
-  .btn-quiet-danger { color: var(--alert); }
 </style>

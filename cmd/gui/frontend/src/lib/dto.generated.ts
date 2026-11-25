@@ -367,6 +367,7 @@ export interface EventPayloads {
   "pull:start": repoRunDTO;
   "reconcile:done": ReconcileDTO;
   "remote:log": string;
+  "remote:show-log": null;
   "remote:state": RemoteStateDTO;
   "status:batch": StatusBatch;
   "status:one": StatusResult;

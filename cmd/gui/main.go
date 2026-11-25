@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -105,7 +106,7 @@ func main() {
 		}
 		// A remote window in test mode reads the remotes of the test
 		// window that started it (--prefs-file) instead of a fixture.
-		if arg == "--test-mode" && remoteArgs.alias == "" {
+		if arg == "--test-mode" && remoteArgs.alias == "" && !remoteArgs.remotesWindow {
 			cfgPath, firstRun, cleanup, err := config.PrepareTestFixture()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -142,6 +143,10 @@ func main() {
 
 	if remoteArgs.alias != "" {
 		runRemoteWindow(app, remoteArgs)
+		return
+	}
+	if remoteArgs.remotesWindow {
+		runRemotesWindow(app, remoteArgs)
 		return
 	}
 
@@ -348,7 +353,7 @@ func runRemoteWindow(app *App, f remoteFlags) {
 	}
 	prefs := newFilePrefs(path)
 	if _, ok := findRemote(prefs.Get().Remotes, f.alias); !ok {
-		fmt.Fprintf(os.Stderr, "error: no remote named %s is configured; add it in Settings, Remotes (experimental)\n", f.alias)
+		fmt.Fprintf(os.Stderr, "error: no remote named %s is configured; add it in the Remote hosts window\n", f.alias)
 		os.Exit(2)
 	}
 	app.prefs = prefs
@@ -392,12 +397,16 @@ func runRemoteWindow(app *App, f remoteFlags) {
 		BackgroundColour: &options.RGBA{R: 9, G: 9, B: 11, A: 255},
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: lockID,
-			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
 				if app.ctx == nil {
 					return
 				}
 				wailsrt.WindowUnminimise(app.ctx)
 				wailsrt.WindowShow(app.ctx)
+				// The Remote hosts window asks for the connection log (#330).
+				if slices.Contains(data.Args, showLogFlag) {
+					emit(app.newOperation(), "remote:show-log", any(nil))
+				}
 			},
 		},
 		OnStartup:     app.Startup,
@@ -413,5 +422,68 @@ func runRemoteWindow(app *App, f remoteFlags) {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "remote window: %v\n", err)
+	}
+}
+
+// runRemotesWindow runs the Remote hosts window (#330): its own process,
+// independent of the window that opened it, with a single-instance lock, so
+// a second open shows it. Like the terminals window it writes only client
+// preferences, through a store of its own on this machine's gitbox.json (the
+// test window's, in test mode). Closing it hides it, so it opens again at
+// once; the process ends after remotesIdleTimeout hidden.
+func runRemotesWindow(app *App, f remoteFlags) {
+	path := f.prefsFile
+	if path == "" {
+		path = config.DefaultV2Path()
+	}
+	app.prefs = newFilePrefs(path)
+	app.cfgPath = path
+	app.testMode = f.testMode
+	app.experimentalRemote = true
+	app.windowMode = "remotes"
+	quitRemotesWindow = func(a *App) {
+		if a.ctx != nil {
+			wailsrt.Quit(a.ctx)
+		}
+	}
+	lockID := "com.luispalacios.gitbox.remotes"
+	if f.testMode {
+		lockID += ".test"
+	}
+	err := wails.Run(&options.App{
+		Title:     "gitbox · Remote hosts",
+		Width:     940,
+		Height:    660,
+		MinWidth:  720,
+		MinHeight: 480,
+		// The frontend shows the window after its first paint, as in the
+		// terminals window.
+		StartHidden:       true,
+		HideWindowOnClose: true,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 9, G: 9, B: 11, A: 255},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: lockID,
+			OnSecondInstanceLaunch: func(_ options.SecondInstanceData) {
+				if app.ctx == nil {
+					return
+				}
+				app.touchRemotesWindow()
+				wailsrt.WindowUnminimise(app.ctx)
+				wailsrt.WindowShow(app.ctx)
+			},
+		},
+		OnStartup:      app.Startup,
+		OnShutdown:     app.Shutdown,
+		OnDomReady:     app.DomReady,
+		ErrorFormatter: localWindowError,
+		Bind: []any{
+			app,
+		},
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "remote hosts window: %v\n", err)
 	}
 }

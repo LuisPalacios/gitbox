@@ -106,7 +106,7 @@ test('I keep delayed bulk terminal events independent and preserve stale correla
 });
 
 test('I use typed handlers in the dashboard and its event consumers', async () => {
-  for (const file of ['../App.svelte', './Onboarding.svelte', './FirstProject.svelte', './components/RemoteConnected.svelte', './components/RemoteBadge.svelte']) {
+  for (const file of ['../App.svelte', './Onboarding.svelte', './FirstProject.svelte', './components/RemoteConnected.svelte', './components/HostSwitcher.svelte', './components/RemoteHostsWindow.svelte']) {
     const component = await readFile(new URL(file, import.meta.url), 'utf8');
     assert.doesNotMatch(component, /events\.on\([^\n]+:\s*any\b/, file);
     assert.doesNotMatch(component, /\bEventsOn\(/, file);
