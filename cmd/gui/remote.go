@@ -875,6 +875,67 @@ func (a *App) SetRemoteEditor(alias, editor string) RemoteResultDTO {
 	}))
 }
 
+// GetRemoteTint is the color that tints remote windows (#331): the saved
+// preset, or the default blue.
+func (a *App) GetRemoteTint() string {
+	return config.RemoteTintOf(a.clientPrefs().Get().RemoteTint)
+}
+
+// SetRemoteTint saves the color of remote windows in this computer's
+// gitbox.json, never on a host. Only a preset is accepted; the default blue
+// is saved as no key at all. Open remote windows pick it up through
+// watchRemoteTint.
+func (a *App) SetRemoteTint(color string) RemoteResultDTO {
+	color = strings.ToLower(strings.TrimSpace(color))
+	if !slices.Contains(config.RemoteTintPresets, color) {
+		return resultOf(&remoteError{remoteTintUnsupported, "this color is not one of the remote window colors"})
+	}
+	if color == config.DefaultRemoteTint {
+		color = ""
+	}
+	return resultOf(a.clientPrefs().Update(func(p *config.ClientPrefs) { p.RemoteTint = color }))
+}
+
+// remoteTintPoll is how often a remote window looks for a new tint.
+var remoteTintPoll = time.Second
+
+// watchRemoteTint tells this remote window's frontend when the tint saved on
+// this computer changes, whichever process saved it (#331). It only stats
+// the client's gitbox.json each poll, and re-reads it when its time or size
+// changed. It ends with ctx.
+func (a *App) watchRemoteTint(ctx context.Context) {
+	path := a.prefsPath()
+	last := a.GetRemoteTint()
+	stat := func() (time.Time, int64) {
+		if fi, err := os.Stat(path); err == nil {
+			return fi.ModTime(), fi.Size()
+		}
+		return time.Time{}, -1
+	}
+	mod, size := stat()
+	tick := time.NewTicker(remoteTintPoll)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+		m, s := stat()
+		if m.Equal(mod) && s == size {
+			continue
+		}
+		mod, size = m, s
+		if r, ok := a.clientPrefs().(interface{ Reload() }); ok {
+			r.Reload()
+		}
+		if tint := a.GetRemoteTint(); tint != last {
+			last = tint
+			emit(a.newOperation(), "remote:tint", tint)
+		}
+	}
+}
+
 // AddRemote checks an ssh_config alias with ssh -G, which does not connect,
 // and saves it to this machine's gitbox.json. ssh resolves any name, so the
 // check catches a broken ssh config, not an unknown host.

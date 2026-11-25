@@ -70,6 +70,7 @@
   import { repoTreeRows } from './lib/repo-tree';
   import type { Placeholder } from './lib/repo-tree';
   import { themeChoiceOf } from './lib/theme';
+  import { applyTint, tintOf } from './lib/tint';
   import type { ThemeChoice } from './lib/theme';
 
   // ── View mode ──
@@ -441,6 +442,10 @@
   // Persisted as global.theme (empty = follow the OS).
   let themeChoice: ThemeChoice = 'system';
   let resolvedTheme: 'light' | 'dark' = 'dark';
+  // remoteTint is the color a remote window tints its top bar and sidebar
+  // with (#331); a local window never paints it.
+  let remoteTint = '';
+  $: applyTint(document.documentElement, windowMode === 'remote' && remoteTint ? remoteTint : null, $themeStore);
 
   function applyTheme() {
     if (themeChoice === 'system') {
@@ -1969,6 +1974,16 @@
       try { uiMode = (await bridge.getUIMode()) === 'simple' ? 'simple' : 'advanced'; } catch (e) { console.error(e); }
       try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
       applyTheme();
+      // The tint of remote windows, from this computer's preferences; the
+      // Go side tells of a change any process saves (#331).
+      // Subscribed first, so no change is missed; a change that arrives
+      // before the first read answers wins over it.
+      let tintChanged = false;
+      onEvent('remote:tint', (color: string) => { tintChanged = true; remoteTint = tintOf(color); });
+      try {
+        const saved = tintOf(await bridge.getRemoteTint());
+        if (!tintChanged) remoteTint = saved;
+      } catch (e) { console.error(e); }
       RemoteConnected = (await import('./lib/components/RemoteConnected.svelte')).default;
     }
 

@@ -134,6 +134,8 @@ export function GetPRsForRepo(arg1:string,arg2:string):Promise<main.PRSummaryDTO
 
 export function GetPeriodicSync():Promise<string>;
 
+export function GetRemoteTint():Promise<string>;
+
 export function GetRepoDetail(arg1:string,arg2:string):Promise<main.RepoDetail>;
 
 export function GetScheduledTasks():Promise<Array<main.ScheduledTaskDTO>>;
@@ -311,6 +313,8 @@ export function SetPRIncludeDrafts(arg1:boolean):Promise<void>;
 export function SetPeriodicSync(arg1:string):Promise<void>;
 
 export function SetRemoteEditor(arg1:string,arg2:string):Promise<main.RemoteResultDTO>;
+
+export function SetRemoteTint(arg1:string):Promise<main.RemoteResultDTO>;
 
 export function SetRepoContainer(arg1:string,arg2:string,arg3:boolean):Promise<void>;
 

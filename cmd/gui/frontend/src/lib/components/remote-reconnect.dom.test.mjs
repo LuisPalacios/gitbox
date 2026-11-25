@@ -65,6 +65,7 @@ async function remoteWindow(t) {
     GetUIMode: async () => 'advanced',
     GetOS: async () => 'linux',
     RemoteLog: async () => [],
+    GetRemoteTint: async () => '#8b5cf6',
   })
   function emit(name, sequence, operationID, payload, client = false) {
     native.emit(name, { schema: 1, sequence, operationID, configRevision: 1, payload, ...(client ? { client: true } : {}) })
@@ -147,4 +148,24 @@ test('a reconnect that cannot resume reloads everything but keeps the view', asy
   await waitFor(() => assert.equal(window.document.querySelector('.remote-offline-banner'), null))
   assert.equal(screen.getByRole('button', { name: /All repos/ }).getAttribute('aria-current'), 'true', 'the view changed')
   assert.deepEqual(native.unexpected, [])
+})
+
+// A remote window tints its top bar and sidebar with this computer's color,
+// and follows a new one without reconnecting (#331).
+test('a remote window paints its tint and follows a new color', async (t) => {
+  const ui = await remoteWindow(t)
+  const { waitFor, emit, native, window } = ui
+  const root = window.document.documentElement
+  await waitFor(() => assert.equal(root.dataset.remoteTint, '#8b5cf6'))
+  assert.match(root.style.getPropertyValue('--tint-top'), /^#[0-9a-f]{6}$/)
+  assert.match(root.style.getPropertyValue('--tint-side'), /^#[0-9a-f]{6}$/)
+  assert.ok(window.document.querySelector('.topbar'), 'the top bar is there to be tinted')
+  assert.ok(window.document.querySelector('.side'), 'the sidebar is there to be tinted')
+  // The title still names the host.
+  assert.ok(ui.screen.getAllByText(alias).length >= 1)
+  const before = root.style.getPropertyValue('--tint-top')
+  emit('remote:tint', 40, '41', '#22c55e', true)
+  await waitFor(() => assert.equal(root.dataset.remoteTint, '#22c55e'))
+  assert.notEqual(root.style.getPropertyValue('--tint-top'), before)
+  assert.equal(native.calls.filter((c) => c.name === 'RemoteReconnect').length, 0, 'no reconnect')
 })

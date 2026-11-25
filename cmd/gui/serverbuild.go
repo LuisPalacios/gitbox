@@ -37,6 +37,9 @@ const (
 	remoteUnknownAlias remoteCode = "unknown_alias"
 	// remoteWindowClosed: the action needs the remote's open window (#330).
 	remoteWindowClosed remoteCode = "window_closed"
+	// remoteTintUnsupported: the color asked for the remote windows' tint
+	// is not one of config.RemoteTintPresets (#331).
+	remoteTintUnsupported remoteCode = "tint_unsupported"
 )
 
 // remoteError is a refusal of remote mode. Its text names builds and

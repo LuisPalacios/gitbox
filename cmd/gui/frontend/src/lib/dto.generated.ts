@@ -369,6 +369,7 @@ export interface EventPayloads {
   "remote:log": string;
   "remote:show-log": null;
   "remote:state": RemoteStateDTO;
+  "remote:tint": string;
   "status:batch": StatusBatch;
   "status:one": StatusResult;
   "status:updated": StatusResult[] | null;

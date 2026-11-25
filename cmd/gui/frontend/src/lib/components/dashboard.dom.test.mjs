@@ -235,6 +235,11 @@ test('the top bar changes experience without losing the selected view or scroll'
   await hydrate()
   await fireEvent.click(screen.getByRole('button', { name: /All repos/ }))
   const main = screen.getByRole('main')
+  // The local window is never tinted, and never asks for the tint (#331).
+  const root = main.ownerDocument.documentElement
+  assert.equal(root.dataset.remoteTint, undefined)
+  assert.equal(root.style.getPropertyValue('--tint-top'), '')
+  assert.equal(native.calls.filter(call => call.name === 'GetRemoteTint').length, 0)
   const page = within(main)
   await fireEvent.click(page.getByText(target))
   const details = await page.findByRole('region', { name: 'Project details' })

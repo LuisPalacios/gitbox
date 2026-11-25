@@ -254,6 +254,10 @@ export function GetPeriodicSync() {
   return window['go']['main']['App']['GetPeriodicSync']();
 }
 
+export function GetRemoteTint() {
+  return window['go']['main']['App']['GetRemoteTint']();
+}
+
 export function GetRepoDetail(arg1, arg2) {
   return window['go']['main']['App']['GetRepoDetail'](arg1, arg2);
 }
@@ -608,6 +612,10 @@ export function SetPeriodicSync(arg1) {
 
 export function SetRemoteEditor(arg1, arg2) {
   return window['go']['main']['App']['SetRemoteEditor'](arg1, arg2);
+}
+
+export function SetRemoteTint(arg1) {
+  return window['go']['main']['App']['SetRemoteTint'](arg1);
 }
 
 export function SetRepoContainer(arg1, arg2, arg3) {

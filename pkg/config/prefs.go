@@ -57,6 +57,7 @@ type ClientPrefs struct {
 
 	ExperimentalRemote bool
 	Remotes            []RemoteEntry
+	RemoteTint         string
 }
 
 // ExtractPrefs returns a detached copy of the client keys of c.
@@ -79,6 +80,7 @@ func ExtractPrefs(c *Config) ClientPrefs {
 		PeriodicSync:       g.PeriodicSync,
 		ExperimentalRemote: g.ExperimentalRemote,
 		Remotes:            g.Remotes,
+		RemoteTint:         g.RemoteTint,
 	}
 	return p.clone()
 }
@@ -103,6 +105,7 @@ func ApplyPrefs(c *Config, p ClientPrefs) {
 	g.PeriodicSync = p.PeriodicSync
 	g.ExperimentalRemote = p.ExperimentalRemote
 	g.Remotes = p.Remotes
+	g.RemoteTint = p.RemoteTint
 
 	switch {
 	case p.SidebarCollapsed && g.Collapsed == nil:
@@ -232,6 +235,24 @@ func cloneWindow(ws *WindowState) *WindowState {
 // remoteAliasRE keeps an alias a single ssh argument that can never be read
 // as an option or carry shell syntax.
 var remoteAliasRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// RemoteTintPresets are the colors a remote window can be tinted with
+// (#331). The first one is the default. Only these are accepted: the
+// frontend's contrast test covers each of them in both themes.
+var RemoteTintPresets = []string{"#3b82f6", "#14b8a6", "#8b5cf6", "#f59e0b", "#f43f5e", "#22c55e"}
+
+// DefaultRemoteTint is the tint of a configuration without the key.
+var DefaultRemoteTint = RemoteTintPresets[0]
+
+// RemoteTintOf is the tint a saved value stands for: the value when it is a
+// preset, otherwise the default blue.
+func RemoteTintOf(saved string) string {
+	saved = strings.ToLower(strings.TrimSpace(saved))
+	if slices.Contains(RemoteTintPresets, saved) {
+		return saved
+	}
+	return DefaultRemoteTint
+}
 
 // ValidRemoteAlias reports whether alias may name a remote: 1 to 64 letters,
 // digits, '.', '_' or '-', not starting with '-'.
