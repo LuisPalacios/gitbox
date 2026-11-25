@@ -328,8 +328,8 @@
     background: none; color: var(--text-secondary); text-align: left; cursor: pointer;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  /* The ssh lines are a reference, smaller than the hosts: 75% of .mono. */
-  .ssh-line.mono { font-size: 9px; }
+  /* The ssh lines are a reference, smaller than the hosts: 10 of the 12 px of .mono. */
+  .ssh-line.mono { font-size: 10px; }
   .ssh-line:hover, .ssh-line:focus-visible { background: var(--bg-hover); color: var(--text-primary); }
   .ssh-line.chosen { background: var(--bg-hover); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border-hover); }
   .ssh-none { margin: 0; padding: 5px 8px; font-size: 11px; color: var(--text-muted); }
