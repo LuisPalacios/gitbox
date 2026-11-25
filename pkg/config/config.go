@@ -111,6 +111,10 @@ type GlobalConfig struct {
 	// client preferences: see ClientPrefs in prefs.go.
 	ExperimentalRemote bool          `json:"experimental_remote,omitempty"`
 	Remotes            []RemoteEntry `json:"remotes,omitempty"`
+	// RemoteTint is the color that tints the top bar and the sidebar of
+	// remote windows (#331), one of RemoteTintPresets; empty means the
+	// default blue. A client preference.
+	RemoteTint string `json:"remote_tint,omitempty"`
 
 	extra extraJSON
 }

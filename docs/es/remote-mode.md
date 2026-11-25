@@ -118,6 +118,8 @@ La ventana marca entonces la acción como fallida con el error de la conexión, 
 
 ### El selector de equipo y la conexión
 
+Una ventana remota tiñe su barra superior y su barra lateral con el color elegido en la ventana Equipos remotos, azul por defecto, para que nunca se parezca a la ventana local.
+
 En una ventana remota el selector de equipo junto al título muestra el alias, el sistema del host en el modo avanzado y el estado de la conexión. Su menú abre el registro de conexión, otro equipo remoto ya añadido, la ventana local y la ventana Equipos remotos. El botón **Registro de conexión** de la ventana Equipos remotos trae al frente una ventana abierta del equipo con su registro, y cada ventana registra el estado de su conexión para que el selector de las demás ventanas pueda mostrarlo.
 
 Cuando se cae la conexión con el daemon, por un `ssh` que muere, la tapa del portátil cerrada o tres latidos perdidos con 10 segundos entre ellos, la ventana vuelve a conectarse por sí sola. Desde el momento en que se cae la conexión dice **Se cortó la conexión; el host sigue con su trabajo. Conectando de nuevo, intento 1 de 3…**, y sus acciones quedan desactivadas hasta la siguiente conexión. Hace tres intentos, tras 2, 5 y 10 segundos. Una conexión nueva tiene que llegar al mismo build del servidor, como la primera. Cuando fallan todos los intentos, o cuando el host sirve la sesión sin el daemon, la ventana muestra el fallo como sigue.

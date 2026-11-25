@@ -13,6 +13,7 @@ const ok = async () => ({})
 function bridge(ui, extra = {}) {
   return ui.fakeBridge(ui.window, {
     ListRemotes: async () => ({ enabled: true, remotes: hosts, remoteEditors: ['code'] }),
+    GetRemoteTint: async () => '#3b82f6',
     ...extra,
   })
 }
@@ -266,6 +267,44 @@ test('the connection card of a remote window offers no uninstall', async (t) => 
   assert.ok(screen.getByRole('button', { name: 'Connect' }))
   assert.ok(screen.getByRole('button', { name: 'Show log' }))
   assert.equal(screen.queryByRole('button', { name: /Uninstall/ }), null)
+  assert.deepEqual(native.unexpected, [])
+})
+
+// The color of remote windows: six presets, a reset to blue and a preview
+// that follows the choice (#331).
+test('the Remote hosts window chooses the color of remote windows', async (t) => {
+  const ui = await mount(t)
+  const { RemoteHostsWindow, render, screen, fireEvent, waitFor, within } = ui
+  let saved = '#3b82f6'
+  const native = bridge(ui, {
+    ListSSHHosts: async () => [],
+    GetRemoteTint: async () => saved,
+    SetRemoteTint: async (c) => (c === '#f43f5e' ? { error: 'no', hint: 'error.remote.tint_unsupported' } : ((saved = c), {})),
+  })
+  render(RemoteHostsWindow)
+  const group = within(await waitFor(() => screen.getByRole('radiogroup', { name: 'Remote window color' })))
+  const swatches = group.getAllByRole('radio')
+  assert.deepEqual(swatches.map((s) => s.getAttribute('aria-label')), ['Blue', 'Teal', 'Violet', 'Amber', 'Rose', 'Green'])
+  await waitFor(() => assert.equal(group.getByRole('radio', { name: 'Blue' }).getAttribute('aria-checked'), 'true'))
+  assert.equal(screen.getByRole('button', { name: 'Reset to blue' }).disabled, true)
+  const preview = screen.getByRole('img', { name: 'Preview of a remote window with this color' })
+  const top = () => preview.querySelector('.pv-top').getAttribute('style')
+  const blueTop = top()
+
+  await fireEvent.click(group.getByRole('radio', { name: 'Violet' }))
+  await waitFor(() => assert.deepEqual(called(native, 'SetRemoteTint'), [['#8b5cf6']]))
+  assert.equal(group.getByRole('radio', { name: 'Violet' }).getAttribute('aria-checked'), 'true')
+  assert.notEqual(top(), blueTop, 'the preview follows the choice')
+  assert.equal(screen.getByRole('button', { name: 'Reset to blue' }).disabled, false)
+
+  // A refused color puts the saved one back and says why.
+  await fireEvent.click(group.getByRole('radio', { name: 'Rose' }))
+  await waitFor(() => assert.ok(screen.getByText('That color is not one of the remote window colors.')))
+  assert.equal(group.getByRole('radio', { name: 'Violet' }).getAttribute('aria-checked'), 'true')
+
+  await fireEvent.click(screen.getByRole('button', { name: 'Reset to blue' }))
+  await waitFor(() => assert.deepEqual(called(native, 'SetRemoteTint').at(-1), ['#3b82f6']))
+  assert.equal(top(), blueTop)
   assert.deepEqual(native.unexpected, [])
 })
 

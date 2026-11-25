@@ -118,6 +118,8 @@ The window then marks the action as failed with the connection error, so nothing
 
 ### The host switcher and the connection
 
+A remote window tints its top bar and its sidebar with the color chosen in the Remote hosts window, blue by default, so it never looks like the local window.
+
 In a remote window the host switcher next to the title shows the alias, the system of the host in Advanced mode, and the connection state. Its menu opens the connection log, another remote host already added, the local window, and the Remote hosts window. The **Connection log** button of the Remote hosts window brings an open window of the host to the front with its log, and each window records its connection state so the switcher of every other window can show it.
 
 When the link to the daemon drops, from a dead `ssh`, a closed laptop lid or three missed heartbeats 10 seconds apart, the window connects again by itself. From the moment the link drops it says **The link dropped; the host keeps running its work. Connecting again, attempt 1 of 3…**, and its actions stay off until the next connection. It makes three attempts, after 2, 5 and 10 seconds. A new connection must reach the same build of the server, as a first one does. When every attempt fails, or when the host serves the session without the daemon, the window shows the failure as follows.

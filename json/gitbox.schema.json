@@ -68,6 +68,11 @@
                     "default": false,
                     "description": "Turns the experimental remote mode on for this machine, like the --experimental-remote flag. A client preference: it describes the machine that shows the window."
                 },
+                "remote_tint": {
+                    "type": "string",
+                    "enum": ["#3b82f6", "#14b8a6", "#8b5cf6", "#f59e0b", "#f43f5e", "#22c55e"],
+                    "description": "The color that tints the top bar and the sidebar of remote windows. Absent means the default blue. A client preference."
+                },
                 "remotes": {
                     "type": "array",
                     "description": "Remote-mode destinations of this machine. A client preference. Each entry names an ssh_config Host alias; gitbox stores no hostname, user or key.",

@@ -129,6 +129,7 @@ func (a *App) DomReady(_ context.Context) {
 		wailsrt.WindowShow(a.ctx)
 		a.ensureWindowTasks()
 		a.remote.holdPresence(config.WindowsDir(a.prefsPath()))
+		go a.watchRemoteTint(a.ctx)
 		a.remote.start()
 		return
 	}

@@ -9,7 +9,8 @@
   import { onMount, tick } from 'svelte';
   import { bridge } from '../bridge';
   import type { RemoteResult, RemotesList, SSHHost } from '../bridge';
-  import { configStore } from '../stores';
+  import { configStore, themeStore } from '../stores';
+  import { TINT_PRESETS, DEFAULT_TINT, tintOf, tintSurfaces } from '../tint';
   import { languageStore, t } from '../i18n';
   import { errorText } from '../notices';
   import { remoteEditorChoices, editorName } from '../remotehost';
@@ -17,6 +18,10 @@
   import { tooltip } from '../tooltip';
 
   let remotes: RemotesList = { enabled: true, remotes: [] };
+  // The color of remote windows' tint (#331), and what it paints in the
+  // current theme, for the preview.
+  let tint = DEFAULT_TINT;
+  $: preview = tintSurfaces(tint, $themeStore);
   let suggestions: SSHHost[] = [];
   // The ssh lines arrive after the configured hosts, so the window never
   // waits for them.
@@ -93,8 +98,33 @@
     try { suggestions = await bridge.listSSHHosts(); } catch (e) { console.error(e); } finally { sshLoading = false; }
   }
 
+  // tintChoices counts my choices, so a load that answers after one of them
+  // never puts the old color back.
+  let tintChoices = 0;
+  async function loadTint() {
+    const seen = tintChoices;
+    try {
+      const saved = tintOf(await bridge.getRemoteTint());
+      if (seen === tintChoices) tint = saved;
+    } catch (e) { console.error(e); }
+  }
+
+  // Choosing shows at once; a refusal puts the saved color back. Open remote
+  // windows pick the new color up by themselves.
+  async function chooseTint(color: string) {
+    if (color === tint) return;
+    tintChoices++;
+    const before = tint;
+    tint = color;
+    try {
+      const res = await bridge.setRemoteTint(color);
+      if (res.error) { tint = before; say(res, ''); }
+    } catch (e) { tint = before; say({ error: errorText(e) }, ''); }
+  }
+
   onMount(() => {
     load();
+    loadTint();
     const refresh = () => load();
     window.addEventListener('focus', refresh);
     // While the window shows, a refresh every minute keeps the states of
@@ -432,6 +462,35 @@
       </div>
     {/if}
     {#if msg}<p class="msg" class:bad={msgBad} role="status">{msg}</p>{/if}
+
+    <section class="tint" aria-labelledby="tint-heading">
+      <div class="tint-head">
+        <h3 id="tint-heading">{$t('remotesWindow.tint.title')}</h3>
+        <p>{$t('remotesWindow.tint.help')}</p>
+      </div>
+      <div class="tint-body">
+        <div class="swatches" role="radiogroup" aria-labelledby="tint-heading">
+          {#each TINT_PRESETS as p (p.color)}
+            <button class="swatch" role="radio" aria-checked={p.color === tint} aria-label={$t(`remotesWindow.tint.${p.key}`)}
+              title={$t(`remotesWindow.tint.${p.key}`)} style="--sw: {p.color}" on:click={() => chooseTint(p.color)}></button>
+          {/each}
+          <button class="btn reset" on:click={() => chooseTint(DEFAULT_TINT)} disabled={tint === DEFAULT_TINT}>{$t('remotesWindow.tint.reset')}</button>
+        </div>
+        <div class="tint-preview" aria-label={$t('remotesWindow.tint.preview')} role="img">
+          <div class="pv-top" style="background: {preview.top}; border-color: {preview.border}; color: {preview.primary}">
+            <span class="pv-dot" style="background: {tint}"></span><span translate="no">gitbox · {current?.alias || 'host'}</span>
+          </div>
+          <div class="pv-row">
+            <div class="pv-side" style="background: {preview.side}; border-color: {preview.border}">
+              <span style="color: {preview.dim}">{$t('remotesWindow.tint.pvSection')}</span>
+              <span style="color: {preview.primary}">{$t('remotesWindow.tint.pvOne')}</span>
+              <span style="color: {preview.secondary}">{$t('remotesWindow.tint.pvTwo')}</span>
+            </div>
+            <div class="pv-content"></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -565,5 +624,25 @@
   :global([data-theme="light"]) .waiting { background: #fff7ed; border-color: #c2410c; color: #7c2d12; }
   .waiting-icon { font-size: 15px; flex-shrink: 0; }
   .msg { margin: 0; font-size: 12px; color: var(--text-muted); }
+  /* The color of remote windows (#331). */
+  .tint { margin-top: auto; padding-top: 18px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 12px; }
+  .tint-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  .tint-head p { margin: 3px 0 0; font-size: 12px; color: var(--text-muted); }
+  .tint-body { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .swatches { display: flex; align-items: center; gap: 8px; }
+  .swatch {
+    width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 2px solid var(--bg-base); cursor: pointer;
+    background: var(--sw); box-shadow: 0 0 0 1px var(--border-hover);
+  }
+  .swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--sw); }
+  .swatch:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+  .reset { margin-left: 6px; }
+  .tint-preview { width: 260px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-base); font-size: 10px; }
+  .pv-top { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-bottom: 1px solid; font-weight: 600; }
+  .pv-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .pv-row { display: flex; height: 70px; }
+  .pv-side { width: 84px; padding: 6px 8px; border-right: 1px solid; display: flex; flex-direction: column; gap: 5px; }
+  .pv-side span:first-child { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .pv-content { flex: 1; }
   .msg.bad { color: var(--alert); }
 </style>

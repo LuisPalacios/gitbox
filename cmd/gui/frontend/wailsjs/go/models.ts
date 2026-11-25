@@ -360,6 +360,7 @@ export namespace config {
 	    check_global_gitignore?: boolean;
 	    experimental_remote?: boolean;
 	    remotes?: RemoteEntry[];
+	    remote_tint?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new GlobalConfig(source);
@@ -393,6 +394,7 @@ export namespace config {
 	        this.check_global_gitignore = source["check_global_gitignore"];
 	        this.experimental_remote = source["experimental_remote"];
 	        this.remotes = this.convertValues(source["remotes"], RemoteEntry);
+	        this.remote_tint = source["remote_tint"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

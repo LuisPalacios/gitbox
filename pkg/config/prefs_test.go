@@ -39,6 +39,7 @@ var globalKeyClass = map[string]string{
 	"check_global_gitignore": "domain",
 	"experimental_remote":    "client",
 	"remotes":                "client",
+	"remote_tint":            "client",
 }
 
 func fullPrefs() ClientPrefs {
@@ -64,6 +65,22 @@ func fullPrefs() ClientPrefs {
 			Window:        &WindowState{X: 5, Y: 6, Width: 800, Height: 600},
 			CompactWindow: &WindowState{X: 7, Y: 8, Width: 210, Height: 390},
 		}},
+		RemoteTint: "#8b5cf6",
+	}
+}
+
+// The tint of remote windows reads as the default blue when absent or not a
+// preset (#331), and a preset reads as itself whatever its case.
+func TestRemoteTintOf(t *testing.T) {
+	for saved, want := range map[string]string{
+		"": "#3b82f6", "#8b5cf6": "#8b5cf6", " #F43F5E ": "#f43f5e", "#123456": "#3b82f6", "red": "#3b82f6",
+	} {
+		if got := RemoteTintOf(saved); got != want {
+			t.Errorf("RemoteTintOf(%q) = %q, want %q", saved, got, want)
+		}
+	}
+	if DefaultRemoteTint != "#3b82f6" || len(RemoteTintPresets) != 6 {
+		t.Errorf("presets = %v, default %s", RemoteTintPresets, DefaultRemoteTint)
 	}
 }
 

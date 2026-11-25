@@ -166,7 +166,7 @@ func TestHintKeysInCatalog(t *testing.T) {
 		keys = append(keys, toUserError(&provider.ProviderError{Class: c}).Hint)
 	}
 	for _, c := range []remoteCode{remoteUnstampedBuild, remoteServerTargetMissing, remoteServerBuildMismatch,
-		remoteNotConnected, remoteNotImplemented, remoteServerCrashed, remoteNotEnabled, remoteUnknownAlias, remoteReadOnly, remoteWindowClosed} {
+		remoteNotConnected, remoteNotImplemented, remoteServerCrashed, remoteNotEnabled, remoteUnknownAlias, remoteReadOnly, remoteWindowClosed, remoteTintUnsupported} {
 		keys = append(keys, toUserError(&remoteError{Code: c}).Hint)
 	}
 	for _, c := range []externalCode{externalNeedsConfirmation, externalRejected} {

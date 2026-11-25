@@ -137,6 +137,18 @@ body {
   --alert: #be123c;
 }
 html { color-scheme: dark light; }
+
+/* A remote window tints its top bar and its sidebar (#331): App.svelte sets
+   data-remote-tint and the --tint-* colors (lib/tint.ts) on <html> only in
+   a remote window. The text inside takes the nudged colors, so it keeps its
+   contrast on the tinted surface. */
+html[data-remote-tint] .topbar,
+html[data-remote-tint] .side {
+  --text-primary: var(--tint-primary); --text-secondary: var(--tint-secondary);
+  --text-muted: var(--tint-muted); --text-dim: var(--tint-dim);
+}
+html[data-remote-tint] .topbar { background: var(--tint-top); border-bottom-color: var(--tint-border); }
+html[data-remote-tint] .side { background: var(--tint-side); border-right-color: var(--tint-border); }
 body {
   margin: 0; background: var(--bg-base);
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
