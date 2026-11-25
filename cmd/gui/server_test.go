@@ -576,7 +576,8 @@ func TestIntegrationCallsEveryServedMethod(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src := string(data)
+	// A Windows checkout with core.autocrlf=true holds the file with CRLF.
+	src := strings.ReplaceAll(string(data), "\r\n", "\n")
 	list := func(name string) []string {
 		start := strings.Index(src, "var "+name+" = ")
 		if start < 0 {

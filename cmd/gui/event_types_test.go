@@ -88,8 +88,9 @@ func TestEventTypesGenerated(t *testing.T) {
 		}
 		return
 	}
+	// A Windows checkout with core.autocrlf=true holds the file with CRLF.
 	got, err := os.ReadFile(file)
-	if err != nil || string(got) != output {
+	if err != nil || strings.ReplaceAll(string(got), "\r\n", "\n") != output {
 		t.Fatalf("%s is out of date. Run go generate ./cmd/gui", file)
 	}
 }
