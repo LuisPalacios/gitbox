@@ -171,47 +171,30 @@ test('the Remote hosts window keeps every remote action and suggests ssh aliases
   assert.deepEqual(native.unexpected, [])
 })
 
-test('Settings keeps one row that opens the Remote hosts window', async (t) => {
-  const ui = await mount(t)
-  const { SettingsPanel, render, screen, fireEvent, waitFor } = ui
-  const native = bridge(ui, { OpenRemotesWindow: ok, GetCheckGlobalGitignore: async () => false, GetPRSettings: async () => ({ enabled: false, includeDrafts: false }) })
-  const noop = () => {}
-  const later = async () => {}
-  render(SettingsPanel, {
-    props: {
-      showSettings: true, onRecipeImported: noop, simple: true, configPath: '/fixture/gitbox.json', languageChoice: 'en',
-      themeChoice: 'system', fetchInterval: 'off', lastFetchTime: '', autostartSupported: false, autostartOn: false,
-      checkGitignorePref: false, doctorSummary: '', terminalsManagerOpening: false, appVersion: 'test',
-      openRoots: noop, setLanguage: later, setTheme: noop, setFetchInterval: noop, toggleAutostart: later,
-      setPRBadgesEnabled: later, setPRIncludeDrafts: later, setCheckGitignorePref: later, openDoctorModal: noop,
-      openTerminalsManagerWindow: later,
-    },
+// The hosts are managed only from the switcher: Settings has no Remote hosts
+// row in either window, and does not even ask whether remote mode is on.
+for (const remote of [false, true]) {
+  test(`the Settings of a ${remote ? 'remote' : 'local'} window have no Remote hosts row`, async (t) => {
+    const ui = await mount(t)
+    const { SettingsPanel, render, screen, remoteWindow } = ui
+    const native = bridge(ui, { GetCheckGlobalGitignore: async () => false, GetPRSettings: async () => ({ enabled: false, includeDrafts: false }) })
+    remoteWindow.set(remote)
+    const noop = () => {}
+    const later = async () => {}
+    render(SettingsPanel, {
+      props: {
+        showSettings: true, onRecipeImported: noop, simple: true, configPath: '/fixture/gitbox.json', languageChoice: 'en',
+        themeChoice: 'system', fetchInterval: 'off', lastFetchTime: '', autostartSupported: false, autostartOn: false,
+        checkGitignorePref: false, doctorSummary: '', terminalsManagerOpening: false, appVersion: 'test',
+        openRoots: noop, setLanguage: later, setTheme: noop, setFetchInterval: noop, toggleAutostart: later,
+        setPRBadgesEnabled: later, setPRIncludeDrafts: later, setCheckGitignorePref: later, openDoctorModal: noop,
+        openTerminalsManagerWindow: later,
+      },
+    })
+    assert.ok(screen.getByText('Version'), 'the panel rendered')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    assert.equal(screen.queryByText('Remote hosts'), null)
+    assert.equal(called(native, 'ListRemotes').length, 0)
+    assert.equal(called(native, 'OpenRemotesWindow').length, 0)
   })
-  await waitFor(() => assert.ok(screen.getByText('Remote hosts')))
-  assert.equal(screen.queryByRole('textbox', { name: 'ssh alias' }), null, 'the inline add form is gone')
-  assert.equal(screen.queryByText('my-server'), null, 'the inline list is gone')
-  await fireEvent.click(screen.getByRole('button', { name: 'Manager' }))
-  await waitFor(() => assert.equal(called(native, 'OpenRemotesWindow').length, 1))
-})
-
-test('the Settings of a remote window have no Remote hosts row', async (t) => {
-  const ui = await mount(t)
-  const { SettingsPanel, render, screen, remoteWindow } = ui
-  const native = bridge(ui, { GetCheckGlobalGitignore: async () => false, GetPRSettings: async () => ({ enabled: false, includeDrafts: false }) })
-  remoteWindow.set(true)
-  const noop = () => {}
-  const later = async () => {}
-  render(SettingsPanel, {
-    props: {
-      showSettings: true, onRecipeImported: noop, simple: true, configPath: '/fixture/gitbox.json', languageChoice: 'en',
-      themeChoice: 'system', fetchInterval: 'off', lastFetchTime: '', autostartSupported: false, autostartOn: false,
-      checkGitignorePref: false, doctorSummary: '', terminalsManagerOpening: false, appVersion: 'test',
-      openRoots: noop, setLanguage: later, setTheme: noop, setFetchInterval: noop, toggleAutostart: later,
-      setPRBadgesEnabled: later, setPRIncludeDrafts: later, setCheckGitignorePref: later, openDoctorModal: noop,
-      openTerminalsManagerWindow: later,
-    },
-  })
-  await new Promise((resolve) => setTimeout(resolve, 50))
-  assert.equal(screen.queryByText('Remote hosts'), null)
-  assert.equal(called(native, 'ListRemotes').length, 0)
-})
+}

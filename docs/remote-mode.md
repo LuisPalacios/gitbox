@@ -30,7 +30,7 @@ Remote mode is off by default. It turns on with the `--experimental-remote` flag
 "global": { "experimental_remote": true }
 ```
 
-Either one shows the host switcher next to the title, and **Remote hosts** in Settings, whose **Manager** opens the Remote hosts window.
+Either one shows the host switcher next to the title, whose **Manage remote hosts…** opens the Remote hosts window.
 
 ## Adding a remote
 
@@ -224,11 +224,11 @@ A connected session refreshes its marker every minute and deletes its own marker
 
 ## Uninstalling
 
-**Uninstall server**, in the remote window or next to the remote in Settings, disconnects and removes the server from the host. If another window still uses the server there, GitboxApp asks again first.
+**Uninstall server**, in the remote window or in the Remote hosts window, disconnects and removes the server from the host. If another window still uses the server there, GitboxApp asks again first.
 
 It stops the daemon of every build first. It deletes only what gitbox put there: the build folders, the build logs in `logs/`, `.gc.lock/` and temporary upload files. It removes `logs/` and then the server root only when they are empty. A file I put in the server root myself stays, and so does the root that holds it. The repositories and the `gitbox.json` of the host are not touched.
 
-**Remove** in Settings only forgets the remote on this computer.
+**Remove** in the Remote hosts window only forgets the remote on this computer.
 
 ## Reading the connection log
 

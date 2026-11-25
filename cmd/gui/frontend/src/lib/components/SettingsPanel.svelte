@@ -12,7 +12,6 @@
   import { tooltip } from '../tooltip';
   import { openExternal } from '../external';
   import type { ThemeChoice } from '../theme';
-  import { errorText } from '../notices';
 
   const pullPlanChoices = ['auto', 'on', 'off'] as const;
   $: pullPlanChoice = $configStore?.global?.show_pull_plan === undefined
@@ -56,28 +55,6 @@
   export let setCheckGitignorePref: (enabled: boolean) => Promise<void>;
   export let openDoctorModal: () => void;
   export let openTerminalsManagerWindow: () => Promise<void>;
-
-  // ── Remotes (experimental, #239) ──
-  // Shown only in the local window when remote mode is on, by
-  // --experimental-remote or the experimental_remote key. The hosts are
-  // managed in the Remote hosts window (#330), which a remote window opens
-  // from its host switcher; each host opens in a window of its own.
-  let remotesEnabled = false;
-  let remotesError = '';
-
-  $: if (showSettings && !$remoteWindow) loadRemotes();
-
-  async function loadRemotes() {
-    try { remotesEnabled = (await bridge.listRemotes()).enabled; } catch (e) { console.error(e); }
-  }
-
-  async function openRemotesWindow() {
-    remotesError = '';
-    try {
-      const res = await bridge.openRemotesWindow();
-      if (res.error) remotesError = res.hint ? $t(res.hint) : res.error;
-    } catch (e) { remotesError = errorText(e); }
-  }
 </script>
 
 {#if showSettings}
@@ -183,13 +160,6 @@
       </button>
     </div>
     {/if}
-    {#if remotesEnabled && !$remoteWindow}
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.remotesTip')}>{$t('settings.remotes')}<span class="remote-badge">{$t('settings.remotes.experimental')}</span></span>
-      <button class="settings-action-btn" on:click={openRemotesWindow}>{$t('settings.manager')}</button>
-      {#if remotesError}<span class="remote-msg-bad">{remotesError}</span>{/if}
-    </div>
-    {/if}
     <div class="settings-row">
       <span class="settings-label" use:tooltip={$t('settings.versionTip')}>{$t('settings.version')}</span>
       <span class="settings-value">{appVersion}</span>
@@ -278,10 +248,4 @@
   /* .settings-action shared with .settings-btn / .settings-action-btn —
      unified rule lives near .settings-row above. */
   .settings-doctor-summary { margin-left: 8px; }
-  .remote-badge {
-    display: block; width: fit-content; margin-top: 3px; padding: 0 5px; border-radius: 3px;
-    font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-    color: #b45309; background: rgba(245, 158, 11, 0.14);
-  }
-  .remote-msg-bad { font-size: 11px; color: var(--alert); }
 </style>
