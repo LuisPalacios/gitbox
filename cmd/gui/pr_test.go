@@ -66,10 +66,10 @@ func TestPRRefreshSharesRequestsAndBoundsWorkers(t *testing.T) {
 		})
 		defer a.stopRefresh()
 
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
 		for range 5 {
-			a.RefreshAllPRs()
+			a.be().RefreshAllPRs()
 		}
 		synctest.Wait()
 		if got := len(started); got != 2 {
@@ -111,16 +111,16 @@ func TestPRRefreshKeepsLastGoodDataPerApp(t *testing.T) {
 			return provider.AccountPRs{}, &provider.ProviderError{Status: 429, Class: provider.ClassRateLimited, Detail: "rate limited"}
 		})
 		defer a.stopRefresh()
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
 
 		updates := events.named("pr:refreshed")
 		if len(updates) != 2 || updates[1].args[0].(PRAccountUpdateDTO).Error == "" {
 			t.Fatalf("wanted one successful update and one error, got %+v", updates)
 		}
-		summary := a.GetPRsForRepo("account-0", "org/repo")
+		summary := a.be().GetPRsForRepo("account-0", "org/repo")
 		if !updates[0].args[0].(PRAccountUpdateDTO).ByRepo["org/repo"].Partial {
 			t.Error("incremental update lost the provider's incomplete listing state")
 		}
@@ -128,7 +128,7 @@ func TestPRRefreshKeepsLastGoodDataPerApp(t *testing.T) {
 			t.Errorf("last good PR dropped: %+v", summary)
 		}
 		other, _ := prTestApp(t, 1, nil)
-		if got := other.GetPRsForRepo("account-0", "org/repo"); len(got.Authored) != 0 {
+		if got := other.be().GetPRsForRepo("account-0", "org/repo"); len(got.Authored) != 0 {
 			t.Errorf("another App can see cached PRs: %+v", got)
 		}
 	})
@@ -155,9 +155,9 @@ func TestPRRefreshRenameTransfersCacheAndDropsOldFlight(t *testing.T) {
 			return testAccountPRs(n), nil
 		})
 		defer a.stopRefresh()
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
 		if len(started) != 2 {
 			t.Fatal("second request is not in flight")
@@ -170,7 +170,7 @@ func TestPRRefreshRenameTransfersCacheAndDropsOldFlight(t *testing.T) {
 		if updates := events.named("pr:refreshed"); len(updates) != 1 {
 			t.Fatalf("late update escaped the rename: %+v", updates)
 		}
-		summary := a.GetPRsForRepo("account-new", "org/repo")
+		summary := a.be().GetPRsForRepo("account-new", "org/repo")
 		if len(summary.Authored) != 1 || summary.Authored[0].Number != 1 {
 			t.Errorf("rename did not transfer last good PR: %+v", summary)
 		}
@@ -207,7 +207,7 @@ func TestPRRefreshDropsStaleCredentialsDraftsAndDeletedAccounts(t *testing.T) {
 					}
 				})
 				defer a.stopRefresh()
-				a.RefreshAllPRs()
+				a.be().RefreshAllPRs()
 				synctest.Wait()
 				if len(started) != 1 {
 					t.Fatal("request is not in flight")
@@ -220,7 +220,7 @@ func TestPRRefreshDropsStaleCredentialsDraftsAndDeletedAccounts(t *testing.T) {
 				if got := events.named("pr:refreshed"); len(got) != 0 {
 					t.Errorf("published stale updates: %+v", got)
 				}
-				if got := a.GetPRsForRepo("account-0", "org/repo"); len(got.Authored) != 0 {
+				if got := a.be().GetPRsForRepo("account-0", "org/repo"); len(got.Authored) != 0 {
 					t.Errorf("cached data from stale request: %+v", got)
 				}
 			})
@@ -240,11 +240,11 @@ func TestPRRefreshShutdownCancelsListerAndDiscardsQueuedWork(t *testing.T) {
 			cancelled <- struct{}{}
 			return provider.AccountPRs{}, ctx.Err()
 		})
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
 		before := time.Now()
 		a.stopRefresh()
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
 		if elapsed := time.Since(before); elapsed != 0 {
 			t.Errorf("shutdown waited %s instead of cancelling requests immediately", elapsed)
@@ -279,7 +279,7 @@ func TestPRRefreshDropsResultsAfterExternalTokenReplacement(t *testing.T) {
 			}
 		})
 		defer a.stopRefresh()
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
 		if len(started) != 1 {
 			t.Fatal("request is not in flight")
@@ -293,7 +293,7 @@ func TestPRRefreshDropsResultsAfterExternalTokenReplacement(t *testing.T) {
 			t.Fatalf("published an update from the replaced credential: %+v", got)
 		}
 		<-started
-		a.RefreshAllPRs()
+		a.be().RefreshAllPRs()
 		synctest.Wait()
 		if got := events.named("pr:refreshed"); len(got) != 1 {
 			t.Errorf("wanted an update from the replacement credential, got %+v", got)

@@ -22,7 +22,7 @@ func TestCredentialAudit_StartupSnapshotAndRecheck(t *testing.T) {
 	}
 	a := NewApp()
 	a.cfgPath = filepath.Join(root, "missing-config.json")
-	a.Startup(context.Background())
+	a.startup(context.Background())
 	snapshot, err := a.GetStartupSnapshot()
 	if err != nil {
 		t.Fatal(err)

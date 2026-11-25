@@ -18,10 +18,6 @@ export function AddDiscoveredRepos(arg1, arg2) {
   return window['go']['main']['App']['AddDiscoveredRepos'](arg1, arg2);
 }
 
-export function AddDiscoveredReposToFolder(arg1, arg2, arg3) {
-  return window['go']['main']['App']['AddDiscoveredReposToFolder'](arg1, arg2, arg3);
-}
-
 export function AddMirrorGroup(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddMirrorGroup'](arg1, arg2, arg3);
 }
@@ -146,10 +142,6 @@ export function DeleteRepoFolder(arg1, arg2) {
   return window['go']['main']['App']['DeleteRepoFolder'](arg1, arg2);
 }
 
-export function DetectEditors() {
-  return window['go']['main']['App']['DetectEditors']();
-}
-
 export function DiscardAccount(arg1) {
   return window['go']['main']['App']['DiscardAccount'](arg1);
 }
@@ -178,10 +170,6 @@ export function ExportRecipe(arg1) {
   return window['go']['main']['App']['ExportRecipe'](arg1);
 }
 
-export function FetchAllRepos() {
-  return window['go']['main']['App']['FetchAllRepos']();
-}
-
 export function FetchRepo(arg1, arg2) {
   return window['go']['main']['App']['FetchRepo'](arg1, arg2);
 }
@@ -194,20 +182,12 @@ export function GetAllStatus() {
   return window['go']['main']['App']['GetAllStatus']();
 }
 
-export function GetAppVersion() {
-  return window['go']['main']['App']['GetAppVersion']();
-}
-
 export function GetAutostart() {
   return window['go']['main']['App']['GetAutostart']();
 }
 
 export function GetCheckGlobalGitignore() {
   return window['go']['main']['App']['GetCheckGlobalGitignore']();
-}
-
-export function GetCollapsed() {
-  return window['go']['main']['App']['GetCollapsed']();
 }
 
 export function GetConfig() {
@@ -246,10 +226,6 @@ export function GetPRSettings() {
   return window['go']['main']['App']['GetPRSettings']();
 }
 
-export function GetPRsForRepo(arg1, arg2) {
-  return window['go']['main']['App']['GetPRsForRepo'](arg1, arg2);
-}
-
 export function GetPeriodicSync() {
   return window['go']['main']['App']['GetPeriodicSync']();
 }
@@ -280,10 +256,6 @@ export function GetTokenGuide(arg1) {
 
 export function GetUIMode() {
   return window['go']['main']['App']['GetUIMode']();
-}
-
-export function GetViewMode() {
-  return window['go']['main']['App']['GetViewMode']();
 }
 
 export function GetWindowMode() {
@@ -336,18 +308,6 @@ export function ListRoots() {
 
 export function ListSSHHosts() {
   return window['go']['main']['App']['ListSSHHosts']();
-}
-
-export function ListShells() {
-  return window['go']['main']['App']['ListShells']();
-}
-
-export function ListTerminalApps() {
-  return window['go']['main']['App']['ListTerminalApps']();
-}
-
-export function ListTerminalProfiles() {
-  return window['go']['main']['App']['ListTerminalProfiles']();
 }
 
 export function MarkStartup(arg1) {
@@ -462,10 +422,6 @@ export function PullRepo(arg1, arg2) {
   return window['go']['main']['App']['PullRepo'](arg1, arg2);
 }
 
-export function RecommendedGlobalGitignoreBody() {
-  return window['go']['main']['App']['RecommendedGlobalGitignoreBody']();
-}
-
 export function Reconcile() {
   return window['go']['main']['App']['Reconcile']();
 }
@@ -476,10 +432,6 @@ export function RedetectProfiles() {
 
 export function RefreshAIHarnesses() {
   return window['go']['main']['App']['RefreshAIHarnesses']();
-}
-
-export function RefreshAllPRs() {
-  return window['go']['main']['App']['RefreshAllPRs']();
 }
 
 export function RefreshStatus() {
@@ -560,10 +512,6 @@ export function RestoreFromBackup(arg1) {
 
 export function RunTask(arg1) {
   return window['go']['main']['App']['RunTask'](arg1);
-}
-
-export function SaveTerminalProfiles(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SaveTerminalProfiles'](arg1, arg2, arg3);
 }
 
 export function SaveTerminalProfilesDTO(arg1, arg2, arg3) {
@@ -664,18 +612,6 @@ export function StopTrackingRepo(arg1, arg2) {
 
 export function SuggestAccountKey(arg1, arg2) {
   return window['go']['main']['App']['SuggestAccountKey'](arg1, arg2);
-}
-
-export function SyncAIHarnesses() {
-  return window['go']['main']['App']['SyncAIHarnesses']();
-}
-
-export function SyncEditors() {
-  return window['go']['main']['App']['SyncEditors']();
-}
-
-export function SyncProfiles() {
-  return window['go']['main']['App']['SyncProfiles']();
 }
 
 export function UpdateAccount(arg1) {

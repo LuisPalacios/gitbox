@@ -401,7 +401,7 @@ func (a *App) watchNetwork() {
 			if recovered {
 				a.publishNetworkState()
 				// Pick the work up where the outage stopped it.
-				go func() { _ = a.FetchAllRepos() }()
+				go func() { _ = a.fetchAllRepos() }()
 			}
 			if remaining == 0 {
 				return

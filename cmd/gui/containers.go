@@ -192,14 +192,8 @@ func (a *App) scanFolderForClonesLocal(path string) []OrphanRepoDTO {
 	return dtos
 }
 
-// AddDiscoveredReposToFolder adds discovered repos into a custom destination
-// folder, stored as an absolute clone_folder so the clone lands there. When
-// cloneFolder is empty it behaves like AddDiscoveredRepos (standard layout).
-func (a *App) AddDiscoveredReposToFolder(key string, repoNames []string, cloneFolder string) error {
-	return a.be().AddDiscoveredReposToFolder(key, repoNames, cloneFolder)
-}
-
-// addDiscoveredReposToFolderLocal is the local backend's AddDiscoveredReposToFolder.
+// addDiscoveredReposToFolderLocal adds newly discovered repositories to a
+// custom clone directory. An empty directory uses the standard layout.
 func (a *App) addDiscoveredReposToFolderLocal(key string, repoNames []string, cloneFolder string) error {
 	if cloneFolder != "" {
 		abs, err := hostPath(cloneFolder)

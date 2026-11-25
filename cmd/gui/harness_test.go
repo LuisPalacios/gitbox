@@ -37,34 +37,11 @@ func TestSyncEditorsPrunesHarnessClaimedNames(t *testing.T) {
 		Sources: map[string]config.Source{},
 	}
 	a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
-	a.SyncEditors()
+	a.syncEditors()
 
 	for _, e := range cfg.Global.Editors {
 		if e.Name == "Cursor" {
 			t.Errorf("Cursor should have been pruned from global.editors: %+v", cfg.Global.Editors)
-		}
-	}
-}
-
-func TestDetectEditorsExcludesHarnessClaimedNames(t *testing.T) {
-	cfg := &config.Config{
-		Version: config.CurrentVersion,
-		Global: config.GlobalConfig{
-			Roots: []string{"~/x"},
-			Editors: []config.EditorEntry{
-				{Name: "Cursor", Command: "/usr/bin/cursor"},
-			},
-		},
-		Accounts: map[string]config.Account{
-			"A": {Provider: "github", URL: "https://github.com",
-				Username: "u", Name: "n", Email: "e@e"},
-		},
-		Sources: map[string]config.Source{},
-	}
-	a := &App{cfg: cfg}
-	for _, e := range a.DetectEditors() {
-		if e.Name == "Cursor" {
-			t.Errorf("DetectEditors should skip Cursor (claimed by harness): %+v", e)
 		}
 	}
 }
@@ -179,7 +156,7 @@ func TestSyncAIHarnessesReordersToMatchKnownList(t *testing.T) {
 		{Name: first.Name, Command: "/custom/" + first.Command},
 		{Name: "My Private Bot", Command: "/opt/mybot"},
 	})
-	if !a.SyncAIHarnesses() {
+	if !a.syncAIHarnesses() {
 		t.Fatal("reorder + classification must report a change")
 	}
 	cfg := a.cfg
@@ -228,7 +205,7 @@ func TestSyncAIHarnessesDedupByName(t *testing.T) {
 		{Name: "Duplicated", Command: "/bin/first"},
 		{Name: "Duplicated", Command: "/bin/second"},
 	})
-	a.SyncAIHarnesses()
+	a.syncAIHarnesses()
 	cfg := a.cfg
 
 	n := 0
@@ -266,7 +243,7 @@ func TestSyncAIHarnessesPrunesRetired(t *testing.T) {
 		{Name: retiredName, Command: "/usr/local/bin/retired"},
 		{Name: "My Private Bot", Command: "/opt/mybot"},
 	})
-	a.SyncAIHarnesses()
+	a.syncAIHarnesses()
 	cfg := a.cfg
 
 	for _, h := range cfg.Global.AIHarnesses {
@@ -291,20 +268,20 @@ func TestSyncAIHarnessesFlagsMissingAndRestoresOnReinstall(t *testing.T) {
 	})
 
 	// Uninstalled: flagged and kept (the menu hides Missing entries).
-	if !a.SyncAIHarnesses() {
+	if !a.syncAIHarnesses() {
 		t.Fatal("flagging missing must report a change")
 	}
 	if got := a.cfg.Global.AIHarnesses; len(got) != 1 || !got[0].Missing {
 		t.Fatalf("expected the entry kept and flagged missing: %+v", got)
 	}
 	// Nothing changed on the host → no-op pass, no save.
-	if a.SyncAIHarnesses() {
+	if a.syncAIHarnesses() {
 		t.Error("idempotent pass reported a change")
 	}
 
 	// Reinstall somewhere else: flag cleared, path updated, args intact.
 	have[tool.Command] = "/new/" + tool.Command
-	if !a.SyncAIHarnesses() {
+	if !a.syncAIHarnesses() {
 		t.Fatal("reinstall must report a change")
 	}
 	got := a.cfg.Global.AIHarnesses[0]
@@ -338,7 +315,7 @@ func TestSyncAIHarnessesSkipsApplyWhenConfigReplacedDuringProbe(t *testing.T) {
 		}
 		return ""
 	}
-	if a.SyncAIHarnesses() {
+	if a.syncAIHarnesses() {
 		t.Fatal("sync must not apply a result computed from a stale snapshot")
 	}
 	if got := a.cfg.Global.AIHarnesses; len(got) != 1 || got[0].Name != "Hand Made" {

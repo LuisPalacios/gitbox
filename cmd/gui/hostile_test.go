@@ -177,7 +177,7 @@ func TestHostileServer(t *testing.T) {
 			t.Errorf("repo link %q: %v", u, err)
 		}
 	}
-	prs := h.app.GetPRsForRepo("a", "r")
+	prs := h.app.be().GetPRsForRepo("a", "r")
 	for _, pr := range prs.Authored {
 		// The window passes a PR's link to OpenInBrowser as it got it.
 		if _, err := h.app.OpenInBrowser(pr.URL, true); toUserError(err).Code != "url.rejected" {

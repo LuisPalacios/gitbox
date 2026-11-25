@@ -253,6 +253,7 @@ La suite comprueba Requiere atención, el orden de los eventos de arranque, una 
 
 ### Ejecuciones de regresión enfocadas
 
+- **API del renderer** — `go test ./cmd/gui/ -run TestBoundSurface` comprueba el conjunto de métodos documentado frente a `*App` y los bindings JavaScript y TypeScript generados.
 - **Instantánea de arranque** — `go test ./cmd/gui/ -run TestStartupSnapshot` comprueba la anidación antes de que existan los clones y los datos de instantánea independientes. `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem` mide la construcción de la instantánea, que es trabajo del backend, no tiempo de arranque visible.
 - **Refresco y mantenimiento de credenciales** — `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` cubre la coordinación del refresco, la cancelación, los resultados obsoletos, los sondeos upstream y el mantenimiento previo al fetch.
 - **Secuencias de fallos** — `go test -race -short ./cmd/gui/ ./pkg/config/ ./pkg/git/...` comprueba cambios simultáneos de configuración, fallos parciales al guardar y bloqueos de helpers de credenciales de Git con fixtures aislados. La comprobación de salud ejecuta esta pasada con el detector de carreras en macOS y Linux.

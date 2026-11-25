@@ -34,7 +34,7 @@ func TestClosingStopsTheFetchQueue(t *testing.T) {
 			return "", ctx.Err()
 		}
 		done := make(chan error, 1)
-		go func() { done <- a.FetchAllRepos() }()
+		go func() { done <- a.fetchAllRepos() }()
 		synctest.Wait()
 		if got := fetches.Load(); got != fetchPerHostConcurrency {
 			t.Fatalf("%d fetches in flight, want the %d slots", got, fetchPerHostConcurrency)
@@ -65,7 +65,7 @@ func TestFetchIsBounded(t *testing.T) {
 			return "", ctx.Err()
 		}
 		started := time.Now()
-		if err := a.FetchAllRepos(); err == nil {
+		if err := a.fetchAllRepos(); err == nil {
 			t.Fatal("a fetch cut at its bound must fail the cycle")
 		}
 		if spent := time.Since(started); spent < fetchTimeout || spent > fetchTimeout+10*time.Second {
@@ -113,7 +113,7 @@ func TestClosingDoesNotWaitForStuckWork(t *testing.T) {
 			return "", nil
 		}
 		done := make(chan error, 1)
-		go func() { done <- a.FetchAllRepos() }()
+		go func() { done <- a.fetchAllRepos() }()
 		synctest.Wait()
 
 		started := time.Now()

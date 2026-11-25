@@ -48,7 +48,7 @@ type App struct {
 	updateRecoveryErr error
 	recoveryExpiry    *time.Timer
 	// events carries every event to the frontend; nil means nopSink (see
-	// events.go). Startup installs the Wails sink.
+	// events.go). startup installs the Wails sink.
 	events      EventSink
 	eventStream eventStream
 	// backend does the work; nil means localBackend{a} (see backend.go).
@@ -109,7 +109,7 @@ type App struct {
 
 	// terminalsCmd tracks the Profile-editor subprocess spawned by
 	// OpenTerminalsManagerWindow (issue #69). Captured so the parent's
-	// Shutdown can tear it down — otherwise the editor window survives the
+	// shutdown can tear it down — otherwise the editor window survives the
 	// main app and an orphaned binary keeps holding the
 	// com.luispalacios.gitbox.terminals SingleInstanceLock, which would
 	// confuse a fresh launch. Guarded by terminalsMu to keep concurrent
@@ -196,7 +196,7 @@ func NewApp() *App {
 // ─── Lifecycle ────────────────────────────────────────────────
 
 // initLocal loads the config and the credential audit. It is the local
-// backend's Init: the GUI calls it from Startup, gitbox-server from main.
+// backend's Init: the GUI calls it from startup, gitbox-server from main.
 func (a *App) initLocal(ctx context.Context) {
 	a.ctx = ctx
 	if a.cfgPath == "" {
@@ -240,7 +240,7 @@ func (a *App) closeLocal() {
 // preferences that are on disk (mergeDiskPrefs). A conflicting file revision
 // reloads the file and returns config.ChangedError. It refuses to save on a
 // read-only server, and when the config was not successfully loaded — the
-// guard prevents the empty default fabricated in Startup() from being
+// guard prevents the empty default fabricated in startup() from being
 // written over a real file we failed to parse, which would destroy the
 // user's data (see issue #60).
 //
@@ -459,17 +459,8 @@ func (a *App) getOSLocal() string {
 	return runtime.GOOS
 }
 
-// GetAppVersion returns the application version string for the frontend.
-// CI builds:    "v1.0.6 (abc1234)" — version and commit set via ldflags
-// Local builds: "v1.0.5-3-ga99cf17-dev (a99cf17)" — auto-detected from git
-//
-// It is always this build's own version, also when the backend is on another
-// host: the handshake only accepts a server of the same build, and its
-// version travels in StartupSnapshot.ServerVersion.
-func (a *App) GetAppVersion() string { return a.getAppVersionLocal() }
-
-// getAppVersionLocal is the local backend's GetAppVersion.
-func (a *App) getAppVersionLocal() string {
+// getAppVersion formats the version of this application build.
+func (a *App) getAppVersion() string {
 	v, c := version, commit
 
 	// If not set by ldflags, try to detect from git at runtime.
@@ -656,7 +647,7 @@ func (a *App) GetStartupSnapshot() (StartupSnapshot, error) {
 	a.syncTaskInterval()
 	snap.ServerOS = snap.OS
 	if remote, ok := a.be().(*RemoteBackend); ok {
-		snap.AppVersion = a.getAppVersionLocal()
+		snap.AppVersion = a.getAppVersion()
 		snap.ServerVersion = remote.ServerVersion()
 		snap.ServerOS = identifier(snap.OS)
 		snap.OS = a.getOSLocal()
@@ -1026,72 +1017,33 @@ func lookPathWithBrewPATH(command string) (string, error) {
 	return "", &exec.Error{Name: command, Err: exec.ErrNotFound}
 }
 
-// EditorInfo describes an available code editor.
-type EditorInfo struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Command string `json:"command"`
-}
-
 // knownEditors lists editors to auto-detect on PATH.
 //
 // Cursor is deliberately absent — it's detected as an AI harness via
 // pkg/harness/tools-directory.md so it surfaces under the AI tools menu
 // instead of the editor menu. Same rationale for Windsurf and Cline.
 // Editor entries whose name collides with an AI harness name are pruned
-// on every SyncEditors run (see the claimedByHarness set below).
-var knownEditors = []EditorInfo{
-	{ID: "vscode", Name: "VS Code", Command: "code"},
-	{ID: "zed", Name: "Zed", Command: "zed"},
-}
-
-// DetectEditors returns code editors available on the system.
-// It auto-detects known editors on PATH and merges any user-configured
-// editors, filtering out any entry whose name is claimed by an AI harness
-// (so Cursor doesn't show up as both an editor and a harness).
-func (a *App) DetectEditors() []EditorInfo {
-	claimedByHarness := make(map[string]bool, len(knownAIHarnesses))
-	for _, h := range knownAIHarnesses {
-		claimedByHarness[h.Name] = true
-	}
-
-	var editors []EditorInfo
-	for _, e := range knownEditors {
-		if claimedByHarness[e.Name] {
-			continue
-		}
-		if _, err := lookPathWithBrewPATH(e.Command); err == nil {
-			editors = append(editors, e)
-		}
-	}
-	for _, e := range a.clientPrefs().Get().Editors {
-		if claimedByHarness[e.Name] {
-			continue
-		}
-		editors = append(editors, EditorInfo{
-			ID:      e.Command,
-			Name:    e.Name,
-			Command: e.Command,
-		})
-	}
-	return editors
+// on every syncEditors run (see the claimedByHarness set below).
+var knownEditors = []config.EditorEntry{
+	{Name: "VS Code", Command: "code"},
+	{Name: "Zed", Command: "zed"},
 }
 
 // syncDetected merges detected editors and terminal profiles into the config
-// after the first render. SyncProfiles fills the terminal apps, shells
+// after the first render. syncProfiles fills the terminal apps, shells
 // and profiles that the Terminals manager and the launcher menus render; it
 // saves only when something changed.
 func (a *App) syncDetected() {
-	a.SyncEditors()
-	a.SyncProfiles()
+	a.syncEditors()
+	a.syncProfiles()
 }
 
-// SyncEditors merges detected editors into the config's global.editors array.
+// syncEditors merges detected editors into the config's global.editors array.
 // - Deduplicates existing entries by name (keeps the first occurrence)
 // - Appends any detected editor not already present (matched by name)
 // - Writes the full resolved path so users see a concrete example
 // - Saves config only if changes were made
-func (a *App) SyncEditors() {
+func (a *App) syncEditors() {
 	detected := make([]config.EditorEntry, 0, len(knownEditors))
 	for _, known := range knownEditors {
 		if fullPath, err := lookPathWithBrewPATH(known.Command); err == nil {
@@ -1239,7 +1191,7 @@ type AIHarnessInfo struct {
 
 // knownAIHarnesses is the embedded catalog of auto-detectable harnesses,
 // read once at process start from pkg/harness/tools-directory.md. The
-// GUI only needs the names here (SyncEditors / DetectEditors use them to
+// GUI only needs the names here (syncEditors uses them to
 // keep Cursor out of the editor list); detection itself lives in
 // harness.Sync.
 //
@@ -1251,7 +1203,7 @@ var knownAIHarnesses = harness.KnownTools()
 // tests can swap in a deterministic fake instead of probing the real host.
 var harnessLookupFn harness.LookupFunc = harness.DefaultLookup
 
-// SyncAIHarnesses reconciles config's global.ai_harnesses with the embedded
+// syncAIHarnesses reconciles config's global.ai_harnesses with the embedded
 // catalog and the host (see pkg/harness.Sync for the rules: catalog order,
 // missing flag instead of deletion, user entries untouched). The host probe
 // runs outside a.mu on a snapshot so PATH lookups never block other state
@@ -1259,7 +1211,7 @@ var harnessLookupFn harness.LookupFunc = harness.DefaultLookup
 // (ReloadConfig / RepairConfig / RestoreFromBackup swap a.cfg wholesale —
 // in that case the next pass simply re-syncs the new config). Returns
 // whether config changed and was saved.
-func (a *App) SyncAIHarnesses() bool { return a.be().SyncAIHarnesses() }
+func (a *App) syncAIHarnesses() bool { return a.be().SyncAIHarnesses() }
 
 // syncAIHarnessesLocal is the local backend's SyncAIHarnesses.
 func (a *App) syncAIHarnessesLocal() bool {
@@ -1312,7 +1264,7 @@ func (a *App) detectHarnesses(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	changed := a.SyncAIHarnesses()
+	changed := a.syncAIHarnesses()
 	a.mu.Lock()
 	a.lastHarnessSyncAt = time.Now()
 	var list []config.AIHarnessEntry
@@ -1496,7 +1448,7 @@ type ConfigRepairResult struct {
 
 // RepairConfig runs LoadWithRepair against the on-disk config, adopts the
 // repaired copy into the live App state, and saves it back. Intended as the
-// user-confirmed "Auto-repair" action when Startup detected cfgLoadError —
+// user-confirmed "Auto-repair" action when startup detected cfgLoadError —
 // drops dangling references and keeps the rest of the file intact. Use
 // RestoreFromBackup instead when the file is unrecoverable and a pre-
 // corruption backup is available.
@@ -1736,17 +1688,6 @@ func (a *App) SetLanguage(lang string) error {
 	return a.clientPrefs().Update(func(p *config.ClientPrefs) { p.Language = lang })
 }
 
-// GetCollapsed returns which account groups and parent clones are folded in
-// the full view. Empty means everything is expanded.
-//
-// The sidebar rail is a client preference; the rest names accounts, sources
-// and repos, so it comes from the backend.
-func (a *App) GetCollapsed() config.CollapsedState {
-	state := a.be().GetCollapsed()
-	state.Sidebar = a.clientPrefs().Get().SidebarCollapsed
-	return state
-}
-
 // getCollapsedLocal is the local backend's GetCollapsed.
 func (a *App) getCollapsedLocal() config.CollapsedState {
 	a.mu.Lock()
@@ -1833,14 +1774,6 @@ func (a *App) setPeriodicSyncLocal(interval string) error {
 		p.PeriodicSync = interval
 		return nil
 	})
-}
-
-// GetViewMode returns the persisted view mode ("full" or "compact").
-func (a *App) GetViewMode() string {
-	if a.clientPrefs().Get().ViewMode == "compact" {
-		return "compact"
-	}
-	return "full"
 }
 
 // WindowStateDTO is the frontend-friendly window geometry.
@@ -2394,11 +2327,6 @@ func (a *App) InstallGlobalGitignore() (gitignore.InstallResult, error) {
 func (a *App) installGlobalGitignoreLocal() (gitignore.InstallResult, error) {
 	return gitignore.Install()
 }
-
-// RecommendedGlobalGitignoreBody returns the canonical body of the
-// managed block (without sentinel markers) so the GUI can render a
-// preview to the user before they install it.
-func (a *App) RecommendedGlobalGitignoreBody() string { return a.be().RecommendedGlobalGitignoreBody() }
 
 // recommendedGlobalGitignoreBodyLocal is the local backend's RecommendedGlobalGitignoreBody.
 func (a *App) recommendedGlobalGitignoreBodyLocal() string {

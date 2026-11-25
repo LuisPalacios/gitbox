@@ -160,7 +160,7 @@ func TestRemoteWindowReconnectsToTheDaemon(t *testing.T) {
 	dialer := &daemonDialer{}
 	a, sink := remoteApp(t, dialer.dialer(h.env))
 	a.remote.policy = remote.ReconnectPolicy{Backoff: []time.Duration{10 * time.Millisecond, 10 * time.Millisecond, 10 * time.Millisecond}}
-	a.Startup(context.Background())
+	a.startup(context.Background())
 	a.events = sink
 	a.remote.start()
 	waitState(t, a, remoteConnected)
@@ -200,7 +200,7 @@ func TestRemoteWindowReconnectsToTheDaemon(t *testing.T) {
 	if raw, _ := json.Marshal(dones[0].args[0]); !strings.Contains(string(raw), `"path":"/host/git/org/repo"`) || strings.Contains(string(raw), `"error"`) {
 		t.Errorf("clone:done = %s, want the daemon's result", raw)
 	}
-	a.Shutdown(context.Background())
+	a.shutdown(context.Background())
 }
 
 // TestRemoteWindowDisconnectLeavesHostWorkRunning (D2): Disconnect and
@@ -228,7 +228,7 @@ func TestRemoteWindowDisconnectLeavesHostWorkRunning(t *testing.T) {
 	h.startDaemon(t, d)
 	dialer := &daemonDialer{}
 	a, sink := remoteApp(t, dialer.dialer(h.env))
-	a.Startup(context.Background())
+	a.startup(context.Background())
 	a.events = sink
 	a.remote.start()
 	waitState(t, a, remoteConnected)
@@ -256,7 +256,7 @@ func TestRemoteWindowDisconnectLeavesHostWorkRunning(t *testing.T) {
 	if n := len(sink.named("pull:done")); n != 1 {
 		t.Errorf("%d pull:done events, want the host's one only", n)
 	}
-	a.Shutdown(context.Background())
+	a.shutdown(context.Background())
 }
 
 // TestRemoteWindowGivesUpAfterTheAttempts: when every attempt fails the
@@ -276,7 +276,7 @@ func TestRemoteWindowGivesUpAfterTheAttempts(t *testing.T) {
 	dialer := &daemonDialer{}
 	a, sink := remoteApp(t, dialer.dialer(h.env))
 	a.remote.policy = remote.ReconnectPolicy{Backoff: []time.Duration{10 * time.Millisecond, 10 * time.Millisecond, 10 * time.Millisecond}}
-	a.Startup(context.Background())
+	a.startup(context.Background())
 	a.events = sink
 	a.remote.start()
 	waitState(t, a, remoteConnected)
@@ -289,7 +289,7 @@ func TestRemoteWindowGivesUpAfterTheAttempts(t *testing.T) {
 		t.Errorf("after %d dials the state is %+v, want three attempts that failed with ssh_timeout", dialer.count(), st)
 	}
 	waitFor(t, "the pull to fail in the window", func() bool { return len(sink.named("pull:done")) == 1 })
-	a.Shutdown(context.Background())
+	a.shutdown(context.Background())
 }
 
 // TestRemoteWindowWithoutTheDaemon (D4): a host that serves the session
@@ -304,7 +304,7 @@ func TestRemoteWindowWithoutTheDaemon(t *testing.T) {
 	}
 	dialer := &daemonDialer{}
 	a, sink := remoteApp(t, dialer.dialer(unsafe))
-	a.Startup(context.Background())
+	a.startup(context.Background())
 	a.events = sink
 	a.remote.start()
 	waitState(t, a, remoteConnected)
@@ -320,7 +320,7 @@ func TestRemoteWindowWithoutTheDaemon(t *testing.T) {
 	if dialer.count() != 1 {
 		t.Errorf("%d dials after the fallback session dropped, want no reconnect", dialer.count())
 	}
-	a.Shutdown(context.Background())
+	a.shutdown(context.Background())
 }
 
 // cancelGrace is long enough for a cancellation to cross the pipes.
@@ -348,7 +348,7 @@ func TestRemoteWindowCloseNeverCancelsHostChecks(t *testing.T) {
 	h.startDaemon(t, d)
 	dialer := &daemonDialer{}
 	a, sink := remoteApp(t, dialer.dialer(h.env))
-	a.Startup(context.Background())
+	a.startup(context.Background())
 	a.events = sink
 	a.remote.start()
 	waitState(t, a, remoteConnected)
@@ -358,7 +358,7 @@ func TestRemoteWindowCloseNeverCancelsHostChecks(t *testing.T) {
 	// still up to carry a cancellation if one were sent.
 	a.tasks.stop()
 	time.Sleep(cancelGrace)
-	a.Shutdown(context.Background())
+	a.shutdown(context.Background())
 	close(release)
 	select {
 	case <-finished:
@@ -444,7 +444,7 @@ func TestRemoteWindowFetchAllSurvivesACut(t *testing.T) {
 			dialer := &daemonDialer{}
 			a, sink := remoteApp(t, dialer.dialer(h.env))
 			a.remote.policy = remote.ReconnectPolicy{Backoff: []time.Duration{300 * time.Millisecond, time.Second, time.Second}}
-			a.Startup(context.Background())
+			a.startup(context.Background())
 			a.events = sink
 			a.remote.start()
 			waitState(t, a, remoteConnected)
@@ -501,7 +501,7 @@ func TestRemoteWindowFetchAllSurvivesACut(t *testing.T) {
 			if last := states[len(states)-1].args[0].(RemoteStateDTO); last.State != remoteConnected || !last.Resumed {
 				t.Errorf("the last state is %+v, want connected and resumed", last)
 			}
-			a.Shutdown(context.Background())
+			a.shutdown(context.Background())
 		})
 	}
 }

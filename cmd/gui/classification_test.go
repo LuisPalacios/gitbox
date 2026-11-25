@@ -6,10 +6,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,23 +15,6 @@ import (
 )
 
 const classificationHint = "add or remove its row in cmd/gui/classification.go (and the table in the remote-mode issue)"
-
-// boundMethods parses the generated Wails bindings for the bound method names.
-func boundMethods(t *testing.T) map[string]bool {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join("frontend", "wailsjs", "go", "main", "App.d.ts"))
-	if err != nil {
-		t.Fatalf("read bindings: %v", err)
-	}
-	found := map[string]bool{}
-	for _, m := range regexp.MustCompile(`(?m)^export function (\w+)\(`).FindAllStringSubmatch(string(data), -1) {
-		found[m[1]] = true
-	}
-	if len(found) == 0 {
-		t.Fatal("no bound methods found in App.d.ts; the parser is broken")
-	}
-	return found
-}
 
 func methodSet(typ reflect.Type) map[string]bool {
 	set := map[string]bool{}
@@ -52,45 +33,23 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// TestEveryAppMethodClassified fails when an exported *App method or a bound
-// method has no row in methodClass, when a row is stale, and when a row
-// disagrees with the Backend interface.
+// TestEveryAppMethodClassified checks the classifications of renderer
+// bindings and Backend methods.
 func TestEveryAppMethodClassified(t *testing.T) {
 	exported := methodSet(reflect.TypeFor[*App]())
-	bound := boundMethods(t)
 	backend := methodSet(reflect.TypeFor[Backend]())
-	hooks := map[string]bool{}
-	for _, h := range lifecycleHooks {
-		hooks[h] = true
-	}
 
 	for _, name := range sortedKeys(exported) {
 		if _, ok := methodClass[name]; !ok {
 			t.Errorf("exported method App.%s is not classified: %s", name, classificationHint)
 		}
 	}
-	for _, name := range sortedKeys(bound) {
-		if _, ok := methodClass[name]; !ok {
-			t.Errorf("bound method %s (App.d.ts) is not classified: %s", name, classificationHint)
-		}
-		if !exported[name] {
-			t.Errorf("bound method %s (App.d.ts) is not a method of *App; regenerate the bindings", name)
-		}
-	}
 	for _, name := range sortedKeys(methodClass) {
 		info := methodClass[name]
-		switch {
-		case !exported[name]:
-			t.Errorf("stale classification row %s: no such method on *App; %s", name, classificationHint)
-			continue
-		case hooks[name]:
-			if bound[name] {
-				t.Errorf("lifecycle hook %s must not be a bound method", name)
-			}
-		case !bound[name]:
-			t.Errorf("%s is classified but missing from App.d.ts; regenerate the bindings", name)
+		if !exported[name] {
+			t.Errorf("stale classification row %s: no binding on *App; %s", name, classificationHint)
 		}
-		viaBackend := info.Class != classLocal && !hooks[name]
+		viaBackend := info.Class != classLocal
 		if viaBackend != backend[name] {
 			t.Errorf("%s is %s but Backend has it = %v: REMOTE and MIXED methods go through Backend, LOCAL ones never do", name, info.Class, backend[name])
 		}
@@ -101,9 +60,9 @@ func TestEveryAppMethodClassified(t *testing.T) {
 			t.Errorf("%s has no owner", name)
 		}
 	}
-	for _, name := range lifecycleHooks {
-		if _, ok := methodClass[name]; !ok {
-			t.Errorf("lifecycle hook %s is not classified: %s", name, classificationHint)
+	for _, name := range sortedKeys(backendOnlyClass) {
+		if exported[name] || !backend[name] {
+			t.Errorf("%s must be a Backend method without a renderer binding", name)
 		}
 	}
 }

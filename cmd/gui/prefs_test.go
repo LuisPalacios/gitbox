@@ -166,8 +166,10 @@ func TestCollapsedSplit(t *testing.T) {
 	if want := (&config.CollapsedState{Sources: []string{"acct"}, View: "all"}); !reflect.DeepEqual(backend, want) {
 		t.Errorf("backend collapsed = %+v, want everything but the sidebar", backend)
 	}
-	if got := a.GetCollapsed(); !reflect.DeepEqual(got, state) {
-		t.Errorf("GetCollapsed = %+v, want %+v", got, state)
+	if cfg, err := a.GetConfig(); err != nil {
+		t.Fatal(err)
+	} else if got := cfg.Global.Collapsed; !reflect.DeepEqual(got, &state) {
+		t.Errorf("GetConfig collapsed = %+v, want %+v", got, state)
 	}
 
 	// A change that leaves the sidebar alone does not write the local file.
@@ -179,8 +181,10 @@ func TestCollapsedSplit(t *testing.T) {
 	if stamp(t, localPath) != before {
 		t.Errorf("a domain-only change wrote the local file")
 	}
-	if got := a.GetCollapsed(); !reflect.DeepEqual(got, state) {
-		t.Errorf("GetCollapsed = %+v, want %+v", got, state)
+	if cfg, err := a.GetConfig(); err != nil {
+		t.Fatal(err)
+	} else if got := cfg.Global.Collapsed; !reflect.DeepEqual(got, &state) {
+		t.Errorf("GetConfig collapsed = %+v, want %+v", got, state)
 	}
 }
 
@@ -426,7 +430,7 @@ func TestTerminalsWindowWritesOnlyPrefs(t *testing.T) {
 	}
 	apps := []config.TerminalApp{{ID: "wezterm", Name: "WezTerm", Command: "/opt/wezterm"}}
 	profiles := []config.TerminalProfile{{ID: "p1", Name: "WezTerm", TerminalID: "wezterm", Default: true}}
-	if err := term.SaveTerminalProfiles(apps, nil, profiles); err != nil {
+	if err := term.saveTerminalProfiles(apps, nil, profiles); err != nil {
 		t.Fatal(err)
 	}
 	disk := loadConfig(t, w.path).Global

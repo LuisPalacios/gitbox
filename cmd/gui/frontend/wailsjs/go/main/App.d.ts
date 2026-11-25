@@ -16,8 +16,6 @@ export function AddAccount(arg1:main.AddAccountRequest):Promise<void>;
 
 export function AddDiscoveredRepos(arg1:string,arg2:Array<string>):Promise<void>;
 
-export function AddDiscoveredReposToFolder(arg1:string,arg2:Array<string>,arg3:string):Promise<void>;
-
 export function AddMirrorGroup(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function AddMirrorRepo(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
@@ -80,8 +78,6 @@ export function DeleteMirrorRepo(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteRepoFolder(arg1:string,arg2:string):Promise<void>;
 
-export function DetectEditors():Promise<Array<main.EditorInfo>>;
-
 export function DiscardAccount(arg1:string):Promise<void>;
 
 export function Discover(arg1:string):Promise<void>;
@@ -96,21 +92,15 @@ export function ExportDiagnostics(arg1:string):Promise<boolean>;
 
 export function ExportRecipe(arg1:string):Promise<boolean>;
 
-export function FetchAllRepos():Promise<void>;
-
 export function FetchRepo(arg1:string,arg2:string):Promise<void>;
 
 export function FixGlobalGCMConfig():Promise<void>;
 
 export function GetAllStatus():Promise<Array<main.StatusResult>>;
 
-export function GetAppVersion():Promise<string>;
-
 export function GetAutostart():Promise<boolean>;
 
 export function GetCheckGlobalGitignore():Promise<boolean>;
-
-export function GetCollapsed():Promise<config.CollapsedState>;
 
 export function GetConfig():Promise<main.ConfigDTO>;
 
@@ -130,8 +120,6 @@ export function GetOS():Promise<string>;
 
 export function GetPRSettings():Promise<main.PRSettingsDTO>;
 
-export function GetPRsForRepo(arg1:string,arg2:string):Promise<main.PRSummaryDTO>;
-
 export function GetPeriodicSync():Promise<string>;
 
 export function GetRemoteTint():Promise<string>;
@@ -147,8 +135,6 @@ export function GetStartupTiming():Promise<Record<string, number>>;
 export function GetTokenGuide(arg1:string):Promise<main.TokenGuideInfo>;
 
 export function GetUIMode():Promise<string>;
-
-export function GetViewMode():Promise<string>;
 
 export function GetWindowMode():Promise<string>;
 
@@ -175,12 +161,6 @@ export function ListRemotes():Promise<main.RemotesDTO>;
 export function ListRoots():Promise<Array<main.RootDTO>>;
 
 export function ListSSHHosts():Promise<Array<main.SSHHostDTO>>;
-
-export function ListShells():Promise<Array<main.ShellInfo>>;
-
-export function ListTerminalApps():Promise<Array<main.TerminalAppInfo>>;
-
-export function ListTerminalProfiles():Promise<Array<main.TerminalProfileInfo>>;
 
 export function MarkStartup(arg1:string):Promise<void>;
 
@@ -238,15 +218,11 @@ export function PullAll(arg1:string,arg2:string):Promise<void>;
 
 export function PullRepo(arg1:string,arg2:string):Promise<void>;
 
-export function RecommendedGlobalGitignoreBody():Promise<string>;
-
 export function Reconcile():Promise<main.ReconcileDTO>;
 
 export function RedetectProfiles():Promise<main.ConfigDTO>;
 
 export function RefreshAIHarnesses():Promise<void>;
-
-export function RefreshAllPRs():Promise<void>;
 
 export function RefreshStatus():Promise<void>;
 
@@ -287,8 +263,6 @@ export function ResolveUpdateRecovery(arg1:boolean):Promise<void>;
 export function RestoreFromBackup(arg1:string):Promise<main.ConfigRepairResult>;
 
 export function RunTask(arg1:string):Promise<string>;
-
-export function SaveTerminalProfiles(arg1:Array<config.TerminalApp>,arg2:Array<config.ShellEntry>,arg3:Array<config.TerminalProfile>):Promise<void>;
 
 export function SaveTerminalProfilesDTO(arg1:Array<main.TerminalAppInfo>,arg2:Array<main.ShellInfo>,arg3:Array<main.TerminalProfileInfo>):Promise<void>;
 
@@ -339,12 +313,6 @@ export function ShowWindow():Promise<void>;
 export function StopTrackingRepo(arg1:string,arg2:string):Promise<void>;
 
 export function SuggestAccountKey(arg1:string,arg2:string):Promise<string>;
-
-export function SyncAIHarnesses():Promise<boolean>;
-
-export function SyncEditors():Promise<void>;
-
-export function SyncProfiles():Promise<void>;
 
 export function UpdateAccount(arg1:main.UpdateAccountRequest):Promise<void>;
 

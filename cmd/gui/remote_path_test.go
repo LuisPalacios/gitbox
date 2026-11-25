@@ -88,7 +88,7 @@ func TestRemotePathValidation(t *testing.T) {
 		if err := a.IgnoreClone(bad, true); !codeIs(err, string(remotePathInvalid)) {
 			t.Errorf("IgnoreClone(%q) = %v, want remote_path_invalid", bad, err)
 		}
-		if err := a.AddDiscoveredReposToFolder("acct", []string{"o/r"}, bad); !codeIs(err, string(remotePathInvalid)) {
+		if err := a.be().AddDiscoveredReposToFolder("acct", []string{"o/r"}, bad); !codeIs(err, string(remotePathInvalid)) {
 			t.Errorf("AddDiscoveredReposToFolder(%q) = %v, want remote_path_invalid", bad, err)
 		}
 	}

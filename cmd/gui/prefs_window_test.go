@@ -21,7 +21,7 @@ func TestWindowGeometryTarget(t *testing.T) {
 		a := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}
 
 		a.windowGeom = geom(10)
-		a.BeforeClose(context.Background())
+		a.beforeClose(context.Background())
 		if got := loadConfig(t, path).Global; !reflect.DeepEqual(got.Window, ws(10)) || got.CompactWindow != nil {
 			t.Fatalf("BeforeClose in full view: window %+v, compact %+v", got.Window, got.CompactWindow)
 		}
@@ -31,7 +31,7 @@ func TestWindowGeometryTarget(t *testing.T) {
 			t.Errorf("SetViewMode(compact) returned %+v with no compact window saved", target)
 		}
 		a.windowGeom = geom(30)
-		a.BeforeClose(context.Background())
+		a.beforeClose(context.Background())
 		got := loadConfig(t, path).Global
 		if got.ViewMode != "compact" || !reflect.DeepEqual(got.Window, ws(20)) || !reflect.DeepEqual(got.CompactWindow, ws(30)) {
 			t.Errorf("after switching to compact: view %q, window %+v, compact %+v", got.ViewMode, got.Window, got.CompactWindow)
@@ -52,11 +52,11 @@ func TestWindowGeometryTarget(t *testing.T) {
 		before := stamp(t, backendPath)
 
 		a.windowGeom = geom(10)
-		a.BeforeClose(context.Background())
+		a.beforeClose(context.Background())
 		a.windowGeom = geom(20)
 		a.SetViewMode("compact")
 		a.windowGeom = geom(30)
-		a.BeforeClose(context.Background())
+		a.beforeClose(context.Background())
 
 		got := loadConfig(t, localPath).Global
 		if !reflect.DeepEqual(got.Window, ws(1)) || got.CompactWindow != nil {

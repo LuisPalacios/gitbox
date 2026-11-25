@@ -486,7 +486,7 @@ func TestPullAll_SerializesTransferWithFetchAll(t *testing.T) {
 					}
 					return "", nil
 				}
-				startFetch := func() { go func() { _ = a.FetchAllRepos() }() }
+				startFetch := func() { go func() { _ = a.fetchAllRepos() }() }
 				if first == "pull" {
 					a.PullAll("serialized", "")
 					synctest.Wait()

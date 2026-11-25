@@ -23,9 +23,9 @@ import (
 	wailsrt "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-// Startup is called by Wails at application start. It also runs in the
+// startup is called by Wails at application start. It also runs in the
 // terminals subprocess.
-func (a *App) Startup(ctx context.Context) {
+func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.events = wailsSink{ctx}
 	if a.windowMode == "" && !a.testMode {
@@ -45,8 +45,8 @@ func (a *App) Startup(ctx context.Context) {
 	}
 }
 
-// Shutdown is called by Wails when the app is closing.
-func (a *App) Shutdown(_ context.Context) {
+// shutdown is called by Wails when the app is closing.
+func (a *App) shutdown(_ context.Context) {
 	a.tasks.stop()
 	if a.recoveryExpiry != nil {
 		a.recoveryExpiry.Stop()
@@ -82,11 +82,11 @@ func (a *App) Shutdown(_ context.Context) {
 	}
 }
 
-// BeforeClose is called while the window is still alive, before it is destroyed.
+// beforeClose is called while the window is still alive, before it is destroyed.
 // We capture and persist the window position and size to the active view mode slot.
 //
 // The store refuses to save over a config it failed to load.
-func (a *App) BeforeClose(_ context.Context) bool {
+func (a *App) beforeClose(_ context.Context) bool {
 	if x, y, w, h, ok := a.geometry(); ok {
 		ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
 		_ = a.clientPrefs().Update(func(p *config.ClientPrefs) {
@@ -108,17 +108,17 @@ func (a *App) geometry() (x, y, w, h int, ok bool) {
 	return x, y, w, h, true
 }
 
-// DomReady is called after the frontend DOM is ready.
+// domReady is called after the frontend DOM is ready.
 // We start hidden, restore saved position, then show the window to prevent flickering.
 // If the saved position is off-screen (e.g. monitor disconnected), we center instead.
-func (a *App) DomReady(_ context.Context) {
+func (a *App) domReady(_ context.Context) {
 	// Terminals subprocess (issue #69 — see runTerminalsWindow in main.go)
 	// only renders the Profile editor and shouldn't spin up the full app's
-	// background workers. SyncProfiles still runs so the editor sees a
+	// background workers. syncProfiles still runs so the editor sees a
 	// fresh terminal/shell list, but upstream probing,
 	// update checks and editor/terminal sync are skipped.
 	// A remote window (#239) shows itself at once and connects in the
-	// background: Startup did no network work, so the window is never
+	// background: startup did no network work, so the window is never
 	// held up by ssh. It runs none of the local window's workers.
 	if a.windowMode == "remote" {
 		if w := a.savedWindowPos; w != nil && a.isPositionOnScreen(w.X, w.Y, w.Width, w.Height) {
@@ -139,11 +139,11 @@ func (a *App) DomReady(_ context.Context) {
 		// Refresh the detected terminal/shell list before painting so the
 		// editor opens with a real table on first show.
 		if a.windowMode == "terminals" {
-			a.SyncProfiles()
+			a.syncProfiles()
 		}
 		// runTerminalsWindow sets StartHidden so the user doesn't see a
 		// dark-empty-webview flash before Svelte paints. We *don't*
-		// reveal the window here — DomReady fires before the browser
+		// reveal the window here — domReady fires before the browser
 		// has actually rasterised the first frame, so calling
 		// WindowShow here still leaks a flash on Windows + Linux (the
 		// macOS WebKit happens to paint synchronously and so it's fine
@@ -358,7 +358,7 @@ func (a *App) ApplyUpdate() error {
 	os.RemoveAll(extractDir)
 
 	// Start the new version, which waits for this process to exit, then
-	// quit. Quit runs BeforeClose, so the window state is saved as usual.
+	// quit. Quit runs beforeClose, so the window state is saved as usual.
 	if exe != "" && update.Relaunch(exe, os.Getpid(), os.Args[1:]) == nil {
 		emit(op, "update:restarting", result.Latest)
 		go func() {
