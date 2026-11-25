@@ -1993,11 +1993,14 @@
       markStartup('finished');
       window.addEventListener('focus', () => { hydrate(); }, { signal: lifetime.signal });
       await tick();
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          bridge.showWindow();
-        });
-      });
+      // A hidden WebKit view runs no animation frames, so waiting for two
+      // of them left the window to the 1.5 s safety net of DomReady. The
+      // first paint is done shortly after the tick; whichever comes first
+      // shows the window.
+      let shown = false;
+      const show = () => { if (!shown) { shown = true; bridge.showWindow(); } };
+      requestAnimationFrame(() => requestAnimationFrame(show));
+      setTimeout(show, 30);
       return;
     }
 
