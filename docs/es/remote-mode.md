@@ -42,7 +42,7 @@ GitboxApp comprueba el alias con `ssh -G <alias>`, que lee la configuración sin
 
 **Conectar** abre el remoto en una ventana propia: un proceso nuevo de GitboxApp arrancado como `GitboxApp --remote <alias> --experimental-remote`. Un segundo **Conectar** trae al frente la ventana abierta. La ventana del remoto sigue abierta cuando cierro la ventana principal.
 
-La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con my-server…** e **Instalando gitbox en my-server…** en la primera conexión, con **Desconectar**, **Ver registro** y **Desinstalar servidor**. Hasta que lleguen los repositorios, sigue el tema claro u oscuro del sistema. Cuando el servidor responde, la ventana muestra los repositorios del host: consulta [Qué puede hacer una ventana remota](#qué-puede-hacer-una-ventana-remota). Su título sigue siendo `gitbox · my-server`.
+La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con my-server…** e **Instalando gitbox en my-server…** en la primera conexión, con **Desconectar** y **Ver registro**. Hasta que lleguen los repositorios, sigue el tema claro u oscuro del sistema. Cuando el servidor responde, la ventana muestra los repositorios del host: consulta [Qué puede hacer una ventana remota](#qué-puede-hacer-una-ventana-remota). Su título sigue siendo `gitbox · my-server`.
 
 `--remote` sin `--experimental-remote` sale con un mensaje.
 
@@ -224,7 +224,7 @@ Una sesión conectada refresca su marcador cada minuto y borra su propio marcado
 
 ## Desinstalar
 
-**Desinstalar servidor** en la ventana del remoto, o **Desinstalar el servidor de gitbox…** en el menú contextual del equipo en la ventana Equipos remotos, desconecta y quita el servidor del host. Si otra ventana sigue usando el servidor allí, GitboxApp pregunta otra vez antes.
+**Desinstalar el servidor de gitbox…**, en el menú contextual del equipo en la ventana Equipos remotos, desconecta y quita el servidor del host. Si otra ventana sigue usando el servidor allí, GitboxApp pregunta otra vez antes.
 
 Antes detiene el daemon de cada build. Solo borra lo que puso gitbox: las carpetas de build, los registros de build de `logs/`, `.gc.lock/` y los archivos temporales de subida. Quita `logs/` y después la raíz del servidor solo cuando están vacías. Un archivo que yo mismo puse en la raíz del servidor se queda, y también la raíz que lo contiene. Los repositorios y el `gitbox.json` del host no se tocan.
 

@@ -42,7 +42,7 @@ GitboxApp checks the alias with `ssh -G <alias>`, which reads the configuration 
 
 **Connect** opens the remote in a window of its own: a new GitboxApp process started as `GitboxApp --remote <alias> --experimental-remote`. A second **Connect** brings the open window to the front. The remote window keeps running when I close the main window.
 
-The window appears at once and connects in the background. It reads **Connecting to my-server…** and **Installing gitbox on my-server…** on the first connection, with **Disconnect**, **Show log** and **Uninstall server**. Until the repositories arrive, it follows the light or dark theme of the system. When the server answers, the window shows the repositories of the host: see [What a remote window can do](#what-a-remote-window-can-do). Its title stays `gitbox · my-server`.
+The window appears at once and connects in the background. It reads **Connecting to my-server…** and **Installing gitbox on my-server…** on the first connection, with **Disconnect** and **Show log**. Until the repositories arrive, it follows the light or dark theme of the system. When the server answers, the window shows the repositories of the host: see [What a remote window can do](#what-a-remote-window-can-do). Its title stays `gitbox · my-server`.
 
 `--remote` without `--experimental-remote` exits with a message.
 
@@ -224,7 +224,7 @@ A connected session refreshes its marker every minute and deletes its own marker
 
 ## Uninstalling
 
-**Uninstall server** in the remote window, or **Uninstall the gitbox server…** in the context menu of the host in the Remote hosts window, disconnects and removes the server from the host. If another window still uses the server there, GitboxApp asks again first.
+**Uninstall the gitbox server…**, in the context menu of the host in the Remote hosts window, disconnects and removes the server from the host. If another window still uses the server there, GitboxApp asks again first.
 
 It stops the daemon of every build first. It deletes only what gitbox put there: the build folders, the build logs in `logs/`, `.gc.lock/` and temporary upload files. It removes `logs/` and then the server root only when they are empty. A file I put in the server root myself stays, and so does the root that holds it. The repositories and the `gitbox.json` of the host are not touched.
 

@@ -252,6 +252,23 @@ test('the Remote hosts window uninstalls and removes several hosts at once', asy
   assert.deepEqual(native.unexpected, [])
 })
 
+// The connection card of a remote window keeps Connect and the log, and
+// no Uninstall: that lives in the Remote hosts window's context menu.
+test('the connection card of a remote window offers no uninstall', async (t) => {
+  const ui = await mount(t)
+  const { RemoteConnected, render, screen, waitFor } = ui
+  const native = bridge(ui, {
+    RemoteInfo: async () => ({ state: 'failed', alias: 'nas', hint: 'error.remote.ssh_timeout', remoteEditors: [] }),
+    RemoteLog: async () => [],
+  })
+  render(RemoteConnected, { props: { simple: true } })
+  await waitFor(() => assert.ok(screen.getByRole('heading', { name: /nas/ })))
+  assert.ok(screen.getByRole('button', { name: 'Connect' }))
+  assert.ok(screen.getByRole('button', { name: 'Show log' }))
+  assert.equal(screen.queryByRole('button', { name: /Uninstall/ }), null)
+  assert.deepEqual(native.unexpected, [])
+})
+
 // After Connect the window reads the states every second, so the host's
 // window that opens and a login waiting for 1Password show here too.
 test('the Remote hosts window shows a login that waits for approval', async (t) => {
