@@ -25,9 +25,13 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_
 marker_dir="$(git rev-parse --path-format=absolute --git-common-dir)/gitbox-gate"
 zero="0000000000000000000000000000000000000000"
 
-# gate_status <sha>: prints pass, partial or nothing.
+# gate_status <sha>: prints pass, partial or nothing, and always succeeds.
+# A bare `[ -f … ] && …` returns 1 for a commit without a marker, and under
+# set -e that ended the hook with no message.
 gate_status() {
-    [ -f "$marker_dir/$1" ] && sed -n 's/^status=//p' "$marker_dir/$1"
+    if [ -f "$marker_dir/$1" ]; then
+        sed -n 's/^status=//p' "$marker_dir/$1"
+    fi
 }
 
 # Git passes "<local ref> <local sha> <remote ref> <remote sha>" per ref on
