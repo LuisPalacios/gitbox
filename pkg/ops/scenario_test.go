@@ -75,7 +75,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 		if err := plan.Run(context.Background(), nil); err != nil {
 			t.Fatalf("clone: %v", err)
 		}
-		return plan.Dest, heal.Repo(cfg, srcKey, repoKey)
+		return plan.Dest, heal.RepoContext(t.Context(), cfg, srcKey, repoKey)
 	}
 	ctx := func() context.Context {
 		c, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -106,7 +106,7 @@ func TestScenario_FullLifecycle(t *testing.T) {
 	})
 
 	t.Run("02_credential_check", func(t *testing.T) {
-		res := credential.Check(cfg.Accounts[acctKey], acctKey, cfg)
+		res := credential.CheckContext(t.Context(), cfg.Accounts[acctKey], acctKey, cfg)
 		if res.Overall == credential.StatusError {
 			t.Fatalf("credential check failed: %s", res.PrimaryDetail)
 		}

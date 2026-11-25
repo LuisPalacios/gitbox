@@ -177,7 +177,7 @@ func TestOperationKey(t *testing.T) {
 	a := operationKey("clone:progress", []any{map[string]any{"source": "s", "repo": "a", "percent": 10}})
 	a2 := operationKey("clone:progress", []any{map[string]any{"source": "s", "repo": "a", "percent": 90}})
 	b := operationKey("clone:progress", []any{map[string]any{"source": "s", "repo": "b", "percent": 10}})
-	other := operationKey("move:progress", []any{map[string]any{"source": "s", "repo": "a"}})
+	other := operationKey("pull:progress", []any{map[string]any{"source": "s", "repo": "a"}})
 	if a != a2 {
 		t.Errorf("two progress events of one clone must share a key: %q, %q", a, a2)
 	}

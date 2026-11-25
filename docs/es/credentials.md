@@ -155,14 +155,14 @@ Sin el PAT, la cuenta funciona para las operaciones git, pero no puede descubrir
 
 ## Scopes de token por capacidad
 
-Esta es la referencia de cada PAT que usa Gitbox: cuentas Token, PATs complementarios de SSH y el PAT que una cuenta GCM guarda para mirrors o para la API. La primera columna es el mínimo que necesita cada cuenta. Cada una de las demás columnas añade lo que necesita una capacidad encima de ese mínimo. Da a cada cuenta solo los scopes que necesita, y añade los destructivos (delete) solo cuando pienses usarlos.
+Esta es la referencia de cada PAT que usa Gitbox: cuentas Token, PATs complementarios de SSH y el PAT que una cuenta GCM guarda para mirrors o para la API. La primera columna es el mínimo que necesita cada cuenta. Cada una de las demás columnas añade lo que necesita una capacidad encima de ese mínimo. Da a cada cuenta solo los scopes que necesita.
 
-| Proveedor       | Discovery + clone + fetch                | Selectores de propietario (orgs) | Crear repo (**Crear repo**, destino de un move) | Eliminar repo (move con "delete source")              | Mirror                                        |
-| --------------- | ---------------------------------------- | -------------------------------- | ----------------------------------------------- | ----------------------------------------------------- | --------------------------------------------- |
-| GitHub          | `repo`                                   | `read:org`                       | `repo`                                          | `delete_repo` (sensible — añádelo solo si hace falta) | `repo`                                        |
-| GitLab          | `api`                                    | `api`                            | `api`                                           | `api`                                                 | `api`                                         |
-| Gitea / Forgejo | `read:repository`, `read:user`           | `read:organization`              | `write:repository`                              | `write:repository`                                    | `write:repository`                            |
-| Bitbucket Cloud | Repositories: Read, Write, Account: Read | —                                | Repositories: Admin                             | Repositories: Delete (sensible)                       | No disponible a través de la API de Bitbucket |
+| Proveedor       | Discovery + clone + fetch                | Selectores de propietario (orgs) | Crear repo (**Crear repo**) | Mirror                                        |
+| --------------- | ---------------------------------------- | -------------------------------- | --------------------------- | --------------------------------------------- |
+| GitHub          | `repo`                                   | `read:org`                       | `repo`                      | `repo`                                        |
+| GitLab          | `api`                                    | `api`                            | `api`                       | `api`                                         |
+| Gitea / Forgejo | `read:repository`, `read:user`           | `read:organization`              | `write:repository`          | `write:repository`                            |
+| Bitbucket Cloud | Repositories: Read, Write, Account: Read | —                                | Repositories: Admin         | No disponible a través de la API de Bitbucket |
 
 En la página de tokens de Gitea o Forgejo, estos scopes aparecen como niveles de permiso: **repository** Read y Write, **user** Read y **organization** Read cubren todas las columnas. En Bitbucket, Gitbox abre la página de app passwords.
 

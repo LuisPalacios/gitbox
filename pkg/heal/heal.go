@@ -39,7 +39,7 @@ func (r Report) HasWork() bool {
 	return len(r.Fixed) > 0 || len(r.Warnings) > 0
 }
 
-// Repo heals a single cloned repository to match the gitbox config.
+// RepoContext heals a single cloned repository to match the gitbox config.
 // Returns a report describing what changed. Cheap when nothing drifts
 // — reads are two batched config lookups and no writes.
 //
@@ -50,12 +50,9 @@ func (r Report) HasWork() bool {
 // Heal skips gracefully when:
 //   - The repo is not cloned on disk (Skipped: "not cloned").
 //   - The clone path is not a git repo (Skipped: "not a git repo").
-func Repo(cfg *config.Config, sourceKey, repoKey string) Report {
-	return RepoContext(context.Background(), cfg, sourceKey, repoKey)
-}
-
-// RepoContext is Repo whose reads stop when ctx is cancelled. The writes
-// that repair a clone are short and local, and are never cut short.
+//
+// Reads stop when ctx is cancelled. The writes that repair a clone are short
+// and local, and Gitbox lets them finish.
 func RepoContext(ctx context.Context, cfg *config.Config, sourceKey, repoKey string) Report {
 	r := Report{RepoKey: sourceKey + "/" + repoKey}
 

@@ -50,7 +50,7 @@ func initTestRepo(t *testing.T) (clone, bare string) {
 
 func TestCheckClean(t *testing.T) {
 	clone, _ := initTestRepo(t)
-	rs := Check(clone)
+	rs := CheckContext(t.Context(), clone)
 	if rs.State != Clean {
 		t.Errorf("state = %v, want Clean", rs.State)
 	}
@@ -58,7 +58,7 @@ func TestCheckClean(t *testing.T) {
 
 func TestCheck_BranchPopulated(t *testing.T) {
 	clone, _ := initTestRepo(t)
-	rs := Check(clone)
+	rs := CheckContext(t.Context(), clone)
 	if rs.Branch == "" {
 		t.Error("expected Branch to be populated")
 	}
@@ -70,7 +70,7 @@ func TestCheck_BranchPopulated(t *testing.T) {
 
 func TestCheck_IsDefault(t *testing.T) {
 	clone, _ := initTestRepo(t)
-	rs := Check(clone)
+	rs := CheckContext(t.Context(), clone)
 	if !rs.IsDefault {
 		t.Error("expected IsDefault = true for default branch")
 	}
@@ -79,7 +79,7 @@ func TestCheck_IsDefault(t *testing.T) {
 func TestCheck_FeatureBranch(t *testing.T) {
 	clone, _ := initTestRepo(t)
 	runGit(t, clone, "checkout", "-b", "feature-xyz")
-	rs := Check(clone)
+	rs := CheckContext(t.Context(), clone)
 	if rs.Branch != "feature-xyz" {
 		t.Errorf("branch = %q, want %q", rs.Branch, "feature-xyz")
 	}
@@ -96,7 +96,7 @@ func TestCheck_DetachedHead(t *testing.T) {
 	clone, _ := initTestRepo(t)
 	// Detach HEAD at the current commit.
 	runGit(t, clone, "checkout", "--detach", "HEAD")
-	rs := Check(clone)
+	rs := CheckContext(t.Context(), clone)
 	if rs.Branch != "(detached)" {
 		t.Errorf("branch = %q, want %q", rs.Branch, "(detached)")
 	}
@@ -108,7 +108,7 @@ func TestCheck_DetachedHead(t *testing.T) {
 func TestCheckDirty(t *testing.T) {
 	clone, _ := initTestRepo(t)
 	writeFile(t, filepath.Join(clone, "README.md"), "# changed\n")
-	rs := Check(clone)
+	rs := CheckContext(t.Context(), clone)
 	if rs.State != Dirty {
 		t.Errorf("state = %v, want Dirty", rs.State)
 	}
@@ -121,7 +121,7 @@ func TestCheckNotCloned(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, ".git"), "gitdir: nonexistent-worktree-metadata\n")
 	for _, path := range []string{filepath.Join(dir, "nonexistent"), dir} {
-		rs := Check(path)
+		rs := CheckContext(t.Context(), path)
 		if rs.State != NotCloned {
 			t.Errorf("state = %v, want NotCloned", rs.State)
 		}
@@ -145,7 +145,7 @@ func TestCheckBehind(t *testing.T) {
 	// Fetch in original clone.
 	runGit(t, clone, "fetch", "--all")
 
-	rs := Check(clone)
+	rs := CheckContext(t.Context(), clone)
 	if rs.State != Behind {
 		t.Errorf("state = %v, want Behind", rs.State)
 	}
@@ -160,7 +160,7 @@ func TestCheckAhead(t *testing.T) {
 	runGit(t, clone, "add", "local.txt")
 	runGit(t, clone, "commit", "-m", "local")
 
-	rs := Check(clone)
+	rs := CheckContext(t.Context(), clone)
 	if rs.State != Ahead {
 		t.Errorf("state = %v, want Ahead", rs.State)
 	}

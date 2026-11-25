@@ -82,10 +82,6 @@ export function CheckMirrorCredentials(arg1) {
   return window['go']['main']['App']['CheckMirrorCredentials'](arg1);
 }
 
-export function CheckMoveReadiness(arg1, arg2, arg3) {
-  return window['go']['main']['App']['CheckMoveReadiness'](arg1, arg2, arg3);
-}
-
 export function CheckUpdateRecovery(arg1) {
   return window['go']['main']['App']['CheckUpdateRecovery'](arg1);
 }
@@ -322,10 +318,6 @@ export function ListConfigBackups() {
   return window['go']['main']['App']['ListConfigBackups']();
 }
 
-export function ListMoveDestinationOwners(arg1) {
-  return window['go']['main']['App']['ListMoveDestinationOwners'](arg1);
-}
-
 export function ListRemoteRepos(arg1) {
   return window['go']['main']['App']['ListRemoteRepos'](arg1);
 }
@@ -356,10 +348,6 @@ export function MarkStartup(arg1) {
 
 export function MissingModernTerminal() {
   return window['go']['main']['App']['MissingModernTerminal']();
-}
-
-export function MoveRepo(arg1) {
-  return window['go']['main']['App']['MoveRepo'](arg1);
 }
 
 export function OpenAccountFolder(arg1) {
@@ -424,10 +412,6 @@ export function OpenTerminalsManagerWindow() {
 
 export function PickFolder(arg1) {
   return window['go']['main']['App']['PickFolder'](arg1);
-}
-
-export function PreflightMove(arg1) {
-  return window['go']['main']['App']['PreflightMove'](arg1);
 }
 
 export function PreviewClonePath(arg1, arg2) {

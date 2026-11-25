@@ -24,6 +24,7 @@ Empieza por la guía de desarrollo y luego sigue con las pruebas. Multiplataform
 | [Gate local](local-gate.md)                                     | Verificar cada commit en mis hosts macOS, Linux y Windows antes del merge                         |
 | [Arquitectura](architecture.md)                                 | Diseño, responsabilidades de los paquetes, referencia del archivo de config                       |
 | [Firma de releases](release-signing.md)                         | Cómo se firman y verifican las releases, configuración del agente, forks                          |
+| [Notas de la próxima versión](release-notes.md)                 | Cambios destacados de la próxima versión                                                          |
 | [Firma en macOS](macos-signing.md)                              | Firma de código y notarización opcionales de Apple en CI                                          |
 | [Directorio del ecosistema agentic](agentic-tools-directory.md) | Cómo lee su catálogo la detección de AI harnesses                                                 |
 | [Spike del modo remoto](../remote-spike.md)                     | Registro de decisiones de las mediciones del modo remoto (#234), solo en inglés                   |

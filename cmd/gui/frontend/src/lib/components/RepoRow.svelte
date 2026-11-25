@@ -37,7 +37,6 @@
     togglePRPopover: (key: string) => void;
     closePRPopover: () => void;
     sweepBranches: (sourceKey: string, repoKey: string) => void;
-    openMoveRepo: (sourceKey: string, repoKey: string) => void;
     toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
     rescanContainer: () => Promise<void>;
     chooseWorkspace: (sourceKey: string, repoName: string) => Promise<void>;
@@ -114,7 +113,6 @@
   export let togglePRPopover: (key: string) => void;
   export let closePRPopover: () => void;
   export let sweepBranches: (sourceKey: string, repoKey: string) => void;
-  export let openMoveRepo: (sourceKey: string, repoKey: string) => void;
   export let toggleContainer: (sourceKey: string, repoName: string) => Promise<void>;
   export let rescanContainer: () => Promise<void>;
   export let chooseWorkspace: (sourceKey: string, repoName: string) => Promise<void>;
@@ -208,17 +206,6 @@
   async function openRepoInBrowser(sourceKey: string, repoName: string) {
     await openRepoExternal(sourceKey, repoName);
     closeActionMenu();
-  }
-
-  // repoCanMove is the kebab-enable predicate:
-  // only a cloned, clean, in-sync repo can be moved. Returns a string
-  // tooltip when disabled, or '' when enabled.
-  function repoMoveDisabledReason(state: RepoState | undefined): string {
-    if (!state) return $t('row.moveCloneFirst');
-    if (state.status === 'not cloned' || state.status === 'root offline' || state.status === 'error') return $t('row.moveCloneFirst');
-    if (state.status !== 'clean') return $t('row.moveNotClean');
-    if ((state.ahead ?? 0) > 0 || (state.behind ?? 0) > 0) return $t('row.moveNotInSync');
-    return '';
   }
 
   // Build the provider-native "all PRs" URL for a given repo full name.
@@ -526,9 +513,6 @@
               onOpenProfile={(id) => openRepoProfile(repoKey, id)}
               onOpenAIHarness={(h) => openRepoInAIHarness(repoKey, h)}
               onSweep={() => sweepBranches(rowSourceKey, repoName)}
-              onMove={() => { closeActionMenu(); openMoveRepo(rowSourceKey, repoName); }}
-              moveEnabled={repoMoveDisabledReason(state) === ''}
-              moveDisabledReason={repoMoveDisabledReason(state)}
               isContainer={isContainerRepo(rowSourceKey, repoName)}
               onToggleContainer={wsFile || wsPending ? null : () => { closeActionMenu(); toggleContainer(rowSourceKey, repoName); }}
               onRescanContainer={() => { closeActionMenu(); rescanContainer(); }}

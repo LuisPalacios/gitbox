@@ -50,14 +50,14 @@ La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con m
 
 La ventana del remoto es la ventana completa de gitbox, alimentada por el host. Necesita un host que ya tenga un `gitbox.json`, por ejemplo un ordenador que también ejecuta GitboxApp; las credenciales de token y SSH se pueden configurar desde la ventana. Un host sin él se queda en la tarjeta de conexión, que lo dice; configurarlo desde aquí llega en una versión posterior.
 
-Un texto que habla de este ordenador nombra el host en su lugar, porque la acción se ejecuta allí por SSH: el menú de la fila dice **Borrar de my-server…**, y los diálogos de borrar y mover dicen de qué host es la carpeta que se va.
+Un texto que habla de este ordenador nombra el host en su lugar, porque la acción se ejecuta allí por SSH: el menú de la fila dice **Borrar de my-server…**, y el diálogo de borrado dice de qué host es la carpeta que se va.
 
 Esto funciona, y todo se ejecuta en el host:
 
 - el estado de cada repositorio, **Fetch de todo**, **Fetch** en un repositorio y la comprobación periódica del estado, que el host ejecuta por su cuenta (consulta [El daemon](#el-daemon));
 - los detalles del repositorio, las insignias de pull requests y sus listas, y el estado de los espejos;
 - **Buscar proyectos** de una cuenta, que lista los repositorios del proveedor sin añadirlos;
-- las comprobaciones de credenciales, la vista previa de la limpieza y la comprobación previa del traslado;
+- las comprobaciones de credenciales, la vista previa de la limpieza;
 - **Comprobación del sistema**, que muestra las herramientas del host;
 - abrir una carpeta de repositorio o de cuenta del host en VS Code, un perfil de terminal o un harness de IA de este ordenador: consulta [Abrir las carpetas del host](#abrir-las-carpetas-del-host);
 - la ventana de **Raíces**, que acepta una carpeta escrita para el host: consulta [Escribir una carpeta del host](#escribir-una-carpeta-del-host).
@@ -74,7 +74,7 @@ Esto cambia la configuración del host, y también se ejecuta allí:
 
 Esto cambia los clones del host y los proveedores, y también se ejecuta allí:
 
-- clonar, actualizar, borrar, crear y trasladar repositorios;
+- clonar, actualizar, borrar clones y crear repositorios;
 - la limpieza de ramas fusionadas, la configuración de espejos y añadir los espejos que encontró el descubrimiento;
 - la reconciliación con los clones del disco, que también se ejecuta cuando la ventana recupera el foco, y adoptar los clones que encuentra.
 
@@ -104,7 +104,7 @@ Si la conexión se cae mientras se guarda un cambio, el `gitbox.json` del host c
 
 ### Cuando la conexión se cae durante una acción larga
 
-Un clon, una actualización, un traslado, una configuración de espejo o un **Fetch de todo** se ejecuta en el host, en su daemon (consulta [El daemon](#el-daemon)). Cerrar la ventana, **Desconectar** o una conexión caída solo separan la ventana: la acción sigue allí, junto con sus procesos de git, y nada en este ordenador la cancela.
+Un clon, una actualización, una configuración de espejo o un **Fetch de todo** se ejecuta en el host, en su daemon (consulta [El daemon](#el-daemon)). Cerrar la ventana, **Desconectar** o una conexión caída solo separan la ventana: la acción sigue allí, junto con sus procesos de git, y nada en este ordenador la cancela.
 
 Cuando la conexión se cae, la ventana vuelve a conectarse por sí sola, como describe [La insignia y la conexión](#la-insignia-y-la-conexión). La nueva conexión recibe los resultados de lo que terminó mientras tanto, y una acción todavía en curso vuelve a preguntar al host con el mismo id de petición: el host responde con el resultado del primer intento y nunca la ejecuta dos veces. Un **Fetch de todo** que la caída interrumpió termina con su tarjeta de resultado habitual. Cualquier otra llamada que la ventana hace mientras vuelve a conectarse espera a la nueva conexión en lugar de fallar. Después de **Desconectar**, el siguiente **Conectar** hace lo mismo. Una acción solo falla en la ventana cuando la ventana deja de intentar volver a conectarse o se cierra.
 
@@ -112,7 +112,6 @@ Una sesión que el host sirve sin el daemon se comporta como antes: cerrar la ve
 
 - Un clon se detiene, y git borra la carpeta que creó. Si el host mató a git de golpe, la carpeta se queda: la siguiente reconciliación la señala como un clon que se detuvo antes de terminar, y yo borro la carpeta y vuelvo a clonar. Gitbox nunca la borra por mí.
 - Una actualización se detiene, y git deja el clon como estaba o avanzado.
-- Un traslado se detiene entre dos pasos y nunca empieza a borrar el repositorio de origen ni el clon local. Un destino que ya creó se queda en el proveedor, y el traslado lo indica; una vez que el origin apunta al destino, la configuración también lo dice.
 - Una configuración de espejo se detiene, y lo que el proveedor ya creó se queda.
 
 La ventana marca entonces la acción como fallida con el error de la conexión, así que nada espera una respuesta que no va a llegar.

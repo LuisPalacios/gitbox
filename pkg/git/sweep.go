@@ -202,12 +202,12 @@ func SweepBranches(dir string) (SweepResult, error) {
 			result.Gone = append(result.Gone, ref.name)
 		case "merged":
 			result.Merged = append(result.Merged, ref.name)
+			result.Tips[ref.name] = ref.tip
 		case "squashed":
 			result.Squashed = append(result.Squashed, ref.name)
 		default:
 			continue
 		}
-		result.Tips[ref.name] = ref.tip
 	}
 	return result, nil
 }
@@ -224,26 +224,23 @@ func DeletePreviewedBranches(dir string, preview SweepResult) (deleted, skipped 
 	if err != nil {
 		return nil, nil, []error{err}
 	}
-	for _, group := range []struct {
-		category string
-		names    []string
-	}{{"gone", preview.Gone}, {"merged", preview.Merged}, {"squashed", preview.Squashed}} {
-		for _, name := range group.names {
-			removed, err := deleteCandidate(dir, def, base, name, group.category, preview)
-			if removed {
-				deleted = append(deleted, name)
-			} else if err == nil {
-				skipped = append(skipped, name)
-			}
-			if err != nil {
-				errs = append(errs, err)
-			}
+	skipped = append(skipped, preview.Gone...)
+	skipped = append(skipped, preview.Squashed...)
+	for _, name := range preview.Merged {
+		removed, err := deleteCandidate(dir, def, base, name, preview)
+		if removed {
+			deleted = append(deleted, name)
+		} else if err == nil {
+			skipped = append(skipped, name)
+		}
+		if err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return
 }
 
-func deleteCandidate(dir, def, base, name, category string, preview SweepResult) (bool, error) {
+func deleteCandidate(dir, def, base, name string, preview SweepResult) (bool, error) {
 	tip := preview.Tips[name]
 	if def != preview.DefaultBranch || name == def || tip == "" {
 		return false, nil
@@ -253,19 +250,33 @@ func deleteCandidate(dir, def, base, name, category string, preview SweepResult)
 	if err != nil {
 		return false, err
 	}
-	if len(refs) != 1 || refs[0].name != name || refs[0].tip != tip || refs[0].protected || sweepCategory(dir, base, refs[0]) != category {
+	if len(refs) != 1 || refs[0].name != name || refs[0].tip != tip || refs[0].protected || refs[0].gone {
 		return false, nil
 	}
-	// Preserve branch -d's additional check against its upstream
-	// (or HEAD if untracked) for an ordinary merged branch.
-	if category == "merged" {
-		up := refs[0].upstream
-		if up == "" {
-			up = "HEAD"
+	if _, err := sweepRead(dir, "merge-base", "--is-ancestor", tip, base); err != nil {
+		return false, nil
+	}
+	// Git's non-forcing branch delete also requires ancestry against the
+	// configured upstream, or against HEAD when the branch is untracked.
+	upstream := refs[0].upstream
+	if upstream == "" {
+		upstream, err = sweepHead(dir)
+		if err != nil {
+			return false, err
 		}
-		if _, err := sweepRead(dir, "merge-base", "--is-ancestor", tip, up); err != nil {
-			return false, nil
-		}
+	}
+	if upstream == refname {
+		return false, nil
+	}
+	upstreamTip, err := commitID(dir, upstream)
+	if err != nil {
+		return false, nil
+	}
+	if upstream == "refs/heads/"+def && upstreamTip != base {
+		return false, nil
+	}
+	if _, err := sweepRead(dir, "merge-base", "--is-ancestor", tip, upstreamTip); err != nil {
+		return false, nil
 	}
 	// Category checks may run several Git commands. Refresh the default,
 	// operation state and worktree occupancy just before deleting the ref.
@@ -284,10 +295,17 @@ func deleteCandidate(dir, def, base, name, category string, preview SweepResult)
 	if currentDefault != def || protected[name] || len(live) != 1 || live[0] != refs[0] {
 		return false, nil
 	}
-	if err := deletePinnedBranch(dir, def, base, refname, refs[0]); err != nil {
+	if refs[0].upstream == "" {
+		head, err := sweepHead(dir)
+		if err != nil || head != upstream {
+			return false, err
+		}
+	}
+	if err := deletePinnedBranch(dir, def, base, refname, tip, upstream, upstreamTip); err != nil {
 		currentBase, baseErr := commitID(dir, "refs/heads/"+def)
 		now, refErr := sweepRefs(dir, []string{refname})
-		if baseErr == nil && currentBase != base || refErr == nil && (len(now) != 1 || now[0] != refs[0]) {
+		currentUpstream, upstreamErr := commitID(dir, upstream)
+		if upstreamErr != nil || currentUpstream != upstreamTip || baseErr == nil && currentBase != base || refErr == nil && (len(now) != 1 || now[0] != refs[0]) {
 			return false, nil
 		}
 		return false, err
@@ -295,14 +313,25 @@ func deleteCandidate(dir, def, base, name, category string, preview SweepResult)
 	return true, removeBranchConfig(dir, name)
 }
 
-// Git takes both ref locks in one transaction. A moving default branch
-// cannot invalidate the proof between the category check and deletion.
-func deletePinnedBranch(dir, def, base, refname string, ref sweepRef) error {
-	input := fmt.Sprintf("verify refs/heads/%s %s\n", def, base)
-	if ref.gone {
-		input += fmt.Sprintf("verify %s %s\n", ref.upstream, strings.Repeat("0", len(ref.tip)))
+// sweepHead names the current branch so the transaction can verify it
+// without asking Git to lock the same ref twice when HEAD is the default.
+func sweepHead(dir string) (string, error) {
+	head, err := sweepRead(dir, "symbolic-ref", "-q", "HEAD")
+	if ge, ok := errors.AsType[*GitError](err); ok && ge.ExitCode == 1 {
+		return "HEAD", nil
 	}
-	input += fmt.Sprintf("option no-deref\ndelete %s %s\n", refname, ref.tip)
+	return strings.TrimSpace(head), err
+}
+
+// Git takes all the ref locks in one transaction. Moving any pinned ref
+// cannot invalidate the merge proof between the check and deletion.
+func deletePinnedBranch(dir, def, base, refname, tip, upstream, upstreamTip string) error {
+	defaultRef := "refs/heads/" + def
+	input := fmt.Sprintf("verify %s %s\n", defaultRef, base)
+	if upstream != defaultRef {
+		input += fmt.Sprintf("verify %s %s\n", upstream, upstreamTip)
+	}
+	input += fmt.Sprintf("option no-deref\ndelete %s %s\n", refname, tip)
 	ctx := context.Background()
 	res, err := Default.Run(ctx, Request{Dir: dir, Args: []string{"update-ref", "--stdin"}, Stdin: strings.NewReader(input)})
 	if err != nil {

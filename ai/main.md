@@ -10,7 +10,7 @@ A multi-component project for managing Git multi-account environments across pro
 
 ## Product scope
 
-Keep new features focused on managing Git identities, credentials and clones. Hand staging, commits, general branch pushes, rebases, merges, conflict resolution and history rewriting to the user's terminal, editor or provider. Follow the existing product decisions for guided moves and mirroring.
+Keep new features focused on managing Git identities, credentials and clones. Hand staging, commits, general branch pushes, rebases, merges, conflict resolution and history rewriting to the user's terminal, editor or provider. Hand repository transfers to the provider or the user’s Git client. Set up mirrors through provider APIs.
 
 ## Core Principles
 

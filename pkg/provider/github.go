@@ -279,28 +279,6 @@ func repoFullFromAPI(repoURL string) string {
 	return strings.TrimSpace(after)
 }
 
-// --- RepoDeleter ---
-
-func (g *GitHub) DeleteRepo(ctx context.Context, baseURL, token, _, owner, repoName string) error {
-	if owner == "" || repoName == "" {
-		return fmt.Errorf("github delete repo: owner and repo name required")
-	}
-	url := fmt.Sprintf("%s/repos/%s/%s", g.apiBase(baseURL), owner, repoName)
-	if err := doDelete(ctx, url, g.authHeaders(token)); err != nil {
-		if IsScopeDenied(err) {
-			return &InsufficientScopesError{
-				Provider:       "github",
-				Action:         ActionDeleteRepo,
-				RequiredScopes: ScopesForAction("github", ActionDeleteRepo),
-				BaseURL:        baseURL,
-				cause:          err,
-			}
-		}
-		return fmt.Errorf("github delete repo: %w", err)
-	}
-	return nil
-}
-
 func (g *GitHub) RepoExists(ctx context.Context, baseURL, token, _, owner, repoName string) (bool, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s", g.apiBase(baseURL), owner, repoName)
 	var repo githubRepo

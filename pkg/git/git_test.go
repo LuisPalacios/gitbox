@@ -421,6 +421,11 @@ func TestSweepBranches_Gone(t *testing.T) {
 	if len(result.Gone) != 1 || result.Gone[0] != "old-branch" {
 		t.Errorf("Gone = %v, want [old-branch]", result.Gone)
 	}
+	deleted, skipped, errs := DeletePreviewedBranches(clonePath, result)
+	if len(deleted) != 0 || len(errs) != 0 || !slices.Equal(skipped, []string{"old-branch"}) {
+		t.Fatalf("gone branch: deleted=%v skipped=%v errors=%v", deleted, skipped, errs)
+	}
+	runGit(t, clonePath, "show-ref", "--verify", "refs/heads/old-branch")
 }
 
 func TestSweepBranches_ProtectsCurrentAndDefault(t *testing.T) {
@@ -481,7 +486,7 @@ func TestDeleteStaleBranches(t *testing.T) {
 		}
 	}
 	t.Run("changed and protected branches survive", func(t *testing.T) {
-		for _, name := range []string{"moved", "in-use", "recovered", "bisecting", "configured"} {
+		for _, name := range []string{"moved", "in-use", "recovered", "bisecting", "configured", "lost"} {
 			runGit(t, clonePath, "branch", name)
 		}
 		runGit(t, clonePath, "config", "branch.recovered.remote", "origin")
@@ -494,6 +499,8 @@ func TestDeleteStaleBranches(t *testing.T) {
 		runGit(t, clonePath, "branch", "new-since-preview")
 		runGit(t, clonePath, "branch", "-f", "moved", "HEAD~1")
 		runGit(t, clonePath, "update-ref", "refs/remotes/origin/recovered", "HEAD")
+		runGit(t, clonePath, "config", "branch.lost.remote", "origin")
+		runGit(t, clonePath, "config", "branch.lost.merge", "refs/heads/lost")
 		runGit(t, clonePath, "worktree", "add", filepath.Join(t.TempDir(), "linked"), "in-use")
 		wt := filepath.Join(t.TempDir(), "bisect")
 		runGit(t, clonePath, "worktree", "add", wt, "bisecting")
@@ -503,7 +510,7 @@ func TestDeleteStaleBranches(t *testing.T) {
 			t.Fatalf("deleted=%v skipped=%v errors=%v", deleted, skipped, errs)
 		}
 		slices.Sort(skipped)
-		if !slices.Equal(skipped, []string{"bisecting", "in-use", "moved", "recovered"}) {
+		if !slices.Equal(skipped, []string{"bisecting", "in-use", "lost", "moved", "recovered"}) {
 			t.Fatalf("skipped %v", skipped)
 		}
 		for _, name := range append(skipped, "new-since-preview") {
@@ -512,6 +519,31 @@ func TestDeleteStaleBranches(t *testing.T) {
 		if _, err := output(clonePath, "config", "--get", "branch.configured.description"); err == nil {
 			t.Fatal("deleted branch retained its local settings")
 		}
+	})
+
+	t.Run("changed upstream refuses deletion", func(t *testing.T) {
+		const name = "upstream-moved"
+		const upstream = "refs/remotes/origin/upstream-moved"
+		runGit(t, clonePath, "branch", name)
+		runGit(t, clonePath, "config", "branch."+name+".remote", "origin")
+		runGit(t, clonePath, "config", "branch."+name+".merge", "refs/heads/"+name)
+		runGit(t, clonePath, "update-ref", upstream, "HEAD")
+		preview, err := SweepBranches(clonePath)
+		if err != nil || !slices.Contains(preview.Merged, name) {
+			t.Fatalf("preview = %+v, %v", preview, err)
+		}
+		// Move the upstream after the merge proof but before its transaction.
+		pin := preview.Tips[name]
+		runGit(t, clonePath, "update-ref", upstream, "HEAD~1")
+		ref := "refs/heads/" + name
+		if err := deletePinnedBranch(clonePath, preview.DefaultBranch, pin, ref, pin, upstream, pin); err == nil {
+			t.Fatal("ref transaction ignored the changed upstream")
+		}
+		deleted, skipped, errs := DeletePreviewedBranches(clonePath, preview)
+		if len(errs) != 0 || slices.Contains(deleted, name) || !slices.Contains(skipped, name) {
+			t.Fatalf("deleted=%v skipped=%v errors=%v", deleted, skipped, errs)
+		}
+		runGit(t, clonePath, "show-ref", "--verify", ref)
 	})
 
 }
@@ -596,6 +628,12 @@ func TestSweepBranches_SquashMergedLocalOnly(t *testing.T) {
 		t.Errorf("local-squash not found in Squashed. Squashed=%v, Merged=%v, Gone=%v",
 			result.Squashed, result.Merged, result.Gone)
 	}
+	deleted, skipped, errs := DeletePreviewedBranches(clonePath, result)
+	if len(deleted) != 0 || len(errs) != 0 || !slices.Equal(skipped, []string{"local-squash"}) {
+		t.Fatalf("squash-equivalent branch: deleted=%v skipped=%v errors=%v", deleted, skipped, errs)
+	}
+	runGit(t, clonePath, "show-ref", "--verify", "refs/heads/local-squash")
+
 	// Advance the base on an unrelated path. The patch remains equivalent
 	// even though its tree is now different from the branch tree.
 	writeFile(t, filepath.Join(clonePath, "later"), "later work\n")

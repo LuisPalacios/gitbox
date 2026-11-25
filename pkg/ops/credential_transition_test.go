@@ -16,7 +16,7 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/heal"
 )
 
-func testTransitionOwner(cfg *config.Config) TransitionOwner {
+func testTransitionOwner(ctx context.Context, cfg *config.Config) TransitionOwner {
 	return TransitionOwner{
 		Commit: func(change func(*config.Config) error) (*config.Config, error) {
 			next, err := cfg.Clone()
@@ -30,13 +30,13 @@ func testTransitionOwner(cfg *config.Config) TransitionOwner {
 			return cfg.Clone()
 		},
 		Repair: func(cfg *config.Config, source, repo string) (heal.Report, bool) {
-			return heal.Repo(cfg, source, repo), true
+			return heal.RepoContext(ctx, cfg, source, repo), true
 		},
 	}
 }
 
 func renameAccountInMemory(t *testing.T, cfg *config.Config, oldKey, newKey string) error {
-	report, err := RenameAccount(t.Context(), cfg, oldKey, newKey, testTransitionOwner(cfg))
+	report, err := RenameAccount(t.Context(), cfg, oldKey, newKey, testTransitionOwner(t.Context(), cfg))
 	if err == nil && !report.OK {
 		return fmt.Errorf("rename incomplete: %+v", report)
 	}
@@ -70,7 +70,7 @@ func TestCredentialSwitchRejectsInvalidCandidateAndKeepsOldArtifacts(t *testing.
 			if err := credential.StoreToken("acct", "previous-pat"); err != nil {
 				t.Fatal(err)
 			}
-			owner := testTransitionOwner(cfg)
+			owner := testTransitionOwner(t.Context(), cfg)
 			owner.Commit = func(func(*config.Config) error) (*config.Config, error) {
 				return nil, errors.New(canary)
 			}
@@ -121,7 +121,7 @@ func TestCredentialSwitchRetryAfterRepairFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	makeClone(t, cfg, key, repo, "https://alice@github.com/alice/repo.git")
-	owner := testTransitionOwner(cfg)
+	owner := testTransitionOwner(t.Context(), cfg)
 	path := filepath.Join(root, "retry.json")
 	commit := owner.Commit
 	owner.Commit = func(change func(*config.Config) error) (*config.Config, error) {
@@ -147,7 +147,7 @@ func TestCredentialSwitchRetryAfterRepairFailure(t *testing.T) {
 		t.Fatal("old token retired before repair")
 	}
 
-	owner = testTransitionOwner(reopened)
+	owner = testTransitionOwner(t.Context(), reopened)
 	report, err = ChangeCredentialType(t.Context(), reopened, key, "ssh", "", owner)
 	if err != nil || !report.OK || reopened.Accounts[key].CredentialTransition != nil {
 		t.Fatalf("retry = %+v (%v)", report, err)
@@ -168,7 +168,7 @@ func TestRenameAccountDoesNotOverwriteDestinationCredential(t *testing.T) {
 	if err := credential.StoreToken("new", "unrelated-fixture"); err != nil {
 		t.Fatal(err)
 	}
-	report, err := RenameAccount(t.Context(), cfg, "old", "new", testTransitionOwner(cfg))
+	report, err := RenameAccount(t.Context(), cfg, "old", "new", testTransitionOwner(t.Context(), cfg))
 	if err != nil || !failedStep(report, StepPrepare, "") {
 		t.Fatalf("rename = %+v (%v)", report, err)
 	}
@@ -190,7 +190,7 @@ func TestRenameAccountResumesAfterSaveFailure(t *testing.T) {
 	if err := credential.StoreToken("old", "fixture"); err != nil {
 		t.Fatal(err)
 	}
-	owner := testTransitionOwner(cfg)
+	owner := testTransitionOwner(t.Context(), cfg)
 	commit := owner.Commit
 	owner.Commit = func(change func(*config.Config) error) (*config.Config, error) {
 		if cfg.Accounts["old"].CredentialTransition != nil {
@@ -251,7 +251,7 @@ func TestRenameAccountReadOnlyCredentialDirectory(t *testing.T) {
 		os.Remove(probe.Name())
 		t.Skip("this process can write to read-only directories")
 	}
-	report, err := RenameAccount(t.Context(), cfg, "old", "new", testTransitionOwner(cfg))
+	report, err := RenameAccount(t.Context(), cfg, "old", "new", testTransitionOwner(t.Context(), cfg))
 	if err != nil || !failedStep(report, StepPrepare, "") {
 		t.Fatalf("rename = %+v (%v)", report, err)
 	}
@@ -285,7 +285,7 @@ func TestRenameAccountRetriesRetirementAndRejectsReassignedOldKey(t *testing.T) 
 		t.Fatal(err)
 	}
 	makeClone(t, cfg, "old", repo, "https://alice@github.com/alice/repo.git")
-	owner := testTransitionOwner(cfg)
+	owner := testTransitionOwner(t.Context(), cfg)
 	owner.Repair = func(*config.Config, string, string) (heal.Report, bool) {
 		if err := credential.StoreToken("old", "independent-replacement"); err != nil {
 			t.Fatal(err)
@@ -300,7 +300,7 @@ func TestRenameAccountRetriesRetirementAndRejectsReassignedOldKey(t *testing.T) 
 		t.Fatal("retirement deleted the changed credential")
 	}
 	cfg.Accounts["old"] = testAccount("token") // Simulate an external writer.
-	if _, err := RenameAccount(t.Context(), cfg, "old", "new", testTransitionOwner(cfg)); !errors.Is(err, config.ErrExists) {
+	if _, err := RenameAccount(t.Context(), cfg, "old", "new", testTransitionOwner(t.Context(), cfg)); !errors.Is(err, config.ErrExists) {
 		t.Fatalf("rename retry did not reject re-created key: %v", err)
 	}
 	if got, _ := credential.GetToken("old"); got != "independent-replacement" {

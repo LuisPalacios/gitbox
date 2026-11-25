@@ -268,7 +268,6 @@ func startupStatusContract(revision uint64) contractRow {
 }
 
 func contractRows(clone string, revision uint64) []contractRow {
-	move := MoveRequestDTO{SourceSourceKey: "acct", SourceRepoKey: "org/repo", DestAccountKey: "other", DestOwner: "bob", DestRepoName: "repo"}
 	return []contractRow{
 		{name: "GetConfig", call: func(b Backend) (any, error) { return b.GetConfig() }},
 		{name: "GetStartupSnapshot", call: func(b Backend) (any, error) { return b.GetStartupSnapshot() }},
@@ -347,9 +346,6 @@ func contractRows(clone string, revision uint64) []contractRow {
 		{name: "CheckMirrorCredentials", call: func(b Backend) (any, error) { return b.CheckMirrorCredentials("acct"), nil }},
 		{name: "DoctorRun", call: func(b Backend) (any, error) { return b.DoctorRun(), nil }},
 		{name: "DoctorPrecheck", call: func(b Backend) (any, error) { return b.DoctorPrecheck("token"), nil }},
-		{name: "CheckMoveReadiness", call: func(b Backend) (any, error) { return b.CheckMoveReadiness("acct", "other", false), nil }},
-		{name: "ListMoveDestinationOwners", call: func(b Backend) (any, error) { return b.ListMoveDestinationOwners("other"), nil }},
-		{name: "PreflightMove", call: func(b Backend) (any, error) { return b.PreflightMove(move), nil }},
 		{name: "GetPRSettings", call: func(b Backend) (any, error) { return b.GetPRSettings(), nil }},
 		{name: "GetPRsForRepo", call: func(b Backend) (any, error) { return b.GetPRsForRepo("acct", "org/repo"), nil }},
 		{name: "RefreshAllPRs", call: func(b Backend) (any, error) { b.RefreshAllPRs(); return nil, nil }, until: []string{"pr:refreshed"}},
@@ -1131,8 +1127,6 @@ func TestRepositoryEventsAreRelayed(t *testing.T) {
 		{"pull:done", map[string]any{"source": "acct", "repo": "org/repo", "skipped": "dirty", "state": "dirty", "modified": 2, "untracked": 1, "ahead": 0, "behind": 3}},
 		{"pull:done", map[string]any{"source": "acct", "repo": "org/other", "error": "offline", "code": "git.offline", "skipped": true, "host": "github.com"}},
 		{"mirror:setup:done", MirrorSetupResult{MirrorKey: "mir", RepoKey: "org/repo", Created: true, Mirrored: true, Method: "api"}},
-		{"move:progress", MoveProgressEventDTO{Phase: "fetch", Message: "Fetching"}},
-		{"move:done", MoveResultDTO{NewOrigin: "https://example.invalid/o/r.git", DestRepoCreated: true, Warnings: []string{"w"}}},
 		{"reconcile:done", ReconcileDTO{Adopted: 1, Unmatched: []OrphanRepoDTO{}, Ignored: []OrphanRepoDTO{}, Incomplete: []IncompleteCloneDTO{{Source: "acct", Repo: "org/x", Path: "/h/x"}}}},
 	}
 	op := link.Host.newOperation().atRevision(7)
@@ -1152,7 +1146,7 @@ func TestRepositoryEventsAreRelayed(t *testing.T) {
 		got := link.Events.named(e.name)
 		i := counts[e.name]
 		counts[e.name]++
-		if e.name == "clone:progress" || e.name == "move:progress" {
+		if e.name == "clone:progress" {
 			if len(got) == 0 {
 				t.Errorf("%s was not relayed", e.name)
 			}

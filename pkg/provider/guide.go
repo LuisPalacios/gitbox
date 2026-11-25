@@ -26,8 +26,7 @@ func TokenCreationURL(providerName, baseURL string) string {
 // in the provider's own vocabulary. Every PAT gitbox uses gets the same list:
 // a Token account's PAT, an SSH companion PAT and the PAT a GCM account keeps
 // for the API or mirrors. It covers discovery, clone and fetch, the owner
-// pickers, repo creation and mirrors. Deleting repos needs one more scope,
-// which ScopesForAction reports when a delete is refused.
+// pickers, repo creation and mirrors.
 //
 // Keep it in step with "Token scopes by capability" in docs/credentials.md.
 func TokenRequiredScopes(providerName string) string {

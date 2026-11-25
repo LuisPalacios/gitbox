@@ -57,7 +57,7 @@ func (a *App) previewSweepLocal(sourceKey, repoKey string) SweepPreviewDTO {
 		return SweepPreviewDTO{Error: userMsg(err)}
 	}
 	preview := SweepPreviewDTO{Merged: slices.Clone(result.Merged), Gone: slices.Clone(result.Gone), Squashed: slices.Clone(result.Squashed)}
-	if len(result.Tips) > 0 {
+	if len(result.Merged) > 0 {
 		a.mu.Lock()
 		if a.sweepPreview == request {
 			preview.ID = rand.Text()
@@ -68,7 +68,7 @@ func (a *App) previewSweepLocal(sourceKey, repoKey string) SweepPreviewDTO {
 	return preview
 }
 
-// ConfirmSweep deletes the stale branches found by PreviewSweep.
+// ConfirmSweep deletes the merged branches found by PreviewSweep.
 func (a *App) ConfirmSweep(sourceKey, repoKey string, selection SweepPreviewDTO) SweepDeleteDTO {
 	return a.be().ConfirmSweep(sourceKey, repoKey, selection)
 }
@@ -88,11 +88,14 @@ func (a *App) confirmSweepLocal(sourceKey, repoKey string, selection SweepPrevie
 	if selection.ID == "" || pending == nil || pending.id != selection.ID || pending.source != sourceKey || pending.repo != repoKey || !os.SameFile(pending.folder, folder) ||
 		!slices.Equal(pending.result.Gone, selection.Gone) || !slices.Equal(pending.result.Merged, selection.Merged) || !slices.Equal(pending.result.Squashed, selection.Squashed) {
 		a.mu.Unlock()
-		return SweepDeleteDTO{Skipped: slices.Concat(selection.Gone, selection.Merged, selection.Squashed)}
+		return SweepDeleteDTO{Skipped: slices.Clone(selection.Merged)}
 	}
 	a.sweepPreview = nil
 	a.mu.Unlock()
-	deleted, skipped, errs := git.DeletePreviewedBranches(path, pending.result)
+	// Gone and squashed branches are informational only.
+	result := pending.result
+	result.Gone, result.Squashed = nil, nil
+	deleted, skipped, errs := git.DeletePreviewedBranches(path, result)
 	response := SweepDeleteDTO{Deleted: deleted, Skipped: skipped}
 	if len(errs) > 0 {
 		response.Error = userMsg(errs[0])

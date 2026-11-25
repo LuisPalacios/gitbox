@@ -24,6 +24,7 @@ Start with the developer guide, then testing. Multiplatform is optional but reco
 | [Local gate](local-gate.md)                           | Verifying each commit on my macOS, Linux and Windows hosts before merging  |
 | [Architecture](architecture.md)                       | Design, package responsibilities, config file reference                    |
 | [Release signing](release-signing.md)                 | How releases are signed and verified, agent setup, forks                   |
+| [Upcoming release notes](release-notes.md)            | Notable changes in the next release                                        |
 | [macOS signing](macos-signing.md)                     | Optional Apple code signing and notarization in CI                         |
 | [Agentic tools directory](agentic-tools-directory.md) | How AI harness detection reads its catalog                                 |
 | [Remote mode spike](remote-spike.md)                  | Decision record for remote mode measurements (#234), English only          |

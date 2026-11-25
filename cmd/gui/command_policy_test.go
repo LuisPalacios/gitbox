@@ -13,13 +13,10 @@ import (
 )
 
 // Keep the exception specific to the bound entry point, the function that
-// performs the operation and the operation itself. The existing guided
-// Move entries document current behavior while #198 is open.
+// performs the operation and the operation itself.
 var commandPolicyExceptions = map[commandRoute]string{
 	{"DeleteRepoFolder", "ops.removeCloneFolder", "remove folder"}: "Advanced uses a dedicated clone deletion confirmation",
 	{"DeleteAccount", "ops.removeCloneFolder", "remove folder"}:    "account confirmation requires the Advanced folder opt-in",
-	{"MoveRepo", "git.PushMirror", "git push --mirror"}:            "the confirmed move copies refs to the reviewed destination",
-	{"MoveRepo", "move.Move", "remove folder"}:                     "the confirmed move has a separate source-clone deletion opt-in",
 	{"ConfirmSweep", "git.deletePinnedBranch", "git update-ref"}:   "the confirmed sweep deletes only previewed branch tips under ref locks",
 }
 
@@ -68,7 +65,7 @@ type commandGraph map[string]*commandNode
 func loadCommandGraph(t *testing.T) commandGraph {
 	t.Helper()
 	graph := commandGraph{}
-	for _, dir := range []string{".", "../../pkg/git", "../../pkg/ops", "../../pkg/move", "../../pkg/mirror"} {
+	for _, dir := range []string{".", "../../pkg/git", "../../pkg/ops", "../../pkg/mirror"} {
 		files, err := filepath.Glob(filepath.Join(dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)
@@ -231,7 +228,7 @@ func commandOperation(pkg string, imports map[string]string, locals map[string][
 			return dangerousGitArgs(commandRequestWords(locals, call.Args[1], map[string]bool{}))
 		}
 		if sel == "RemoveAll" || sel == "Remove" {
-			if pkg == "move" && sel == "RemoveAll" || pkg == "ops" && sel == "RemoveAll" {
+			if pkg == "ops" && sel == "RemoveAll" {
 				return "remove folder"
 			}
 			if base != nil && imports[base.Name] == "os" && refersToClonePath(locals, call.Args...) {
