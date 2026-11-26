@@ -43,6 +43,7 @@ case $mode in
 esac
 if [ "$alias" = untrusted ]; then echo "Host key verification failed." >&2; exit 255; fi
 [ -n "$FAKE_SSH_DELAY" ] && sleep "$FAKE_SSH_DELAY"
+if [ "$alias" = denied ]; then echo "user@denied: Permission denied (publickey)." >&2; exit 255; fi
 [ -n "$FAKE_SSH_BANNER" ] && cat "$FAKE_SSH_BANNER"
 PATH="$FAKE_SSH_BIN:$PATH" HOME="$FAKE_SSH_HOME" exec /bin/sh -c "$*"
 `
@@ -655,5 +656,36 @@ func TestLoginLimitOnlyBoundsTheLogin(t *testing.T) {
 	}
 	if called {
 		t.Error("OnSlowLogin ran for a command after the login")
+	}
+}
+
+// TestSlowDenialWithOnePasswordIsTheAgent: 1Password that gives up on an
+// approval can leave ssh with a bare "permission denied". After a slow
+// login with 1Password that is CodeSSHAgent, with its approval hint; a fast
+// denial, or one with another agent, stays CodeSSHAuth.
+func TestSlowDenialWithOnePasswordIsTheAgent(t *testing.T) {
+	f := newFake(t, fakeServer)
+	old := loginWait
+	loginWait = 100 * time.Millisecond
+	t.Cleanup(func() { loginWait = old })
+	const onePassword = "/Users/x/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+	for _, tc := range []struct {
+		name, agent, delay string
+		want               Code
+	}{
+		{"slow with 1Password", onePassword, "1", CodeSSHAgent},
+		{"fast with 1Password", onePassword, "", CodeSSHAuth},
+		{"slow with another agent", "/tmp/ssh-x/agent.1", "1", CodeSSHAuth},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("FAKE_SSH_AGENT", tc.agent)
+			t.Setenv("FAKE_SSH_DELAY", tc.delay)
+			o := f.opts
+			o.ControlDir = t.TempDir()
+			_, err := Uninstall(ctx(t), "denied", o, false)
+			if codeOf(err) != tc.want {
+				t.Errorf("Uninstall = %v (%s), want %s", err, codeOf(err), tc.want)
+			}
+		})
 	}
 }

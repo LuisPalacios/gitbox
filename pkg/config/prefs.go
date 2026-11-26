@@ -180,6 +180,19 @@ func (p *ClientPrefs) SetRemoteFacts(alias string, f RemoteFacts) bool {
 	return true
 }
 
+// ForgetRemoteServer clears the server version recorded for a remote after
+// its server was uninstalled (#336). The host's system and the last
+// connection stay: they still describe the host. It reports false when
+// alias names no remote.
+func (p *ClientPrefs) ForgetRemoteServer(alias string) bool {
+	r := p.remote(alias)
+	if r == nil {
+		return false
+	}
+	r.ServerVersion = ""
+	return true
+}
+
 func (p *ClientPrefs) remote(alias string) *RemoteEntry {
 	for i := range p.Remotes {
 		if p.Remotes[i].Alias == alias {

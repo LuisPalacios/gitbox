@@ -220,7 +220,7 @@ Una sesión conectada refresca su marcador cada minuto y borra su propio marcado
 
 ## Desinstalar
 
-**Desinstalar el servidor de gitbox…**, en el menú contextual del equipo en la ventana Equipos remotos, desconecta y quita el servidor del host. Si otra ventana sigue usando el servidor allí, GitboxApp pregunta otra vez antes.
+**Desinstalar el servidor de gitbox…**, en el menú contextual del equipo en la ventana Equipos remotos, desconecta y quita el servidor del host. Si otra ventana sigue usando el servidor allí, GitboxApp pregunta otra vez antes. El equipo sigue en la lista, y su ficha dice **No instalado** hasta que la siguiente conexión vuelve a instalar el servidor; **Quitar de esta lista** lo olvida.
 
 Con varios equipos seleccionados, los desinstala uno tras otro. Cuando el inicio de sesión en un equipo espera a mi agente SSH, la ventana lo dice con el nombre del equipo; con 1Password, apruebo la petición desde su icono de la barra de menús o de la bandeja. Un inicio de sesión que sigue esperando a los 75 segundos hace fallar ese equipo con `ssh_login`, y la desinstalación sigue con el siguiente.
 
@@ -249,7 +249,7 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 
 - `ssh_missing`: no hay ningún comando `ssh` en este ordenador. Instala OpenSSH.
 - `ssh_auth`: `ssh` no pudo entrar sin pedir nada. Carga la clave en un agente o usa una clave sin frase de paso, y luego ejecuta `ssh <alias>` una vez.
-- `ssh_agent`: el agente no firmó el inicio de sesión. Un agente que pide aprobación, como 1Password, muestra la petición en su icono de la barra de menús o de la bandeja y desiste al cabo de un minuto. Pulsa **Conectar** y apruébala a tiempo.
+- `ssh_agent`: el agente no firmó el inicio de sesión. Un rechazo sin más tras un inicio de sesión lento con 1Password también cuenta como este código. Un agente que pide aprobación, como 1Password, muestra la petición en su icono de la barra de menús o de la bandeja y desiste al cabo de un minuto. Vuelve a intentarlo y apruébala a tiempo.
 - `ssh_login`: `ssh` no inició sesión en 75 segundos, normalmente porque un agente que pide aprobación, como 1Password, sigue esperándola. Aprueba la petición desde su icono de la barra de menús o de la bandeja y vuelve a intentarlo.
 - `ssh_hostkey`: la clave del host no está en `known_hosts`, o ha cambiado. Ejecuta `ssh <alias>` una vez en un terminal.
 - `ssh_timeout`: el host no respondió a tiempo.

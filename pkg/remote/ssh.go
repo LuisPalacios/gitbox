@@ -315,11 +315,12 @@ func (r *runner) run(ctx context.Context, step, script string, stdin io.Reader, 
 
 	// The first ssh of the runner logs in. It reports a slow login and is
 	// stopped when it has not logged in by loginLimit.
-	var expired atomic.Bool
+	var slow, expired atomic.Bool
 	var watch []*time.Timer
 	if !r.loggedIn {
 		watch = append(watch,
 			time.AfterFunc(loginWait, func() {
+				slow.Store(true)
 				r.log.Printf("%s: ssh has not logged in after %s; the ssh agent may be waiting for approval", step, loginWait)
 				if r.o.OnSlowLogin != nil {
 					r.o.OnSlowLogin(r.agent)
@@ -368,7 +369,14 @@ func (r *runner) run(ctx context.Context, step, script string, stdin io.Reader, 
 			return res, newError(CodeBannerOverflow, "the login shell of %s printed more than 1 MiB before the answer", r.alias)
 		}
 		if res.exitCode == 255 || waitErr != nil {
-			return res, classifySSH(r.alias, res.exitCode, res.stderr)
+			e := classifySSH(r.alias, res.exitCode, res.stderr)
+			// 1Password that gives up on an approval nobody gave can leave
+			// ssh with a bare "permission denied". After a slow login that is
+			// the agent, not a key that needs a prompt.
+			if e.Code == CodeSSHAuth && slow.Load() && r.agent == AgentOnePassword {
+				e = newError(CodeSSHAgent, "the ssh agent did not sign the login to %s; approve the request in 1Password and try again", r.alias)
+			}
+			return res, e
 		}
 		return res, newError(CodeSSHFailed, "%s gave no answer on %s", step, r.alias)
 	}

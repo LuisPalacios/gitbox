@@ -421,7 +421,7 @@
 
       <dl class="facts">
         <div><dt>{$t('remotesWindow.system')}</dt><dd translate="no">{current.serverOS ? `${current.serverOS}/${current.serverArch || '?'}` : $t('remotesWindow.unknown')}</dd></div>
-        <div><dt>{$t('remotesWindow.server')}</dt><dd translate="no">{current.serverVersion || $t('remotesWindow.unknown')}</dd></div>
+        <div><dt>{$t('remotesWindow.server')}</dt><dd translate="no">{current.serverVersion || $t(current.lastConnected ? 'remotesWindow.notInstalled' : 'remotesWindow.unknown')}</dd></div>
         <div><dt>{$t('remotesWindow.lastConnected')}</dt><dd>{when(current.lastConnected)}</dd></div>
         <div><dt>{$t('settings.remotes.serverDir')}</dt><dd translate="no">{current.serverDir || $t('remotesWindow.serverDirDefault')}</dd></div>
       </dl>

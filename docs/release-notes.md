@@ -8,4 +8,4 @@ GitboxApp 2.7.4 and earlier remove the `remotes` list from `gitbox.json` when th
 
 ## Uninstall waits for approval, then stops
 
-When an uninstall from the Remote hosts window waits for the SSH agent, the window says so with the host's name and, for 1Password, points at its menu bar or tray icon. A login still waiting after 75 seconds stops with `ssh_login`, and the uninstall goes on with the next host. Connections, reinstalls and doctor runs share the same limit.
+When an uninstall from the Remote hosts window waits for the SSH agent, the window says so with the host's name and, for 1Password, points at its menu bar or tray icon. A login still waiting after 75 seconds stops with `ssh_login`, and the uninstall goes on with the next host. Connections, reinstalls and doctor runs share the same limit. A refusal from 1Password after a slow login reads as the agent's error, with the same hint. After an uninstall, the host stays in the list and its card shows **Not installed** instead of the old server version.

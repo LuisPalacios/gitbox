@@ -689,6 +689,13 @@ func (a *App) RemoteUninstall(alias string, force bool) RemoteUninstallDTO {
 		log.Printf("uninstall: failed: %s", userMsg(err))
 		return RemoteUninstallDTO{RemoteResultDTO: resultOf(err)}
 	}
+	// The host keeps its entry, but no longer a server: the Remote hosts
+	// window then reads "Not installed" instead of the old version (#336).
+	if res.Done {
+		if err := a.clientPrefs().Update(func(p *config.ClientPrefs) { p.ForgetRemoteServer(alias) }); err != nil {
+			log.Printf("uninstall: the host's facts were not saved: %s", userMsg(err))
+		}
+	}
 	return RemoteUninstallDTO{
 		NeedsConfirm: !res.Done && res.OtherClients > 0, OtherClients: res.OtherClients,
 		Done: res.Done, RootKept: res.RootKept,

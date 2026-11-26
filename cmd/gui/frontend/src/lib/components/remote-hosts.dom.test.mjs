@@ -356,6 +356,37 @@ test('the Remote hosts window shows an uninstall that waits for approval and its
   assert.deepEqual(native.unexpected, [])
 })
 
+// After an uninstall the host keeps its place in the list, and its card
+// says the server is not installed instead of the old version (#336). A
+// host that never connected still reads as unknown.
+test('the Remote hosts window shows a host without a server as not installed', async (t) => {
+  const ui = await mount(t)
+  const { RemoteHostsWindow, render, screen, fireEvent, waitFor, within } = ui
+  let removed = false
+  const native = bridge(ui, {
+    ListRemotes: async () => ({ remoteEditors: [], remotes: [
+      { alias: 'nas', open: false, serverOS: 'linux', serverArch: 'amd64', lastConnected: '2026-11-24T17:30:00Z', ...(removed ? {} : { serverVersion: 'v2.8.1' }) },
+      { alias: 'fresh', open: false },
+    ] }),
+    ListSSHHosts: async () => [],
+    RemoteUninstall: async () => { removed = true; return { needsConfirm: false, otherClients: 0, done: true, rootKept: false } },
+  })
+  render(RemoteHostsWindow)
+  const list = within(await waitFor(() => screen.getByRole('listbox')))
+  await fireEvent.click(await waitFor(() => list.getByRole('option', { name: /nas/ })))
+  await waitFor(() => assert.ok(screen.getByText('v2.8.1')))
+  await fireEvent.contextMenu(list.getByRole('option', { name: /nas/ }))
+  await fireEvent.click(within(await waitFor(() => screen.getByRole('menu'))).getByRole('menuitem', { name: /Uninstall/ }))
+  await fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }))
+  await waitFor(() => assert.ok(screen.getByText('gitbox was removed from nas.')))
+  await waitFor(() => assert.ok(screen.getByText('Not installed')))
+  assert.equal(list.getAllByRole('option').length, 2, 'the host stays in the list')
+  await fireEvent.click(list.getByRole('option', { name: /fresh/ }))
+  await waitFor(() => assert.ok(screen.getAllByText('Known after it connects').length >= 1))
+  assert.equal(screen.queryByText('Not installed'), null)
+  assert.deepEqual(native.unexpected, [])
+})
+
 // The hosts are managed only from the switcher: Settings has no Remote hosts
 // row in either window, and does not even ask whether remote mode is on.
 for (const remote of [false, true]) {

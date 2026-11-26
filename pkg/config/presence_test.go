@@ -95,4 +95,16 @@ func TestSetRemoteFacts(t *testing.T) {
 	if back := ExtractPrefs(&c); back.Remotes[0].LastConnected != want.LastConnected || back.Remotes[0].ServerVersion != "v2.9.0" {
 		t.Fatalf("round trip lost the facts: %+v", back.Remotes[0])
 	}
+
+	// An uninstall forgets the server and keeps what describes the host.
+	if !p.ForgetRemoteServer("box") {
+		t.Fatal("ForgetRemoteServer(box) = false")
+	}
+	got = p.Remotes[0]
+	if got.ServerVersion != "" || got.ServerOS != "linux" || got.ServerArch != "amd64" || got.LastConnected != want.LastConnected || got.Editor != "code" {
+		t.Fatalf("after ForgetRemoteServer entry = %+v", got)
+	}
+	if p.ForgetRemoteServer("missing") {
+		t.Fatal("ForgetRemoteServer(missing) = true")
+	}
 }
