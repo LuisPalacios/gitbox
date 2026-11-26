@@ -110,6 +110,7 @@ func (a *App) safePull(ctx context.Context, cfg *config.Config, source, repo str
 	} else if err != nil {
 		result.Error = userMsg(err)
 		result.Code = toUserError(err).Code
+		result.UnsafeConfig = unsafeConfigOf(err)
 	}
 	return result
 }
@@ -180,7 +181,10 @@ func (a *App) pullUnderGate(ctx context.Context, cfg *config.Config, source, rep
 	}
 	defer unlock()
 	if report.Skipped == "" && !a.readOnly {
-		result.RepairWarnings = append([]string{}, report.Warnings...)
+		result.RepairWarnings = append([]string{}, report.OtherWarnings()...)
+	}
+	if len(report.Trust) > 0 {
+		return "", report.Trust[0].Err()
 	}
 	if len(report.Warnings) > 0 {
 		return "", fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))

@@ -40,6 +40,29 @@ export interface Failure {
   host?: string;
   // The connect was refused within a second instead of timing out.
   fast?: boolean;
+  // git.unsafe_config: the setting the clone stores that stopped it.
+  setting?: string;
+}
+
+// Unsafe counts the clones Gitbox paused for safety (git.unsafe_config) per
+// setting, so 66 clones with one cause read as one line, not 66 failures.
+export interface Unsafe {
+  // The setting, such as "core.hooksPath", or '' when the backend did not name it.
+  setting: string;
+  count: number;
+}
+
+const UNSAFE = 'git.unsafe_config';
+
+function addUnsafe(groups: Map<string, Unsafe>, failure: Failure) {
+  const setting = failure.setting || '';
+  const u = groups.get(setting) || { setting, count: 0 };
+  u.count++;
+  groups.set(setting, u);
+}
+
+function sortedUnsafe(groups: Map<string, Unsafe>): Unsafe[] {
+  return [...groups.values()].sort((x, y) => y.count - x.count || x.setting.localeCompare(y.setting));
 }
 
 function start(kind: Run['kind'], keys: string[], accountOf: (key: string) => string, statusOf: (key: string) => string): Run {
@@ -119,6 +142,8 @@ export interface FetchSummary {
   skippedAccounts: string[];
   // Servers that couldn't be reached at all, grouped by host, busiest first.
   unreachable: Unreachable[];
+  // Repos paused for safety, grouped by setting.
+  unsafe: Unsafe[];
   // Repos that failed for any other reason, and the first of them.
   failed: number;
   firstFailure: { key: string; error: string; code?: string } | null;
@@ -135,6 +160,7 @@ export function summarizeFetch(run: Run, statusOf: (key: string) => string, acco
   const offline = new Set(offlineAccounts);
   const skippedAccounts = new Set<string>();
   const hosts = new Map<string, Unreachable>();
+  const unsafe = new Map<string, Unsafe>();
   let checked = 0, nowBehind = 0, skipped = 0, failed = 0;
   let firstFailure: FetchSummary['firstFailure'] = null;
   for (const key of run.done) {
@@ -143,6 +169,7 @@ export function summarizeFetch(run: Run, statusOf: (key: string) => string, acco
       const account = accountOf(key);
       const failure = run.failures[key] || {};
       if (offline.has(account)) { skipped++; skippedAccounts.add(account); }
+      else if (failure.code === UNSAFE) addUnsafe(unsafe, failure);
       else if (UNREACHABLE.has(failure.code || '')) {
         const host = failure.host || '';
         const u = hosts.get(host) || { host, count: 0, fast: false };
@@ -161,9 +188,9 @@ export function summarizeFetch(run: Run, statusOf: (key: string) => string, acco
   }
   const unreachable = [...hosts.values()].sort((x, y) => y.count - x.count || x.host.localeCompare(y.host));
   return {
-    checked, nowBehind, skipped, skippedAccounts: [...skippedAccounts].sort(), unreachable, failed, firstFailure,
+    checked, nowBehind, skipped, skippedAccounts: [...skippedAccounts].sort(), unreachable, unsafe: sortedUnsafe(unsafe), failed, firstFailure,
     localWork: localWorkCount(run.keys, statusOf),
-    changed: nowBehind > 0 || skipped > 0 || unreachable.length > 0 || failed > 0,
+    changed: nowBehind > 0 || skipped > 0 || unreachable.length > 0 || unsafe.size > 0 || failed > 0,
   };
 }
 
@@ -190,6 +217,8 @@ export interface PullSummary {
   pulled: number;
   cloned: number;
   skipped: number;
+  // Clones paused for safety, grouped by setting; not counted in failed.
+  unsafe: Unsafe[];
   failed: number;
   // The failed keys and their errors, in run order.
   failures: Array<{ key: string; error: string }>;
@@ -198,12 +227,15 @@ export interface PullSummary {
 export function summarizePull(run: Run): PullSummary {
   let pulled = 0, cloned = 0, skipped = 0;
   const failures: PullSummary['failures'] = [];
+  const unsafe = new Map<string, Unsafe>();
   for (const key of run.keys) {
     if (!run.done.has(key)) continue;
-    if (run.errors[key]) failures.push({ key, error: run.errors[key] });
+    const failure = run.failures[key] || {};
+    if (run.errors[key] && failure.code === UNSAFE) addUnsafe(unsafe, failure);
+    else if (run.errors[key]) failures.push({ key, error: run.errors[key] });
     else if (run.skips[key]) skipped++;
     else if (run.clones.has(key)) cloned++;
     else if (!run.unchanged.has(key)) pulled++;
   }
-  return { pulled, cloned, skipped, failed: failures.length, failures };
+  return { pulled, cloned, skipped, unsafe: sortedUnsafe(unsafe), failed: failures.length, failures };
 }

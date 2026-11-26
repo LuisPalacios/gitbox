@@ -72,6 +72,11 @@ export interface fetchAllDoneDTO {
   error?: string;
 }
 
+export interface UnsafeConfigDTO {
+  setting: string;
+  scope: string;
+}
+
 export interface fetchDoneDTO {
   source: string;
   repo: string;
@@ -81,6 +86,7 @@ export interface fetchDoneDTO {
   skipped?: boolean;
   refusedFast?: boolean;
   upstreamGone?: boolean;
+  unsafeConfig?: UnsafeConfigDTO;
   repairWarnings?: string[];
 }
 
@@ -93,6 +99,7 @@ export interface fetchEventDTO {
   skipped?: boolean;
   refusedFast?: boolean;
   upstreamGone?: boolean;
+  unsafeConfig?: UnsafeConfigDTO;
 }
 
 export interface AIHarnessEntry {
@@ -213,6 +220,7 @@ export interface pullDoneDTO {
   code?: string;
   host?: string;
   skipped?: boolean | string;
+  unsafeConfig?: UnsafeConfigDTO;
   state?: string;
   modified?: number;
   untracked?: number;

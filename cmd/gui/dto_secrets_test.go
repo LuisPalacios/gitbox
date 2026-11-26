@@ -42,7 +42,7 @@ func TestDTOsCarryNoSecrets(t *testing.T) {
 	// inventory below can guard every exported type whose name ends in DTO.
 	for _, typ := range []reflect.Type{
 		reflect.TypeFor[PRAccountUpdateDTO](), reflect.TypeFor[AdoptRequestDTO](),
-		reflect.TypeFor[WindowErrorDTO](), reflect.TypeFor[RemoteWaitingDTO](),
+		reflect.TypeFor[WindowErrorDTO](), reflect.TypeFor[RemoteWaitingDTO](), reflect.TypeFor[UnsafeConfigDTO](),
 	} {
 		check.Inspect(typ, report)
 	}

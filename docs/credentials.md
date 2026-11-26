@@ -178,6 +178,8 @@ Changing an account key in **Edit account** preserves the clone folders. Gitbox 
 
 Gitbox also repairs the identity, remote and credential settings of a clone before each fetch. If a Git include still overrides them, Gitbox warns and skips the fetch for that clone.
 
+Gitbox trusts my global and system Git config. A global `core.hooksPath`, such as a personal folder of `commit-msg` and `pre-commit` hooks, works as usual. When a clone's own config sets `core.hooksPath` outside the clone, `core.fsmonitor` to a program, or a `url.*.insteadOf` rule that sends `origin` to another server, Gitbox pauses fetch and pull for that clone, changes nothing, and explains in the row where the setting lives and how to remove it.
+
 ## Fetch remotes
 
 When Gitbox refreshes a clone, it fetches and prunes `origin`. To include every remote configured in a particular clone, I set `fetch_all_remotes` to `true` on that repo entry in `gitbox.json`. I check its remote destinations before enabling this option.

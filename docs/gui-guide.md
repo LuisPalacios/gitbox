@@ -228,6 +228,7 @@ Needs attention (Simple: **Needs you**), clone details, the account card and the
 | The branches need a merge | I use **Open terminal** to review the histories with my Git tool. |
 | The online copy can't be found | I check access first. If the provider and account support it, **Re-add online repository** opens a form to create an empty online repository. The clone stays on disk. I publish its history separately with my Git tool. I can also use **Stop showing this project** in the clone menu to keep the folder and remove its entry. |
 | Drive not connected | I reconnect the drive or mount the folder. |
+| Gitbox paused this clone for safety | The clone's own Git config sets `core.hooksPath` outside the clone, `core.fsmonitor` to a program, or a `url.*.insteadOf` rule that sends `origin` elsewhere. The row names the setting and where it lives. I open **How to fix it**, copy the commands, run the first to see the setting, remove it if I didn't add it on purpose, and fetch again. **Open terminal** opens a terminal in the clone. Settings in my global or system Git config never pause a clone. |
 | Something went wrong | In Advanced, I can use **Show details** when a diagnostic is available. |
 
 #### Fetch all
@@ -236,7 +237,7 @@ Click **Fetch all** (↻ icon) to check every remote for new commits without pul
 
 #### Activity and result cards
 
-While Fetch all or Pull all runs, a strip under the top bar says what it covers, such as "Fetching 17 clones across 3 accounts" or "Checking 2 for fast-forward updates, then cloning 1", with a progress bar. When it ends, a result card in the bottom-right corner sums it up: how many clones it fetched, how many are now behind and ready to pull, which ones it skipped because their account is offline, any failures with the first error, and that local changes were left untouched. Success cards go away after a few seconds; a card with a failure stays until you close it. Startup and periodic fetches leave a card only when something changed or failed.
+While Fetch all or Pull all runs, a strip under the top bar says what it covers, such as "Fetching 17 clones across 3 accounts" or "Checking 2 for fast-forward updates, then cloning 1", with a progress bar. When it ends, a result card in the bottom-right corner sums it up: how many clones it fetched, how many are now behind and ready to pull, which ones it skipped because their account is offline, how many it skipped for safety and for which setting, any failures with the first error, and that local changes were left untouched. Success cards go away after a few seconds; a card with a failure stays until you close it. Startup and periodic fetches leave a card only when something changed or failed.
 
 When a clone or pull finishes, the row shows **Checking…** while Gitbox checks the local files. If it finds changes, the row shows **Changes on this computer** in Simple mode.
 

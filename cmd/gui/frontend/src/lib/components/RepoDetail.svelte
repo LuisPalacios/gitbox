@@ -51,7 +51,7 @@
     <IdentityProof {simple} {source} {repo} {credentialStatus} {onFixCredential} />
   {/if}
   {#if (simple || tab === 'changes') && issue}
-    <ErrorExplanation info={issue} {simple} {accountKey} actions={issueActions} />
+    <ErrorExplanation info={issue} {simple} {accountKey} path={state.path || ''} actions={issueActions} />
   {/if}
   {#if !simple && tab === 'identity'}
     <!-- The identity read is independent of commit and file details. -->

@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -31,6 +32,22 @@ type Report struct {
 	Fixed    []string // human-readable descriptions of each fix applied
 	Warnings []string // soft failures (e.g. token resolve failed)
 	Skipped  string   // non-empty when the repo was intentionally not healed
+	// Trust holds the settings the clone controls that stop a fetch or a
+	// pull until the user reviews them. Warnings also lists each one, as
+	// its Warning sentence, for callers that only read text.
+	Trust []git.TrustFinding
+}
+
+// OtherWarnings is Warnings without the Trust sentences, for a caller that
+// reports the findings through their typed error.
+func (r Report) OtherWarnings() []string {
+	var out []string
+	for _, w := range r.Warnings {
+		if !slices.ContainsFunc(r.Trust, func(f git.TrustFinding) bool { return f.Warning() == w }) {
+			out = append(out, w)
+		}
+	}
+	return out
 }
 
 // HasWork reports whether the heal touched anything — either a fix or
@@ -107,7 +124,10 @@ func RepoContext(ctx context.Context, cfg *config.Config, sourceKey, repoKey str
 
 	// --- origin URL ---------------------------------------------
 	wantURL := ExpectedOriginURL(acct, repoKey, credType)
-	r.Warnings = append(r.Warnings, snapshot.TrustWarnings(ctx, path, wantURL)...)
+	r.Trust = snapshot.TrustFindings(ctx, path, wantURL)
+	for _, f := range r.Trust {
+		r.Warnings = append(r.Warnings, f.Warning())
+	}
 	curURL := ""
 	if urls := snapshot.All("remote.origin.url"); len(urls) > 0 {
 		curURL = urls[0]

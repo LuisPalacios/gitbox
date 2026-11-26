@@ -228,6 +228,7 @@ La vista Requiere atención (Simple: **Te necesitan**), los detalles del clon, l
 | Las ramas necesitan una fusión | Uso **Abrir terminal** para revisar los historiales con mi herramienta Git. |
 | No se encuentra la copia en línea | Primero compruebo el acceso. Si el proveedor y la cuenta lo permiten, **Volver a añadir el repositorio en línea** abre un formulario para crear un repositorio en línea vacío. El clon se queda en el disco. Publico su historial por separado con mi herramienta Git. También puedo usar **Dejar de mostrar este proyecto** en el menú del clon para conservar la carpeta y quitar su entrada. |
 | Unidad desconectada | Vuelvo a conectar la unidad o monto la carpeta. |
+| Gitbox ha pausado este clon por seguridad | La configuración de Git propia del clon apunta `core.hooksPath` fuera del clon, asigna un programa a `core.fsmonitor` o tiene una regla `url.*.insteadOf` que envía `origin` a otro sitio. La fila nombra el ajuste y dónde está. Abro **Cómo arreglarlo**, copio los comandos, ejecuto el primero para ver el ajuste, lo quito si no lo añadí a propósito y vuelvo a hacer fetch. **Abrir terminal** abre un terminal en el clon. Los ajustes de mi configuración global o de sistema de Git nunca pausan un clon. |
 | Algo ha fallado | En Avanzado puedo usar **Mostrar detalles** si hay un diagnóstico disponible. |
 
 #### Fetch de todo
@@ -236,7 +237,7 @@ Haz clic en **Fetch de todo** (icono ↻) para consultar todos los remotos en bu
 
 #### Tarjetas de actividad y de resultado
 
-Mientras se ejecuta Fetch de todo o Pull de todo, una tira bajo la barra superior dice qué abarca, como "Haciendo fetch de 17 clones en 3 cuentas" o "Comprobando si 2 clones pueden avanzar y luego clonando 1", con una barra de progreso. Cuando termina, una tarjeta de resultado en la esquina inferior derecha lo resume: a cuántos clones hizo fetch, cuántos están ahora por detrás y listos para pull, cuáles omitió porque su cuenta está sin conexión, cualquier fallo con el primer error, y que los cambios locales quedaron intactos. Las tarjetas de éxito desaparecen tras unos segundos; una tarjeta con un fallo se queda hasta que la cierras. Los fetch del arranque y los periódicos solo dejan tarjeta cuando algo cambió o falló.
+Mientras se ejecuta Fetch de todo o Pull de todo, una tira bajo la barra superior dice qué abarca, como "Haciendo fetch de 17 clones en 3 cuentas" o "Comprobando si 2 clones pueden avanzar y luego clonando 1", con una barra de progreso. Cuando termina, una tarjeta de resultado en la esquina inferior derecha lo resume: a cuántos clones hizo fetch, cuántos están ahora por detrás y listos para pull, cuáles omitió porque su cuenta está sin conexión, cuántos omitió por seguridad y por qué ajuste, cualquier fallo con el primer error, y que los cambios locales quedaron intactos. Las tarjetas de éxito desaparecen tras unos segundos; una tarjeta con un fallo se queda hasta que la cierras. Los fetch del arranque y los periódicos solo dejan tarjeta cuando algo cambió o falló.
 
 Al terminar un clonado o pull, la fila muestra **Comprobando…** mientras Gitbox comprueba los archivos locales. Si encuentra cambios, la fila pasa a **Cambios en este ordenador** en modo Simple.
 

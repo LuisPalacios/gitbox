@@ -157,6 +157,29 @@ test('Needs attention hydrates without replaying an older clone completion', asy
   await finish()
 })
 
+test('a clone paused for safety explains the setting, where it lives and how to fix it (#344)', async t => {
+  const { emit, hydrate, screen, within, waitFor, finish } = await dashboard(t)
+  await hydrate()
+  const main = within(screen.getByRole('main'))
+  emit('fetch:allstart', 30, '20', null)
+  emit('fetch:done', 31, '21', {
+    ...row, error: 'git config: unsafe_config (core.hooksPath)', code: 'git.unsafe_config',
+    unsafeConfig: { setting: 'core.hooksPath', scope: 'local' },
+  })
+  emit('fetch:alldone', 32, '20', { error: '1 repository fetches failed: git config: unsafe_config (core.hooksPath)' })
+  assert.ok(await main.findByText('Gitbox paused this clone for safety'))
+  assert.ok(main.getByText(/^The clone’s own config \(\.git\/config\) sets core\.hooksPath to a folder outside the clone/))
+  assert.ok(main.getByText(/^Gitbox changed nothing\./))
+  assert.equal(main.getByText(/--show-origin/).textContent, [
+    'git -C "/fixture/example/actionable" config --show-origin --show-scope --get-all core.hooksPath',
+    'git -C "/fixture/example/actionable" config --local --unset core.hooksPath',
+  ].join('\n'))
+  assert.ok(main.getByRole('button', { name: 'Copy commands' }))
+  await waitFor(() => assert.ok(screen.getByText(/^1 skipped for safety: core\.hooksPath in their own Git config needs review/)))
+  assert.equal(screen.queryByText(/unsafe_config/), null)
+  await finish()
+})
+
 test('a pull completion cannot restore a row after Stop showing this project', async t => {
   const { emit, hydrate, screen, within, fireEvent, waitFor, get, repoStates, finish, completed, releaseReloadStatuses, tick } = await dashboard(t)
   await hydrate()

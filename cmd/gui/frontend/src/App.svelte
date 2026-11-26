@@ -23,7 +23,7 @@
   import { languageStore, normalizeLanguage, remoteTextHost, t } from './lib/i18n';
   import { pushNotice, dismissNotice, errorText } from './lib/notices';
   import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
-  import type { Run, Completion } from './lib/activity';
+  import type { Run, Completion, FetchSummary, Unsafe } from './lib/activity';
   import { Quit } from '../wailsjs/runtime/runtime';
   import type { ConfigDTO, CredentialFinding, RepoState, PullSkipReason, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
@@ -454,7 +454,9 @@
     fetchCompletions = [];
   }
 
-  function finishFetch(error?: string) {
+  // finishFetch leaves the result card of a fetch run and returns its
+  // summary, or null when there was no run.
+  function finishFetch(error?: string): FetchSummary | null {
     flushFetchProgress();
     const run = fetchRun;
     const manual = fetchManual;
@@ -462,26 +464,27 @@
     fetchManual = false;
     if (!run) {
       if (manual && error) pushNotice('error', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), [error]);
-      return;
+      return null;
     }
     const offline = Object.keys(credStatuses).filter((k) => credStatuses[k]?.status === 'offline');
     const sum = summarizeFetch(run, statusOfKey, accountOfKey, offline);
-    if (!manual && !sum.changed) return;
+    if (!manual && !sum.changed) return sum;
     // Nothing was fetched because no server answered: the offline banner
     // already says so, and one card per attempt would only pile up.
-    if (networkDown.length > 0 && sum.checked === 0 && sum.failed === 0) return;
+    if (networkDown.length > 0 && sum.checked === 0 && sum.failed === 0 && sum.unsafe.length === 0) return sum;
     const skippedAccounts = sum.skippedAccounts.join(', ');
     const unreachable = sum.unreachable.map((u) => $t(simple ? 'result.unreachableSimple' : 'result.unreachable', { n: u.count, host: u.host || $t('result.theServer') }));
     // A connect refused within milliseconds is the OS blocking it, not a
     // slow or down server; on macOS that's usually Local Network privacy.
     // The fetches ran on the host that has the data: its OS decides.
     const lanHint = serverOS === 'darwin' && sum.unreachable.some((u) => u.fast) && $t('result.lanHint');
-    const failedKind = sum.unreachable.length > 0 || sum.failed > 0;
+    const failedKind = sum.unreachable.length > 0 || sum.unsafe.length > 0 || sum.failed > 0;
     const id = pushNotice(failedKind ? 'error' : 'success', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), simple ? [
       $t('result.checked', { n: sum.checked }),
       sum.nowBehind > 0 && $t('result.newerOnline', { n: sum.nowBehind }),
       sum.skipped > 0 && $t('result.skippedSimple', { n: sum.skipped, accounts: skippedAccounts }),
       ...unreachable,
+      ...unsafeLines(sum.unsafe),
       sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
       lanHint,
       sum.localWork > 0 && $t('result.wipUntouched'),
@@ -490,11 +493,31 @@
       sum.nowBehind > 0 && $t('result.nowBehind', { n: sum.nowBehind }),
       sum.skipped > 0 && $t('result.skipped', { n: sum.skipped, accounts: skippedAccounts }),
       ...unreachable,
+      ...unsafeLines(sum.unsafe),
       sum.firstFailure && $t('result.failed', { n: sum.failed, error: `${sum.firstFailure.key}: ${failureText(sum.firstFailure)}` }),
       lanHint,
       sum.localWork > 0 && $t('result.localUntouched'),
     ]);
     if (failedKind) fetchFailNotice = { id, keys: new Set(Object.keys(run.errors)) };
+    return sum;
+  }
+
+  // unsafeLines says, once per setting, how many clones Gitbox paused for
+  // safety and where to look (#344).
+  function unsafeLines(unsafe: Unsafe[]): string[] {
+    return unsafe.map((u) => simple
+      ? $t('result.unsafeSimple', { n: u.count })
+      : $t('result.unsafe', { n: u.count, setting: u.setting || $t('result.unsafeAnySetting') }));
+  }
+
+  // fetchProblem is the short reason a fetch-all run failed, from its
+  // summary, for the line in Preferences; '' when the summary has none.
+  function fetchProblem(sum: FetchSummary | null): string {
+    if (!sum) return '';
+    return [
+      ...unsafeLines(sum.unsafe),
+      sum.firstFailure && $t('result.failed', { n: sum.failed, error: `${sum.firstFailure.key}: ${failureText(sum.firstFailure)}` }),
+    ].filter(Boolean).join(' · ');
   }
 
   // failureText explains a failure: the catalog entry for its code when the
@@ -510,18 +533,20 @@
     pullRun = null;
     if (!run) return;
     const sum = summarizePull(run);
-    if (sum.pulled + sum.cloned + sum.skipped + sum.failed + skippedSincePreview === 0) return;
+    const unsafeCount = sum.unsafe.reduce((n, u) => n + u.count, 0);
+    if (sum.pulled + sum.cloned + sum.skipped + sum.failed + unsafeCount + skippedSincePreview === 0) return;
     // Nothing was pulled because no server answered: the offline banner
     // already says so.
     const stoppedByNetwork = sum.failed > 0 && sum.failures.every((f) => run.failures[f.key]?.code === 'git.offline');
-    if (networkDown.length > 0 && stoppedByNetwork && sum.pulled === 0 && sum.cloned === 0 && sum.skipped === 0 && skippedSincePreview === 0) return;
+    if (networkDown.length > 0 && stoppedByNetwork && sum.pulled === 0 && sum.cloned === 0 && sum.skipped === 0 && unsafeCount === 0 && skippedSincePreview === 0) return;
     const first = sum.failures[0];
     const localWork = localWorkCount(Object.keys($repoStates), statusOfKey) > 0;
-    pushNotice(sum.failed > 0 ? 'error' : 'success', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), simple ? [
+    pushNotice(sum.failed > 0 || unsafeCount > 0 ? 'error' : 'success', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), simple ? [
       sum.pulled > 0 && $t('result.updated', { n: sum.pulled }),
       sum.cloned > 0 && $t('result.downloaded', { n: sum.cloned }),
       !run.planID && sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
       skippedSincePreview > 0 && $t('result.pullPlanSkipped', { n: skippedSincePreview }),
+      ...unsafeLines(sum.unsafe),
       sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
       localWork && $t('result.wipUntouched'),
     ] : [
@@ -529,6 +554,7 @@
       sum.cloned > 0 && $t('result.cloned', { n: sum.cloned }),
       !run.planID && sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
       skippedSincePreview > 0 && $t('result.pullPlanSkipped', { n: skippedSincePreview }),
+      ...unsafeLines(sum.unsafe),
       first && $t('result.failed', { n: sum.failed, error: `${first.key}: ${first.error}` }),
       localWork && $t('result.localUntouched'),
     ]);
@@ -1597,9 +1623,9 @@
     fetchingAll = false;
     fetchCrossedReconnect = false;
     fetchingRepos = {};
-    finishFetch(error);
+    const sum = finishFetch(error);
     const now = new Date();
-    lastFetchTime = error ? $t('app.fetchAllError', { error })
+    lastFetchTime = error ? $t('app.fetchAllError', { error: fetchProblem(sum) || error })
       : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
@@ -2097,7 +2123,7 @@
     const notePull = (data: EventPayloads['pull:done'], meta: EventMetadata) => {
       const skip = typeof data.skipped === 'string' ? data.skipped as PullSkipReason : undefined;
       if (pullRun && data.run === pullRunID) {
-        pullRun = noteDone(pullRun, repoKey(data), data.error, { code: data.code, host: data.host }, skip, meta.operationID, data.unchanged);
+        pullRun = noteDone(pullRun, repoKey(data), data.error, { code: data.code, host: data.host, setting: data.unsafeConfig?.setting }, skip, meta.operationID, data.unchanged);
       }
     };
 
@@ -2186,7 +2212,7 @@
             progress: 0,
             pullSkipped: undefined,
             error: data.error,
-            problem: data.error ? { code: data.code, detail: data.error } : undefined,
+            problem: data.error ? { code: data.code, detail: data.error, unsafe: data.unsafeConfig } : undefined,
             failedOperation: data.error ? 'pull' : undefined,
           };
         }
@@ -2222,7 +2248,7 @@
         fetchingRepos = fetchingRepos;
       }
       if (fetchRun) {
-        fetchCompletions.push({ key, operationID: meta.operationID, error: data.error, failure: { code: data.code, host: data.host, fast: data.refusedFast } });
+        fetchCompletions.push({ key, operationID: meta.operationID, error: data.error, failure: { code: data.code, host: data.host, fast: data.refusedFast, setting: data.unsafeConfig?.setting } });
         fetchProgressTimer ??= setTimeout(flushFetchProgress, 125);
       }
       repoStates.update((states) => {
@@ -2230,7 +2256,7 @@
         if (!state || (state.problem && state.failedOperation !== 'fetch') || (!data.error && state.failedOperation !== 'fetch')) return states;
         return { ...states, [key]: {
           ...state,
-          problem: data.error ? { code: data.code, detail: data.error } : undefined,
+          problem: data.error ? { code: data.code, detail: data.error, unsafe: data.unsafeConfig } : undefined,
           failedOperation: data.error ? 'fetch' : undefined,
         } };
       });

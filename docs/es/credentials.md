@@ -178,6 +178,8 @@ Cambiar la clave de una cuenta en **Editar cuenta** conserva las carpetas de los
 
 Gitbox también repara la identidad, el remoto y los ajustes de credencial de un clon antes de cada fetch. Si un include de Git sigue sobrescribiéndolos, Gitbox avisa y omite el fetch de ese clon.
 
+Gitbox confía en mi configuración global y de sistema de Git. Un `core.hooksPath` global, como una carpeta personal de hooks `commit-msg` y `pre-commit`, funciona como siempre. Cuando la configuración propia de un clon apunta `core.hooksPath` fuera del clon, asigna un programa a `core.fsmonitor` o tiene una regla `url.*.insteadOf` que envía `origin` a otro servidor, Gitbox pausa el fetch y el pull de ese clon, no cambia nada y explica en la fila dónde está el ajuste y cómo quitarlo.
+
 ## Fetch de remotos
 
 Al actualizar un clon, Gitbox obtiene las referencias de `origin` y elimina las obsoletas. Para incluir todos los remotos configurados en un clon concreto, pongo `fetch_all_remotes` a `true` en la entrada de ese repo en `gitbox.json`. Compruebo los destinos de sus remotos antes de activar esta opción.
