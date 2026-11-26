@@ -1,5 +1,9 @@
 # Notas de la próxima versión
 
+## Los hooks globales de Git ya no pausan todos los clones
+
+Gitbox 2.8.0 y 2.8.1 pausaban el fetch y el pull de todos los clones cuando la configuración global de Git asignaba `core.hooksPath`, por ejemplo una carpeta personal de hooks `commit-msg` y `pre-commit`, y solo mostraban `unsafe_config (core.hooksPath)`. Gitbox ahora confía en la configuración global y de sistema de Git. Solo pausa un clon cuando su propia configuración apunta `core.hooksPath` fuera del clon, asigna un programa a `core.fsmonitor` o tiene una regla `url.*.insteadOf` que envía `origin` a otro servidor. La fila explica entonces el ajuste, dónde está y cómo quitarlo, y las tarjetas de resultado cuentan esos clones como omitidos por seguridad. Consulta [Credenciales](credentials.md).
+
 ## El modo remoto está siempre activo
 
 El selector de equipo junto al título aparece en cada ventana, sin opción ni ajuste. Gitbox ignora la opción retirada `--experimental-remote`, y el siguiente guardado quita `experimental_remote` de `gitbox.json`. Un `gitbox.json` sin claves remotas carga como antes. Consulta [Modo remoto](remote-mode.md#el-selector-de-equipo).

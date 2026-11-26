@@ -1,5 +1,9 @@
 # Upcoming release notes
 
+## Global Git hooks no longer pause every clone
+
+Gitbox 2.8.0 and 2.8.1 paused fetch and pull on every clone when the global Git config set `core.hooksPath`, for example a personal folder of `commit-msg` and `pre-commit` hooks, and showed only `unsafe_config (core.hooksPath)`. Gitbox now trusts the global and system Git config. It pauses a clone only when the clone's own config sets `core.hooksPath` outside the clone, `core.fsmonitor` to a program, or a `url.*.insteadOf` rule that sends `origin` to another server. The row then explains the setting, where it lives and how to remove it, and result cards count those clones as skipped for safety. See [Credentials](credentials.md).
+
 ## Remote mode is always on
 
 The host switcher next to the title shows in every window, with no flag or setting. Gitbox ignores the retired `--experimental-remote` flag, and the next save drops `experimental_remote` from `gitbox.json`. A `gitbox.json` without remote keys loads as before. See [Remote mode](remote-mode.md#the-host-switcher).
