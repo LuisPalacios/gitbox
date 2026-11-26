@@ -29,7 +29,7 @@ func TestTrustFindings_Scopes(t *testing.T) {
 			return setup{system: "[core]\n\thooksPath = " + outside + "\n"}
 		}, nil},
 		{"global include", func(outside, root string) setup {
-			file := filepath.Join(root, "global-hooks.inc")
+			file := root + "/global-hooks.inc"
 			writeTestFile(t, file, "[core]\n\thooksPath = "+outside+"\n")
 			return setup{global: "[include]\n\tpath = " + file + "\n"}
 		}, nil},
@@ -43,7 +43,7 @@ func TestTrustFindings_Scopes(t *testing.T) {
 			return setup{global: "[core]\n\thooksPath = " + outside + "\n", local: [][]string{{"core.hooksPath", outside}}}
 		}, []TrustFinding{{TrustHooksPath, ScopeLocal}}},
 		{"local include", func(outside, root string) setup {
-			file := filepath.Join(root, "local-hooks.inc")
+			file := root + "/local-hooks.inc"
 			writeTestFile(t, file, "[core]\n\thooksPath = "+outside+"\n")
 			return setup{local: [][]string{{"include.path", file}}}
 		}, []TrustFinding{{TrustHooksPath, ScopeInclude}}},
@@ -70,8 +70,10 @@ func TestTrustFindings_Scopes(t *testing.T) {
 		}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			outside := filepath.Join(t.TempDir(), "hooks")
+			// Config files read backslashes as escapes: they get Windows
+			// paths with forward slashes, which Git accepts.
+			root := filepath.ToSlash(t.TempDir())
+			outside := filepath.ToSlash(filepath.Join(t.TempDir(), "hooks"))
 			s := tc.setup(outside, root)
 			global, system := filepath.Join(root, "global"), filepath.Join(root, "system")
 			writeTestFile(t, global, s.global)

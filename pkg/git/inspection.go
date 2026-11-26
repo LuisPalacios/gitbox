@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -144,9 +145,9 @@ func (s ConfigSnapshot) TrustFindings(ctx context.Context, clone, origin string)
 // winning is the entry that sets a single-value key: Git uses the last one.
 func (s ConfigSnapshot) winning(key string) (ConfigEntry, bool) {
 	key = configKey(key)
-	for i := len(s.Entries) - 1; i >= 0; i-- {
-		if s.Entries[i].Key == key {
-			return s.Entries[i], true
+	for _, e := range slices.Backward(s.Entries) {
+		if e.Key == key {
+			return e, true
 		}
 	}
 	return ConfigEntry{}, false
