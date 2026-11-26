@@ -664,11 +664,11 @@
   .pr-review-simple { background: transparent; color: var(--status-error, #D81E5B); }
   .pr-badge-review {
     color: var(--status-error, #D81E5B);
-    border-color: color-mix(in srgb, var(--status-error, #D81E5B) 40%, transparent);
-    background: color-mix(in srgb, var(--status-error, #D81E5B) 12%, var(--bg-hover));
+    border-color: rgba(216, 30, 91, 0.4);
+    background: var(--pr-review-bg);
   }
   .pr-badge-review:hover {
-    background: color-mix(in srgb, var(--status-error, #D81E5B) 22%, var(--bg-hover));
+    background: var(--pr-review-bg-hover);
     color: var(--status-error, #D81E5B);
   }
   /* ── Repo detail panel ── */

@@ -40,7 +40,7 @@
   .activity {
     display: flex; align-items: center; gap: 12px; padding: 7px 24px; flex: none;
     border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-secondary);
-    background: color-mix(in srgb, #4B95E9 8%, var(--bg-base));
+    background: var(--activity-bg);
   }
   .spin { display: inline-flex; color: var(--spin-color); animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }

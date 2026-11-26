@@ -102,6 +102,7 @@ You do not load rules automatically. **Before editing a file that matches a patt
 | When editing | Read first |
 | --- | --- |
 | `ai/**`, `.claude/CLAUDE.md`, `.claude/rules/**`, `.claude/context/**`, `.claude/skills/**`, `AGENTS.md`, `.codex/rules/**`, `.codex/context/**`, `.agents/skills/**` | `.codex/rules/ai-harness.md` |
+| `cmd/gui/frontend/**` | `.codex/rules/frontend-css.md` |
 | `ai/skills/**` | `.codex/rules/skills-authoring.md` |
 
 <!-- /index:rules -->

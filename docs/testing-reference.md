@@ -171,6 +171,7 @@ This boundary belongs to the test, not the config validator. Accepted configs ca
 - `remotepath.test.mjs` (3) — the line under the host folder field for each answer of the host, which answers make the folder usable, and the 300 ms wait after typing.
 - `remotehost.test.mjs` (6) — the launchers of a remote window: outside one nothing is off; with an editor chosen for the remote only that editor stays on and the rest get its tooltip; Settings offers only the configured editors that open remote folders; editors outside the Go table of `pkg/remote/launch.go` (read by the test) are off with their tooltip, VS Code on any OS stays on; the file manager, the account folder and the config file are off; editor names match the Go side.
 - `tint.test.mjs` (7) — the tint of remote windows (#331, #338): the presets match `config.RemoteTintPresets` and the schema, the theme tokens match `style.css`, every preset tints both surfaces subtly in both themes and keeps primary, secondary and muted text at 4.5:1 or more while the section labels never lose contrast, every preset gets a stripe in its own color and a solid alias badge with the expected shade in each theme, whose text keeps 4.5:1, the kebab-case names of the CSS variables, plus the mix, the contrast and the default for an unknown value.
+- `css-colors.test.mjs` (2) — the colors older WebKitGTK builds can show (#340): no frontend source uses `color-mix()`, comments aside, and every mixed token in `style.css` matches, in both themes, the mix it replaces.
 
 ### Frontend component tests
 
