@@ -295,6 +295,11 @@ test('the Remote hosts window chooses the color of remote windows', async (t) =>
   await waitFor(() => assert.deepEqual(called(native, 'SetRemoteTint'), [['#8b5cf6']]))
   assert.equal(group.getByRole('radio', { name: 'Violet' }).getAttribute('aria-checked'), 'true')
   assert.notEqual(top(), blueTop, 'the preview follows the choice')
+  // The preview shows the stripe and the alias badge in the color (#338).
+  // The DOM writes the colors back as rgb(): violet, and its badge shade in
+  // light (#8558ec) or dark (#8659ed).
+  assert.match(preview.querySelector('.pv-stripe').getAttribute('style'), /background: rgb\(139, 92, 246\)/)
+  assert.match(preview.querySelector('.pv-chip').getAttribute('style'), /background: rgb\((133, 88, 236|134, 89, 237)\)/)
   assert.equal(screen.getByRole('button', { name: 'Reset to blue' }).disabled, false)
 
   // A refused color puts the saved one back and says why.

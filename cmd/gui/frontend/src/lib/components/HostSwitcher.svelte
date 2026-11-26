@@ -4,7 +4,8 @@
   // this computer, or opens the Remote hosts window. It adds no host: that
   // happens in the Remote hosts window. In a remote window the trigger is
   // the former badge of #240 (alias, system in Advanced, connection state),
-  // and the menu also opens the connection log.
+  // and the menu also opens the connection log. A tinted remote window
+  // fills that badge with its color (#338).
   import { onDestroy, tick } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { bridge, events } from '../bridge';
@@ -173,6 +174,20 @@
   }
   .trigger:hover, .trigger[aria-expanded="true"] { border-color: var(--border-hover); background: var(--bg-hover); }
   .trigger:focus-visible, .item:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
+  /* A remote window fills its alias badge with a solid shade of its color
+     (#338), from the --tint-* colors App.svelte sets with the tint; until
+     the tint arrives the badge keeps the neutral look above. The dot and
+     the truncation mark get a ring, so green or red stay visible on it. */
+  :global(html[data-remote-tint]) .trigger.remote {
+    height: 28px; padding: 0 9px 0 10px; border-radius: 14px; font-size: 13px;
+    background: var(--tint-chip-bg); border-color: var(--tint-chip-bg); color: var(--tint-chip-fg);
+  }
+  :global(html[data-remote-tint]) .trigger.remote:hover,
+  :global(html[data-remote-tint]) .trigger.remote[aria-expanded="true"] { background: var(--tint-chip-hover); border-color: var(--tint-chip-hover); }
+  :global(html[data-remote-tint]) .trigger.remote .os { color: var(--tint-chip-fg2); }
+  :global(html[data-remote-tint]) .trigger.remote .chev { stroke: var(--tint-chip-fg2); }
+  :global(html[data-remote-tint]) .trigger.remote .dot,
+  :global(html[data-remote-tint]) .trigger.remote .trunc { box-shadow: 0 0 0 2px var(--tint-chip-fg); }
   .glyph { width: 14px; height: 14px; flex: none; fill: none; stroke: var(--text-secondary); stroke-width: 1.5; stroke-linecap: round; }
   .glyph.host { stroke: var(--text-workspace); }
   .glyph circle { fill: var(--bg-card); }

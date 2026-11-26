@@ -484,8 +484,9 @@
           <button class="btn reset" on:click={() => chooseTint(DEFAULT_TINT)} disabled={tint === DEFAULT_TINT}>{$t('remotesWindow.tint.reset')}</button>
         </div>
         <div class="tint-preview" aria-label={$t('remotesWindow.tint.preview')} role="img">
+          <div class="pv-stripe" style="background: {preview.stripe}"></div>
           <div class="pv-top" style="background: {preview.top}; border-color: {preview.border}; color: {preview.primary}">
-            <span class="pv-dot" style="background: {tint}"></span><span translate="no">gitbox · {current?.alias || 'host'}</span>
+            <span translate="no">gitbox ·</span><span class="pv-chip" translate="no" style="background: {preview.chipBg}; color: {preview.chipFg}">{current?.alias || 'host'}</span>
           </div>
           <div class="pv-row">
             <div class="pv-side" style="background: {preview.side}; border-color: {preview.border}">
@@ -642,7 +643,9 @@
   .reset { margin-left: 6px; }
   .tint-preview { width: 260px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-base); font-size: 10px; }
   .pv-top { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-bottom: 1px solid; font-weight: 600; }
-  .pv-dot { width: 6px; height: 6px; border-radius: 50%; }
+  /* The stripe and the alias badge of a remote window (#338). */
+  .pv-stripe { height: 3px; }
+  .pv-chip { padding: 1px 7px; border-radius: 8px; font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; font-size: 9px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pv-row { display: flex; height: 70px; }
   .pv-side { width: 84px; padding: 6px 8px; border-right: 1px solid; display: flex; flex-direction: column; gap: 5px; }
   .pv-side span:first-child { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; }

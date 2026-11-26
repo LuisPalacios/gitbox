@@ -112,7 +112,7 @@ La ventana marca entonces la acción como fallida con el error de la conexión, 
 
 ### El selector de equipo y la conexión
 
-Una ventana remota tiñe su barra superior y su barra lateral con el color elegido en la ventana Equipos remotos, azul por defecto, para que nunca se parezca a la ventana local.
+Una ventana remota tiñe su barra superior y su barra lateral con el color elegido en la ventana Equipos remotos, azul por defecto, dibuja una franja de ese color en el borde superior y muestra el alias en una insignia sólida de ese color, para que nunca se parezca a la ventana local.
 
 En una ventana remota el selector de equipo junto al título muestra el alias, el sistema del host en el modo avanzado y el estado de la conexión. Su menú abre el registro de conexión, otro equipo remoto ya añadido, la ventana local y la ventana Equipos remotos. El botón **Registro de conexión** de la ventana Equipos remotos trae al frente una ventana abierta del equipo con su registro, y cada ventana registra el estado de su conexión para que el selector de las demás ventanas pueda mostrarlo.
 
