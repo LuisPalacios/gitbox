@@ -13,7 +13,6 @@ export interface GlobalConfig {
   show_pull_plan?: boolean;
   // GUI colour theme: 'light' or 'dark'; absent follows the OS.
   theme?: string;
-  view_mode?: string;
   collapsed?: CollapsedState;
   editors?: EditorInfo[];
   // v2.1 Terminal Profile model (issue #69). SyncProfiles populates these

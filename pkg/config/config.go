@@ -50,11 +50,9 @@ type GlobalConfig struct {
 	// chose not to track; reconcile never adopts or lists them as unmatched.
 	IgnoredClones []string `json:"ignored_clones,omitempty"`
 
-	Language      string       `json:"language,omitempty"`
-	PeriodicSync  string       `json:"periodic_sync,omitempty"`
-	Window        *WindowState `json:"window,omitempty"`
-	CompactWindow *WindowState `json:"compact_window,omitempty"`
-	ViewMode      string       `json:"view_mode,omitempty"` // "full" or "compact"
+	Language     string       `json:"language,omitempty"`
+	PeriodicSync string       `json:"periodic_sync,omitempty"`
+	Window       *WindowState `json:"window,omitempty"`
 	// UIMode is the GUI experience: "simple" (plain words, fewer controls) or
 	// "advanced" (everything). Empty means advanced, so configs written before
 	// the setting existed keep today's screen; onboarding writes "simple".

@@ -282,10 +282,6 @@ export function IsGlobalGCMConfigNeeded() {
   return window['go']['main']['App']['IsGlobalGCMConfigNeeded']();
 }
 
-export function IsPositionOnScreen(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['IsPositionOnScreen'](arg1, arg2, arg3, arg4);
-}
-
 export function ListAccountOrgs(arg1) {
   return window['go']['main']['App']['ListAccountOrgs'](arg1);
 }
@@ -584,10 +580,6 @@ export function SetTheme(arg1) {
 
 export function SetUIMode(arg1) {
   return window['go']['main']['App']['SetUIMode'](arg1);
-}
-
-export function SetViewMode(arg1) {
-  return window['go']['main']['App']['SetViewMode'](arg1);
 }
 
 export function SetupMirrorRepo(arg1, arg2) {

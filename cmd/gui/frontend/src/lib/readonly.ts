@@ -12,14 +12,14 @@
 // SSH keys since #244), so what is left are the
 // launches with no remote equivalent (the file manager, the account folder
 // and the host's config files: the Go side refuses them with
-// not_available_remote), and autostart and the compact view, which a
-// remote window keeps off. The editor, terminal and AI harness launches
+// not_available_remote), and autostart, which a remote window keeps
+// off. The editor, terminal and AI harness launches
 // open the host's folders over ssh (#243), and the harness refresh is a
 // read. Every other call is a read, a served mutation or a client
 // preference.
 export const READ_ONLY_BLOCKED: ReadonlySet<string> = new Set([
   'openAccountFolder', 'openFileInEditor', 'openInExplorer', 'openRepoConfigInEditor',
-  'setAutostart', 'setViewMode',
+  'setAutostart',
 ]);
 
 // isBlocked: a remote window refuses the call. A local window refuses

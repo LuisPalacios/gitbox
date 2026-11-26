@@ -54,7 +54,7 @@ Cuando Gitbox necesita un token, lo busca en este orden:
 
 Al arrancar, Gitbox audita el directorio de credenciales y sus entradas usando solo metadatos: no lee el contenido de los tokens. En macOS y Linux, espera el modo `0700` para el directorio y `0600` para los archivos. En Windows, inspecciona las ACL del directorio y de los archivos y señala las concesiones a identidades distintas del propietario, SYSTEM o Administrators. También informa de los permisos que no puede verificar, los enlaces simbólicos y los tipos de entrada inesperados.
 
-Abre **Ajustes → Comprobación del sistema → Ejecutar** para inspeccionar los hallazgos y sus acciones sugeridas. Si la auditoría detecta exposición, aparece un aviso sobre el panel, incluida la vista Compacta. El aviso abre el mismo informe. Una inspección fallida aparece como un hallazgo en lugar de una comprobación correcta.
+Abre **Ajustes → Comprobación del sistema → Ejecutar** para inspeccionar los hallazgos y sus acciones sugeridas. Si la auditoría detecta exposición, aparece un aviso sobre el panel. El aviso abre el mismo informe. Una inspección fallida aparece como un hallazgo en lugar de una comprobación correcta.
 
 Revisa y cambia los permisos con las herramientas de tu sistema operativo y después pulsa **Volver a comprobar** en Comprobación del sistema para repetir la auditoría. La auditoría nunca repara permisos automáticamente.
 

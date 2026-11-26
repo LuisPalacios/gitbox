@@ -22,22 +22,13 @@ func TestWindowGeometryTarget(t *testing.T) {
 
 		a.windowGeom = geom(10)
 		a.beforeClose(context.Background())
-		if got := loadConfig(t, path).Global; !reflect.DeepEqual(got.Window, ws(10)) || got.CompactWindow != nil {
-			t.Fatalf("BeforeClose in full view: window %+v, compact %+v", got.Window, got.CompactWindow)
+		if got := loadConfig(t, path).Global; !reflect.DeepEqual(got.Window, ws(10)) {
+			t.Fatalf("BeforeClose: window %+v, want x=10", got.Window)
 		}
-
 		a.windowGeom = geom(20)
-		if target := a.SetViewMode("compact"); target != nil {
-			t.Errorf("SetViewMode(compact) returned %+v with no compact window saved", target)
-		}
-		a.windowGeom = geom(30)
 		a.beforeClose(context.Background())
-		got := loadConfig(t, path).Global
-		if got.ViewMode != "compact" || !reflect.DeepEqual(got.Window, ws(20)) || !reflect.DeepEqual(got.CompactWindow, ws(30)) {
-			t.Errorf("after switching to compact: view %q, window %+v, compact %+v", got.ViewMode, got.Window, got.CompactWindow)
-		}
-		if target := a.SetViewMode("full"); target == nil || target.X != 20 {
-			t.Errorf("SetViewMode(full) = %+v, want the saved full window", target)
+		if got := loadConfig(t, path).Global; !reflect.DeepEqual(got.Window, ws(20)) {
+			t.Errorf("a second BeforeClose: window %+v, want x=20", got.Window)
 		}
 	})
 
@@ -54,19 +45,17 @@ func TestWindowGeometryTarget(t *testing.T) {
 		a.windowGeom = geom(10)
 		a.beforeClose(context.Background())
 		a.windowGeom = geom(20)
-		a.SetViewMode("compact")
-		a.windowGeom = geom(30)
 		a.beforeClose(context.Background())
 
 		got := loadConfig(t, localPath).Global
-		if !reflect.DeepEqual(got.Window, ws(1)) || got.CompactWindow != nil {
-			t.Errorf("the remote window wrote the local window's slots: %+v, %+v", got.Window, got.CompactWindow)
+		if !reflect.DeepEqual(got.Window, ws(1)) {
+			t.Errorf("the remote window wrote the local window's geometry: %+v", got.Window)
 		}
-		if r := got.Remotes[0]; r.Window != nil || r.CompactWindow != nil {
+		if r := got.Remotes[0]; r.Window != nil {
 			t.Errorf("the remote window wrote another remote's entry: %+v", r)
 		}
-		if r := got.Remotes[1]; !reflect.DeepEqual(r.Window, ws(20)) || !reflect.DeepEqual(r.CompactWindow, ws(30)) {
-			t.Errorf("remotes[1]: window %+v, compact %+v; want x=20 and x=30", r.Window, r.CompactWindow)
+		if r := got.Remotes[1]; !reflect.DeepEqual(r.Window, ws(20)) {
+			t.Errorf("remotes[1]: window %+v, want x=20", r.Window)
 		}
 		if stamp(t, backendPath) != before {
 			t.Errorf("window geometry touched the backend's file")

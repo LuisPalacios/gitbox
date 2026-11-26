@@ -16,21 +16,21 @@ const server = await readFile(new URL('../../../server.go', import.meta.url), 'u
 const servedBlock = server.slice(server.indexOf('var servedMethods = []string{'));
 const served = new Set([...servedBlock.slice(0, servedBlock.indexOf('\n}\n')).matchAll(/^\t"(\w+)",$/gm)].map((m) => lower(m[1])));
 const UNAVAILABLE = ['openInExplorer', 'openAccountFolder', 'openFileInEditor', 'openRepoConfigInEditor'];
-const REMOTE_OFF = ['setAutostart', 'setViewMode'];
+const REMOTE_OFF = ['setAutostart'];
 
 test('I block a blocked call in a remote window and let it through otherwise', async () => {
   const seen = [];
   let remote = true;
   const calls = ro.guardCalls({
-    setViewMode: (a) => { seen.push(['setViewMode', a]); return Promise.resolve(); },
+    setAutostart: (a) => { seen.push(['setAutostart', a]); return Promise.resolve(); },
     getAllStatus: () => { seen.push(['getAllStatus']); return Promise.resolve([]); },
   }, () => remote, () => 'read-only');
-  await assert.rejects(calls.setViewMode('compact'), (e) => e instanceof ro.ReadOnlyError && e.message === 'read-only');
+  await assert.rejects(calls.setAutostart(true), (e) => e instanceof ro.ReadOnlyError && e.message === 'read-only');
   await calls.getAllStatus();
   assert.deepEqual(seen, [['getAllStatus']]);
   remote = false;
-  await calls.setViewMode('compact');
-  assert.deepEqual(seen, [['getAllStatus'], ['setViewMode', 'compact']]);
+  await calls.setAutostart(true);
+  assert.deepEqual(seen, [['getAllStatus'], ['setAutostart', true]]);
 });
 
 test('I block exactly the mutations the server does not serve', () => {
@@ -54,7 +54,7 @@ test('I block exactly the mutations the server does not serve', () => {
 });
 
 test('I block a call only in a remote window', () => {
-  for (const name of ['setViewMode', 'openInExplorer']) {
+  for (const name of ['setAutostart', 'openInExplorer']) {
     assert.equal(ro.isBlocked(name, true), true, name);
     assert.equal(ro.isBlocked(name, false), false, name);
   }

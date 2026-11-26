@@ -414,7 +414,7 @@ Hago las capturas del README con la app real ejecutándose sobre una flota falsa
 pwsh scripts/demo-fleet/shot.ps1 -Out assets/screenshot-gui.png -Width 1360 -Height 1300
 ```
 
-El README usa `assets/screenshot-gui.png` (modo Simple) y `assets/screenshot-advanced.png`, y la guía de la GUI usa `screenshot-advanced.png`, `screenshot-menu.png` y `screenshot-compact.png`, todas en el tema claro. `screenshot-gui.png` es también la captura AppStream del AppImage de Linux. Ajustes → Terminales lista las terminales y rutas reales del host, así que dejo esa pantalla fuera de las capturas.
+El README usa `assets/screenshot-gui.png` (modo Simple) y `assets/screenshot-advanced.png`, y la guía de la GUI usa `screenshot-advanced.png` y `screenshot-menu.png`, todas en el tema claro. `screenshot-gui.png` es también la captura AppStream del AppImage de Linux. Ajustes → Terminales lista las terminales y rutas reales del host, así que dejo esa pantalla fuera de las capturas.
 
 ---
 

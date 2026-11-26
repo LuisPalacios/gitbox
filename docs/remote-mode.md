@@ -78,7 +78,7 @@ These set up the host's credentials, and also run there (see [Remote hosts](cred
 - changing an account's credential type, except to GCM, which a host refuses;
 - setting up, verifying and regenerating an account's SSH key, whose private key stays on the host.
 
-The compact view and autostart are disabled, with the tooltip "Not available in a remote window": a remote window keeps them off.
+Autostart is disabled, with the tooltip "Not available in a remote window": a remote window keeps it off.
 
 These have no remote equivalent, so they are disabled with the tooltip "Not available for remote hosts": **Reveal in Finder** or **Reveal in Explorer**, opening the account folder, and **Open in Editor** of the config file in Settings.
 

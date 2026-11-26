@@ -148,8 +148,6 @@ export function IsFirstRun():Promise<boolean>;
 
 export function IsGlobalGCMConfigNeeded():Promise<boolean>;
 
-export function IsPositionOnScreen(arg1:number,arg2:number,arg3:number,arg4:number):Promise<boolean>;
-
 export function ListAccountOrgs(arg1:string):Promise<Array<string>>;
 
 export function ListConfigBackups():Promise<Array<main.ConfigBackupInfo>>;
@@ -299,8 +297,6 @@ export function SetShowPullPlan(arg1:string):Promise<void>;
 export function SetTheme(arg1:string):Promise<void>;
 
 export function SetUIMode(arg1:string):Promise<void>;
-
-export function SetViewMode(arg1:string):Promise<main.WindowStateDTO>;
 
 export function SetupMirrorRepo(arg1:string,arg2:string):Promise<void>;
 

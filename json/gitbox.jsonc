@@ -68,7 +68,7 @@
         // hostname, user or key. server_dir overrides where gitbox-server is
         // installed on the remote (absolute or starting with ~/), editor sets
         // a remote-capable editor command, and GitboxApp saves each remote
-        // window's own position in window and compact_window.
+        // window's own position in window.
         // "remotes": [
         //     { "alias": "my-server" },
         //     { "alias": "build-box", "server_dir": "~/apps/gitbox-server", "editor": "code" }

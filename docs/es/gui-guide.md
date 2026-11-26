@@ -127,7 +127,7 @@ Cuando una fila con **Actualización disponible**, **Solo en línea** o **Necesi
 
 Los nombres se muestran sin el prefijo de la organización; pasa el ratón sobre un nombre para verlo completo. Las filas mantienen los tres [botones de lanzamiento](#acciones-de-clones), y el menú ⋯ ofrece Abrir en la web, la carpeta, los editores, los AI harnesses y **Dejar de mostrar este proyecto**.
 
-Simple oculta el resto: la vista Mirrors, el modo borrar, los botones de vista compacta y de tema (el tema sigue en Ajustes), las insignias de contenedor y de rama, los conteos por delante, por detrás y de cambios, y el botón de fetch de cada fila. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta muestra **Hay que revisar la conexión** cuando no se puede llegar al servidor y **Reconectar** cuando una credencial falla. Ajustes oculta las filas Configuración, PR / revisiones, Gitignore global y Terminales. La vista compacta es igual en los dos modos.
+Simple oculta el resto: la vista Mirrors, el modo borrar, el botón de tema (el tema sigue en Ajustes), las insignias de contenedor y de rama, los conteos por delante, por detrás y de cambios, y el botón de fetch de cada fila. La barra superior mantiene **Comprobar todo** y **Actualizar todo**. La salud de la cuenta muestra **Hay que revisar la conexión** cuando no se puede llegar al servidor y **Reconectar** cuando una credencial falla. Ajustes oculta las filas Configuración, PR / revisiones, Gitignore global y Terminales.
 
 Con los indicadores de PR activados, Simple muestra **Revisión pendiente** cuando alguien te pide una revisión. Haz clic en el texto para ver las solicitudes. Avanzado muestra insignias con los conteos de tus PR abiertos (📝) y de los PR que esperan tu revisión (👀).
 
@@ -141,7 +141,7 @@ Uso **Reparar** para aplicar el mantenimiento habitual del clon, **Corregir cred
 
 ### Vista completa
 
-La vista completa muestra la barra superior, la barra lateral, la vista seleccionada y el footer de resumen. La barra superior contiene los anillos de salud y los botones Pull de todo, Fetch de todo, Modo borrar, Vista compacta, tema, Simple/Avanzado y Ajustes; el logo de GitBox del extremo izquierdo pliega la barra lateral. El footer de resumen siempre muestra los conteos de repos y de mirrors.
+El panel muestra la barra superior, la barra lateral, la vista seleccionada y el footer de resumen. La barra superior contiene los anillos de salud y los botones Pull de todo, Fetch de todo, Modo borrar, tema, Simple/Avanzado y Ajustes; el logo de GitBox del extremo izquierdo pliega la barra lateral. El footer de resumen siempre muestra los conteos de repos y de mirrors.
 
 El anillo de repos lleva un icono de rama y se llena a medida que los clones se ponen al día. Una pequeña insignia cuenta lo que aún falta, y al pasar el ratón sobre el anillo se ve la línea completa `N de total al día` (Simple: `Sin acciones pendientes en N de total`). Cuando el anillo tiene algo pendiente, al hacer clic se abre **Requiere atención** (Simple: **Te necesitan**). Avanzado añade un [anillo de mirrors](#anillo-de-salud-de-mirror) cuando hay mirrors configurados.
 
@@ -182,7 +182,7 @@ La vista **Todos los repos** se pliega a dos niveles, y la vista de una cuenta t
 - **Grupos de cuenta** — cada cuenta va en su propia tarjeta suave, aquí y en **Requiere atención**. Su nombre, en mayúsculas y en el color de su proveedor (GitHub índigo, GitLab naranja, Gitea verde, Forgejo rojo, Bitbucket azul), queda en la columna de los puntos de estado de debajo, junto al triángulo ▾ relleno que cuelga a su izquierda. Haz clic en la barra de cabecera o en el nombre para plegar su lista de clones. La cabecera siempre muestra cuántos clones contiene y cuántos requieren atención, plegada o no, así que un problema nunca queda oculto tras un pliegue. El menú ⋯ de la cabecera sigue funcionando y nunca pliega el grupo.
 - **Clones con clones debajo** — un clon que tiene clones anidados o carpetas de workspace aún sin clonar bajo él muestra un chevron ▾ de línea en lugar de su punto de estado, así que su nombre queda alineado con el de sus hermanos; sus palabras de estado siguen diciendo cómo está. Haz clic en el chevron para plegar todo lo que hay debajo, a cualquier profundidad. Cuando el clon tiene actualizaciones, cambios locales u otros detalles que revisar, su nombre abre el panel de detalle; en caso contrario, su nombre también pliega los hijos. Una fila plegada muestra cuántas filas oculta y cuántas de ellas requieren atención.
 
-Gitbox recuerda lo que pliegas entre reinicios (`global.collapsed` en `gitbox.json`) y olvida las entradas de cuentas o clones que borras o renombras. La vista compacta mantiene su propia expansión por cuenta.
+Gitbox recuerda lo que pliegas entre reinicios (`global.collapsed` en `gitbox.json`) y olvida las entradas de cuentas o clones que borras o renombras.
 
 ### Mantener proyectos sincronizados
 
@@ -262,21 +262,6 @@ Haz clic en el nombre de un repo que muestre actualizaciones disponibles, cambio
 El panel mantiene un tamaño compacto y permite recorrer la lista completa con scroll. Conserva los detalles de los archivos pendientes junto a los commits entrantes cuando existen ambos. La lista refleja la última comprobación de actualizaciones; **Comprobar todo** (Avanzado: **Fetch de todo**) la refresca. Abrir el panel no ejecuta fetch ni pull, y **Actualizar** sigue siendo la acción explícita que incorpora los cambios entrantes al clon.
 
 El panel se refresca cuando Gitbox detecta cambios nuevos y se cierra cuando el clon ya no requiere atención. Cambiar de repositorio mientras cargan los detalles nunca sustituye la nueva selección por un resultado anterior.
-
-### Vista compacta
-
-Haz clic en **◧** en la barra superior para cambiar al modo compacto, una tira estrecha de estado de unos 220 px de ancho:
-
-- **Anillo de salud global** — porcentaje y conteo global de sincronización.
-- **Píldoras de cuenta** — una por cuenta con un mini anillo y un conteo de problemas. Haz clic en una para ver sus repos.
-- **Píldora de mirrors** — cuando hay mirrors configurados, el conteo active/total con un punto de color.
-- **Selector de tema** y un botón **◧ Vista completa** abajo.
-
-Así puedes tener Gitbox visible junto a otras apps. El modo compacto solo muestra el estado: vuelve a la vista completa para llegar a las acciones de clones y de cuentas.
-
-<p align="center">
-  <img src="../../assets/screenshot-compact.png" alt="Vista compacta: el anillo global de sincronización y una fila por cuenta, una de ellas desplegada con sus clones" width="220" />
-</p>
 
 ### Clones encontrados en disco
 
@@ -522,7 +507,7 @@ En modo Avanzado, **Ajustes → Comprobación del sistema → Ejecutar** tambié
 
 En una ventana local, elige **Ajustes → Comprobación del sistema → Ejecutar → Exportar diagnóstico**. Revisa la vista previa del JSON y selecciona **Guardar JSON…** para elegir un archivo en este ordenador. Gitbox guarda exactamente el contenido de la vista previa. El archivo incluye versiones, recuentos de configuración, códigos y tiempos de operaciones recientes, la profundidad de la cola de fetch, el estado del planificador y los tiempos de arranque. Gitbox identifica los repositorios en los registros de error con hashes cortos de sus rutas locales. Puedes adjuntar el archivo guardado a un informe de error.
 
-Al arrancar, Gitbox comprueba los permisos de las credenciales sin leer el contenido de los tokens. Si detecta exposición, aparece un aviso sobre el panel, incluida la vista Compacta, que abre Comprobación del sistema. La auditoría informa de problemas y permisos que no puede verificar; nunca los repara automáticamente. Consulta [Permisos de los archivos de credenciales](credentials.md#permisos-de-los-archivos-de-credenciales).
+Al arrancar, Gitbox comprueba los permisos de las credenciales sin leer el contenido de los tokens. Si detecta exposición, aparece un aviso sobre el panel que abre Comprobación del sistema. La auditoría informa de problemas y permisos que no puede verificar; nunca los repara automáticamente. Consulta [Permisos de los archivos de credenciales](credentials.md#permisos-de-los-archivos-de-credenciales).
 
 Los flujos de añadir cuenta y cambiar credencial ejecutan la misma comprobación de herramientas: si eliges el tipo de credencial `gcm` en una máquina sin Git Credential Manager, un banner amarillo muestra el comando de instalación en lugar de un fallo de autenticación críptico más tarde.
 
@@ -569,7 +554,7 @@ Una vez conectada, la ventana del remoto es la ventana completa de Gitbox, que m
 
 - **Qué funciona** — el estado, **Fetch de todo**, **Fetch**, los detalles del repositorio, las insignias de pull requests, el estado de los espejos, **Buscar proyectos**, las comprobaciones de credenciales y **Comprobación del sistema**, todo ejecutado en el host. También los cambios de la configuración del host: editar, renombrar y borrar cuentas, las raíces, los grupos de espejos, añadir repositorios descubiertos a la configuración, ignorar clones, los ajustes y los arreglos de la configuración de git del host, y reparar o restaurar su `gitbox.json`. Añadir una cuenta y configurar sus credenciales también se ejecutan allí: un token se guarda en el host, y una clave SSH se crea y se queda allí, con su clave pública copiada al portapapeles de este ordenador (consulta [Hosts remotos](credentials.md#hosts-remotos)). Clonar, actualizar, borrar clones y crear repositorios, la limpieza, la configuración de espejos, la adopción y la reconciliación también se ejecutan en el host. Su daemon mantiene en marcha las operaciones largas cuando la conexión se cae. Un enlace de PR se abre en el navegador de este ordenador.
 - **Abrir carpetas** — VS Code, un perfil de terminal y un AI harness abren la carpeta en el host: VS Code con su extensión Remote-SSH, y el terminal y el harness en un terminal local que ejecuta `ssh -t` hasta la carpeta. En Windows un perfil de WezTerm o Alacritty abre el terminal en su propia app, y cualquier otro perfil en una consola nueva. Los demás editores aparecen atenuados con «Este editor no puede abrir carpetas en hosts remotos», y con un editor elegido para el remoto, el resto aparece atenuado con «Este remoto se abre en el editor elegido en la ventana Equipos remotos». **Mostrar en Finder** o **Mostrar en el Explorador**, la carpeta de la cuenta y **Abrir en editor** del archivo de configuración aparecen atenuados con «No disponible para hosts remotos».
-- **Qué está desactivado** — la vista compacta y el arranque automático están apagados en esta ventana, con el aviso «No disponible en una ventana remota». GCM no se ofrece, porque un host lo rechaza. El idioma, el tema, Simple o Avanzado y la barra lateral son preferencias de este ordenador y siguen funcionando. La ventana local y las ventanas remotas las comparten: un cambio en una aparece en otra la siguiente vez que recupera el foco, y el guardado de ninguna ventana lo deshace.
+- **Qué está desactivado** — el arranque automático está apagado en esta ventana, con el aviso «No disponible en una ventana remota». GCM no se ofrece, porque un host lo rechaza. El idioma, el tema, Simple o Avanzado y la barra lateral son preferencias de este ordenador y siguen funcionando. La ventana local y las ventanas remotas las comparten: un cambio en una aparece en otra la siguiente vez que recupera el foco, y el guardado de ninguna ventana lo deshace.
 - **El selector** — en una ventana remota el selector de equipo muestra el alias, el sistema del host (solo en Avanzado) y el estado de la conexión. Su menú también abre el registro de conexión. Un **!** rojo significa que el host envió una lista más larga de lo que la ventana muestra.
 - **El tinte** — la barra superior y la barra lateral llevan un tinte suave del color elegido en la ventana Equipos remotos, una franja del color recorre el borde superior y el selector de equipo muestra el alias en una insignia sólida del color, con un texto que mantiene 4,5:1; el contenido, las tarjetas y los colores de estado quedan como en la ventana local, que nunca lleva tinte.
 - **Reconectar** — cuando la conexión se cae, el último estado se queda en pantalla, atenuado, bajo un aviso **Desconectado de** el host con **Conectar**, que vuelve a conectar, borra cualquier error que dejó la desconexión y recarga todo. Las acciones vuelven cuando los clones del host están reconciliados y su estado actualizado.

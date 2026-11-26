@@ -160,3 +160,50 @@ func TestUnknownMembersSurviveCloneAndKnownFieldEdits(t *testing.T) {
 		t.Fatal("editing the copy modified the original")
 	}
 }
+
+// The compact view is gone (#342): a file that still says it was in use
+// loads, keeps the full-window geometry of the local and the remote
+// windows, and the next save writes none of the retired keys.
+func TestRetiredCompactViewKeys(t *testing.T) {
+	const fixture = `{
+		"version": 5,
+		"global": {
+			"roots": ["~/fleet"], "view_mode": "compact",
+			"window": {"x": 10, "y": 20, "width": 1100, "height": 760},
+			"compact_window": {"x": 1, "y": 2, "width": 220, "height": 400},
+			"remotes": [{"alias": "build-host",
+				"window": {"x": 30, "y": 40, "width": 1000, "height": 700},
+				"compact_window": {"x": 3, "y": 4, "width": 210, "height": 390}}]
+		},
+		"accounts": {}, "sources": {}
+	}`
+	path := filepath.Join(t.TempDir(), "gitbox.json")
+	if err := os.WriteFile(path, []byte(fixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if w := cfg.Global.Window; w == nil || w.X != 10 || w.Width != 1100 {
+		t.Errorf("global.window = %+v, want the saved full window", w)
+	}
+	if len(cfg.Global.Remotes) != 1 || cfg.Global.Remotes[0].Window == nil || cfg.Global.Remotes[0].Window.X != 30 {
+		t.Errorf("remotes = %+v, want the remote's window kept", cfg.Global.Remotes)
+	}
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, retired := range []string{`"view_mode"`, `"compact_window"`} {
+		if bytes.Contains(data, []byte(retired)) {
+			t.Errorf("%s survived the save:\n%s", retired, data)
+		}
+	}
+	if !bytes.Contains(data, []byte(`"window"`)) {
+		t.Errorf("the save lost the window geometry:\n%s", data)
+	}
+}

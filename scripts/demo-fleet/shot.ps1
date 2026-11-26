@@ -56,7 +56,7 @@ foreach ($c in $Click) {
 }
 if ($Click.Count -gt 0) { [GbWin]::SetCursorPos($r.R + 50, $r.B + 50) | Out-Null }
 Start-Sleep -Milliseconds 400
-# Clicks can resize the window (e.g. the compact view toggle): measure again.
+# Clicks can resize the window: measure again.
 [GbWin]::GetWindowRect($h, [ref]$r) | Out-Null
 
 $w = $r.R - $r.L; $ht = $r.B - $r.T

@@ -173,7 +173,6 @@ export namespace config {
 	    server_version?: string;
 	    last_connected?: string;
 	    window?: WindowState;
-	    compact_window?: WindowState;
 	
 	    static createFrom(source: any = {}) {
 	        return new RemoteEntry(source);
@@ -189,7 +188,6 @@ export namespace config {
 	        this.server_version = source["server_version"];
 	        this.last_connected = source["last_connected"];
 	        this.window = this.convertValues(source["window"], WindowState);
-	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -339,8 +337,6 @@ export namespace config {
 	    language?: string;
 	    periodic_sync?: string;
 	    window?: WindowState;
-	    compact_window?: WindowState;
-	    view_mode?: string;
 	    ui_mode?: string;
 	    show_pull_plan?: boolean;
 	    theme?: string;
@@ -373,8 +369,6 @@ export namespace config {
 	        this.language = source["language"];
 	        this.periodic_sync = source["periodic_sync"];
 	        this.window = this.convertValues(source["window"], WindowState);
-	        this.compact_window = this.convertValues(source["compact_window"], WindowState);
-	        this.view_mode = source["view_mode"];
 	        this.ui_mode = source["ui_mode"];
 	        this.show_pull_plan = source["show_pull_plan"];
 	        this.theme = source["theme"];
@@ -2167,24 +2161,6 @@ export namespace main {
 	        this.username = source["username"];
 	        this.name = source["name"];
 	        this.email = source["email"];
-	    }
-	}
-	export class WindowStateDTO {
-	    x: number;
-	    y: number;
-	    width: number;
-	    height: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new WindowStateDTO(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.x = source["x"];
-	        this.y = source["y"];
-	        this.width = source["width"];
-	        this.height = source["height"];
 	    }
 	}
 	
