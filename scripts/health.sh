@@ -258,16 +258,26 @@ run_server_build() {
 }
 run_staticcheck() { local bin; bin="$(tool "$STATICCHECK")" || return 1; per_os "$bin" ./...; }
 run_modernize()   { local bin; bin="$(tool "$MODERNIZE")" || return 1; per_os "$bin" ./...; }
+# failures_first FILE — prints a failed go test run without its ok lines,
+# the lines that name a failure and its messages first (#346). A failing
+# package prints all of its stderr, and expected noise there would otherwise
+# fill the truncated summary and hide which test failed.
+failures_first() {
+    local signal='^(--- FAIL|FAIL|panic:|fatal error:|WARNING: DATA RACE)|^[[:space:]]+[^[:space:]]+_test\.go:[0-9]+:'
+    grep -Ev '^(ok |\?) ' "$1" | grep -E "$signal"
+    grep -Ev '^(ok |\?) ' "$1" | grep -Ev "$signal"
+    return 0
+}
 run_test() {
     if ! go test -short ./... >"$tmp/test.full" 2>&1; then
-        grep -Ev '^(ok |\?) ' "$tmp/test.full"
+        failures_first "$tmp/test.full"
         return 1
     fi
     # Windows runs the same schedules above without requiring a C toolchain.
     case "$(go env GOOS)" in
         darwin|linux)
             if ! go test -race -short ./cmd/gui/ ./pkg/config/ ./pkg/git/... >"$tmp/test.race" 2>&1; then
-                grep -Ev '^(ok |\?) ' "$tmp/test.race"
+                failures_first "$tmp/test.race"
                 return 1
             fi
             ;;

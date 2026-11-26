@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# I check that health.sh refuses an invocation that would run no check (#257).
+# I check that health.sh refuses an invocation that would run no check (#257),
+# and that a failed go test shows its failure ahead of other output (#346).
 # Every case exits during argument validation, so no checker runs.
 # HEALTH_SH points the fixture at another copy, for example the script before a fix.
 set -euo pipefail
@@ -54,6 +55,27 @@ bash "$health" -h >"$fixture/help"
 while read -r name; do
     grep -qw -- "$name" "$fixture/help" || fail "help does not list check $name"
 done <<<"$accepted"
+
+# A failed go test puts the failure and its messages first, so the
+# truncated summary names the test, and drops only the ok lines (#346).
+eval "$(sed -n '/^failures_first() {$/,/^}$/p' "$health")"
+declare -F failures_first >/dev/null || fail 'failures_first not found in health.sh'
+{
+    for _ in $(seq 20); do echo 'warning: config backup failed: all 10 backup names already exist'; done
+    printf 'ok  \tgithub.com/example/other\t0.1s\n'
+    printf -- '--- FAIL: TestExample (0.01s)\n'
+    printf '    example_test.go:12: want 1, got 2\n'
+    printf 'FAIL\n'
+    printf 'FAIL\tgithub.com/example/pkg\t1.0s\n'
+} >"$fixture/test.out"
+failures_first "$fixture/test.out" >"$fixture/test.sorted"
+[[ "$(head -n 1 "$fixture/test.sorted")" == '--- FAIL: TestExample (0.01s)' ]] \
+    || fail "failures_first does not start with the failing test: $(head -n 1 "$fixture/test.sorted")"
+grep -n 'example_test.go:12' "$fixture/test.sorted" | grep -q '^2:' \
+    || fail 'failures_first does not put the failure message second'
+[[ $(wc -l <"$fixture/test.sorted") -eq 24 ]] \
+    || fail "failures_first kept $(wc -l <"$fixture/test.sorted") lines, want the 24 that are not ok lines"
+grep -q '^ok ' "$fixture/test.sorted" && fail 'failures_first kept an ok line'
 
 [[ $failures -eq 0 ]] || exit 1
 echo "health.sh argument checks passed"

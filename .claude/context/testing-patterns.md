@@ -63,7 +63,7 @@ I run `bash scripts/test-bootstrap.sh` or `./scripts/health.sh bootstrap` for in
 
 ## Health check argument tests
 
-I run `bash scripts/test-health-args.sh` or `./scripts/health.sh selftest` after changing the argument handling or the check list of `health.sh`. It expects exit code 2 with the valid names for an unknown check or option and for `fuzz` without `HEALTH_FUZZ=1`, exit 0 for `-h`/`--help`, and no started check in any case. It also keeps `CHECKS`, the dispatched checks and the help text in step. When I add a check, I add its name to `CHECKS`, its `want` line and the header comment together. `HEALTH_SH=<copy>` runs the suite against another version of the script as a negative control.
+I run `bash scripts/test-health-args.sh` or `./scripts/health.sh selftest` after changing the argument handling or the check list of `health.sh`. It expects exit code 2 with the valid names for an unknown check or option and for `fuzz` without `HEALTH_FUZZ=1`, exit 0 for `-h`/`--help`, and no started check in any case. It also keeps `CHECKS`, the dispatched checks and the help text in step. When I add a check, I add its name to `CHECKS`, its `want` line and the header comment together. The suite also checks that `failures_first` puts a failed `go test`'s `--- FAIL` lines and messages ahead of stderr noise (#346). `HEALTH_SH=<copy>` runs the suite against another version of the script as a negative control.
 
 ## Test levels
 
