@@ -63,11 +63,6 @@
         // the operating system.
         // "theme": "dark",
 
-        // Experimental remote mode (#233): GitboxApp as the window for a
-        // gitbox-server on another host. Off unless this is true or I launch
-        // with --experimental-remote.
-        // "experimental_remote": true,
-
         // Remote-mode destinations of this machine. alias is an ssh_config
         // Host alias that only the system ssh resolves: gitbox stores no
         // hostname, user or key. server_dir overrides where gitbox-server is

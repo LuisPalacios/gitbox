@@ -384,12 +384,11 @@ func (a *App) be() Backend {
 	return a.backend
 }
 
-// selectBackend picks the Backend of a window. Without the
-// --experimental-remote flag only the local backend can be built. With it, a
-// remote window (#239) gets the RemoteBackend of its session, which answers
-// not_connected until the connection is up; every other window stays local.
-func selectBackend(a *App, experimentalRemote bool) Backend {
-	if experimentalRemote && a.remote != nil {
+// selectBackend picks the Backend of a window. A remote window (#239) gets
+// the RemoteBackend of its session, which answers not_connected until the
+// connection is up; every other window stays local.
+func selectBackend(a *App) Backend {
+	if a.remote != nil {
 		return a.remote.backend
 	}
 	return localBackend{a}

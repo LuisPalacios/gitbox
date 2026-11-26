@@ -1,4 +1,4 @@
-# Modo remoto (experimental)
+# Modo remoto
 
 El modo remoto deja que GitboxApp, en mi portátil, gestione los repositorios de otro ordenador por SSH, como un servidor Linux sin escritorio o un Mac. GitboxApp instala por sí mismo un `gitbox-server` que coincide con él en ese host: sin root, sin internet en el host y sin ningún puerto a la escucha. El diseño sigue a VS Code Remote-SSH.
 
@@ -18,19 +18,15 @@ Host my-server
 
 El modo remoto ejecuta `ssh` con `BatchMode=yes`, así que nunca responde a una pregunta. Antes de añadir un remoto, `ssh my-server` tiene que entrar sin pedir nada:
 
-- La clave está cargada en un agente, o no tiene frase de paso. Un host que solo acepta contraseñas, o una clave cifrada sin agente, falla con `ssh_auth`. Un agente que pide aprobación para cada aplicación, como 1Password, muestra la petición de Gitbox en su icono de la barra de menús o de la bandeja y no en una ventana; si nadie la responde, falla con `ssh_agent` al cabo de un minuto. Cuando el inicio de sesión tarda más de 3 segundos, la ventana de conexión lo dice y, con 1Password, señala su icono.
+- La clave está cargada en un agente, o no tiene frase de paso. Un host que solo acepta contraseñas, o una clave cifrada sin agente, falla con `ssh_auth`. Un agente que pide aprobación para cada aplicación, como 1Password, muestra la petición de Gitbox en su icono de la barra de menús o de la bandeja y no en una ventana; si nadie la responde, falla con `ssh_agent` al cabo de un minuto. Cuando el inicio de sesión tarda más de 3 segundos, la ventana de conexión, o la ventana Equipos remotos durante una desinstalación, lo dice y, con 1Password, señala su icono. Un inicio de sesión que sigue esperando a los 75 segundos se detiene con `ssh_login`.
 - La clave del host ya está en `known_hosts`. Si no lo está, la conexión falla enseguida con `ssh_hostkey`. Ejecuto `ssh my-server` una vez en un terminal y acepto la clave.
 - Lo mismo vale para cada salto de un `ProxyJump`.
 
-## Activar el modo remoto
+## El selector de equipo
 
-El modo remoto viene desactivado. Se activa con la opción `--experimental-remote` o con esta clave en mi `gitbox.json`:
+El modo remoto está siempre activo. El selector de equipo junto al título lista este ordenador y mis remotos, y su **Gestionar equipos remotos…** abre la ventana Equipos remotos.
 
-```json
-"global": { "experimental_remote": true }
-```
-
-Cualquiera de las dos muestra el selector de equipo junto al título, cuyo **Gestionar equipos remotos…** abre la ventana Equipos remotos.
+Las versiones anteriores necesitaban la opción `--experimental-remote` o `"experimental_remote": true` en `global`. GitboxApp ahora ignora las dos, y el siguiente guardado quita la clave de `gitbox.json`. Un `gitbox.json` sin `remotes` simplemente no tiene remotos todavía.
 
 ## Añadir un remoto
 
@@ -40,11 +36,9 @@ GitboxApp comprueba el alias con `ssh -G <alias>`, que lee la configuración sin
 
 ## Conectar
 
-**Conectar** abre el remoto en una ventana propia: un proceso nuevo de GitboxApp arrancado como `GitboxApp --remote <alias> --experimental-remote`. Un segundo **Conectar** trae al frente la ventana abierta. La ventana del remoto sigue abierta cuando cierro la ventana principal.
+**Conectar** abre el remoto en una ventana propia: un proceso nuevo de GitboxApp arrancado como `GitboxApp --remote <alias>`. Un segundo **Conectar** trae al frente la ventana abierta. La ventana del remoto sigue abierta cuando cierro la ventana principal.
 
 La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con my-server…** e **Instalando gitbox en my-server…** en la primera conexión, con **Desconectar** y **Ver registro**. Hasta que lleguen los repositorios, sigue el tema claro u oscuro del sistema. Cuando el servidor responde, la ventana muestra los repositorios del host: consulta [Qué puede hacer una ventana remota](#qué-puede-hacer-una-ventana-remota). Su título sigue siendo `gitbox · my-server`.
-
-`--remote` sin `--experimental-remote` sale con un mensaje.
 
 ## Qué puede hacer una ventana remota
 
@@ -228,6 +222,8 @@ Una sesión conectada refresca su marcador cada minuto y borra su propio marcado
 
 **Desinstalar el servidor de gitbox…**, en el menú contextual del equipo en la ventana Equipos remotos, desconecta y quita el servidor del host. Si otra ventana sigue usando el servidor allí, GitboxApp pregunta otra vez antes.
 
+Con varios equipos seleccionados, los desinstala uno tras otro. Cuando el inicio de sesión en un equipo espera a mi agente SSH, la ventana lo dice con el nombre del equipo; con 1Password, apruebo la petición desde su icono de la barra de menús o de la bandeja. Un inicio de sesión que sigue esperando a los 75 segundos hace fallar ese equipo con `ssh_login`, y la desinstalación sigue con el siguiente.
+
 Antes detiene el daemon de cada build. Solo borra lo que puso gitbox: las carpetas de build, los registros de build de `logs/`, `.gc.lock/` y los archivos temporales de subida. Quita `logs/` y después la raíz del servidor solo cuando están vacías. Un archivo que yo mismo puse en la raíz del servidor se queda, y también la raíz que lo contiene. Los repositorios y el `gitbox.json` del host no se tocan.
 
 **Quitar de esta lista**, en el mismo menú contextual, pregunta antes y después solo olvida el remoto en este ordenador.
@@ -254,6 +250,7 @@ El modo simple muestra una frase sencilla; el código en sí aparece en el regis
 - `ssh_missing`: no hay ningún comando `ssh` en este ordenador. Instala OpenSSH.
 - `ssh_auth`: `ssh` no pudo entrar sin pedir nada. Carga la clave en un agente o usa una clave sin frase de paso, y luego ejecuta `ssh <alias>` una vez.
 - `ssh_agent`: el agente no firmó el inicio de sesión. Un agente que pide aprobación, como 1Password, muestra la petición en su icono de la barra de menús o de la bandeja y desiste al cabo de un minuto. Pulsa **Conectar** y apruébala a tiempo.
+- `ssh_login`: `ssh` no inició sesión en 75 segundos, normalmente porque un agente que pide aprobación, como 1Password, sigue esperándola. Aprueba la petición desde su icono de la barra de menús o de la bandeja y vuelve a intentarlo.
 - `ssh_hostkey`: la clave del host no está en `known_hosts`, o ha cambiado. Ejecuta `ssh <alias>` una vez en un terminal.
 - `ssh_timeout`: el host no respondió a tiempo.
 - `ssh_config`: `ssh` no puede leer la configuración del alias. Corrige `ssh_config`.

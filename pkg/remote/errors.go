@@ -18,9 +18,12 @@ type Code string
 
 const (
 	// SSH and the connection.
-	CodeSSHMissing     Code = "ssh_missing"
-	CodeSSHAuth        Code = "ssh_auth"
-	CodeSSHAgent       Code = "ssh_agent"
+	CodeSSHMissing Code = "ssh_missing"
+	CodeSSHAuth    Code = "ssh_auth"
+	CodeSSHAgent   Code = "ssh_agent"
+	// CodeSSHLogin: the first ssh did not log in by loginLimit, usually an
+	// agent that waits for approval nobody gave.
+	CodeSSHLogin       Code = "ssh_login"
 	CodeSSHHostKey     Code = "ssh_hostkey"
 	CodeSSHTimeout     Code = "ssh_timeout"
 	CodeSSHConfig      Code = "ssh_config"

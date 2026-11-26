@@ -1,4 +1,4 @@
-# Remote mode (experimental)
+# Remote mode
 
 Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server or a Mac. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
 
@@ -18,19 +18,15 @@ Host my-server
 
 Remote mode runs `ssh` with `BatchMode=yes`, so it never answers a prompt. Before I add a remote, `ssh my-server` must log in without asking anything:
 
-- The key is loaded in an agent, or it has no passphrase. A host that only accepts passwords, or an encrypted key with no agent, fails with `ssh_auth`. An agent that asks for approval for each app, such as 1Password, shows the request of Gitbox in its menu bar or tray icon rather than in a window; an unanswered one fails with `ssh_agent` after about a minute. When the login takes more than 3 seconds, the connecting window says so and, for 1Password, points at its icon.
+- The key is loaded in an agent, or it has no passphrase. A host that only accepts passwords, or an encrypted key with no agent, fails with `ssh_auth`. An agent that asks for approval for each app, such as 1Password, shows the request of Gitbox in its menu bar or tray icon rather than in a window; an unanswered one fails with `ssh_agent` after about a minute. When the login takes more than 3 seconds, the connecting window, or the Remote hosts window during an uninstall, says so and, for 1Password, points at its icon. A login still waiting after 75 seconds stops with `ssh_login`.
 - The host key is already in `known_hosts`. If it is not, the connection fails at once with `ssh_hostkey`. I run `ssh my-server` once in a terminal and accept the key.
 - The same holds for every hop of a `ProxyJump`.
 
-## Turning remote mode on
+## The host switcher
 
-Remote mode is off by default. It turns on with the `--experimental-remote` flag or with this key in my `gitbox.json`:
+Remote mode is always on. The host switcher next to the title lists this computer and my remotes, and its **Manage remote hosts…** opens the Remote hosts window.
 
-```json
-"global": { "experimental_remote": true }
-```
-
-Either one shows the host switcher next to the title, whose **Manage remote hosts…** opens the Remote hosts window.
+Older versions needed the `--experimental-remote` flag or `"experimental_remote": true` in `global`. GitboxApp now ignores both, and the next save drops the key from `gitbox.json`. A `gitbox.json` without `remotes` simply has no remotes yet.
 
 ## Adding a remote
 
@@ -40,11 +36,9 @@ GitboxApp checks the alias with `ssh -G <alias>`, which reads the configuration 
 
 ## Connecting
 
-**Connect** opens the remote in a window of its own: a new GitboxApp process started as `GitboxApp --remote <alias> --experimental-remote`. A second **Connect** brings the open window to the front. The remote window keeps running when I close the main window.
+**Connect** opens the remote in a window of its own: a new GitboxApp process started as `GitboxApp --remote <alias>`. A second **Connect** brings the open window to the front. The remote window keeps running when I close the main window.
 
 The window appears at once and connects in the background. It reads **Connecting to my-server…** and **Installing gitbox on my-server…** on the first connection, with **Disconnect** and **Show log**. Until the repositories arrive, it follows the light or dark theme of the system. When the server answers, the window shows the repositories of the host: see [What a remote window can do](#what-a-remote-window-can-do). Its title stays `gitbox · my-server`.
-
-`--remote` without `--experimental-remote` exits with a message.
 
 ## What a remote window can do
 
@@ -228,6 +222,8 @@ A connected session refreshes its marker every minute and deletes its own marker
 
 **Uninstall the gitbox server…**, in the context menu of the host in the Remote hosts window, disconnects and removes the server from the host. If another window still uses the server there, GitboxApp asks again first.
 
+With several hosts selected, it uninstalls them one after the other. When the login to a host waits for my SSH agent, the window says so with the host's name; for 1Password, I approve the request from its menu bar or tray icon. A login still waiting after 75 seconds fails that host with `ssh_login`, and the uninstall goes on with the next one.
+
 It stops the daemon of every build first. It deletes only what gitbox put there: the build folders, the build logs in `logs/`, `.gc.lock/` and temporary upload files. It removes `logs/` and then the server root only when they are empty. A file I put in the server root myself stays, and so does the root that holds it. The repositories and the `gitbox.json` of the host are not touched.
 
 **Remove from this list**, in the same context menu, asks first and then only forgets the remote on this computer.
@@ -254,6 +250,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `ssh_missing`: no `ssh` command on this computer. Install OpenSSH.
 - `ssh_auth`: `ssh` could not log in without a prompt. Load the key in an agent or use a key without a passphrase, then run `ssh <alias>` once.
 - `ssh_agent`: the agent did not sign the login. An agent that asks for approval, such as 1Password, shows the request in its menu bar or tray icon and gives up after about a minute. Click **Connect** and approve it in time.
+- `ssh_login`: `ssh` did not log in within 75 seconds, usually because an agent that asks for approval, such as 1Password, is still waiting for it. Approve the request from its menu bar or tray icon and try again.
 - `ssh_hostkey`: the host key is not in `known_hosts`, or it changed. Run `ssh <alias>` once in a terminal.
 - `ssh_timeout`: the host did not answer in time.
 - `ssh_config`: `ssh` cannot read the configuration of the alias. Fix `ssh_config`.

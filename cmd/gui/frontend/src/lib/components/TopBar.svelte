@@ -3,8 +3,7 @@
   // health rings (the repo ring, plus the mirror ring in Advanced), the
   // action buttons, the Simple/Advanced switch and the Settings gear.
   import { onMount } from 'svelte';
-  import { bridge } from '../bridge';
-  import { accounts, summary, mirrorSummary, themeStore, remoteHost, remoteWindow } from '../stores';
+  import { accounts, summary, mirrorSummary, themeStore, remoteHost } from '../stores';
   import { hostFromState } from '../remotehost';
   import { statusColor } from '../status';
   import { t } from '../i18n';
@@ -38,17 +37,13 @@
   // The launchers learn from the remote state which editors open the
   // host's folders, and that the window is a remote one (#243).
   $: remoteHost.set(hostFromState(remote));
-  // The host switcher (#330) shows when remote mode is on: always in a
-  // remote window, and in the local one when the flag or the
-  // experimental_remote key enables it. It loads only then, so the main
-  // bundle does not carry it or the connection log.
-  let remoteMode = false;
+  // The host switcher (#330) shows in every window: remote mode is always
+  // on (#336). It loads in a chunk of its own, so the main bundle does not
+  // carry it or the connection log.
   let HostSwitcher: typeof import('./HostSwitcher.svelte').default | null = null;
-  onMount(async () => {
-    if (remote || $remoteWindow) return;
-    try { remoteMode = (await bridge.listRemotes()).enabled; } catch (e) { console.error(e); }
+  onMount(() => {
+    import('./HostSwitcher.svelte').then((m) => (HostSwitcher = m.default)).catch((e) => console.error(e));
   });
-  $: if ((remote || $remoteWindow || remoteMode) && !HostSwitcher) import('./HostSwitcher.svelte').then((m) => (HostSwitcher = m.default));
 
   $: sc = (s: string) => statusColor(s, $themeStore);
   $: sideTip = $t(rail ? 'nav.expand' : 'nav.collapse', { key: sidebarShortcut });
@@ -73,7 +68,7 @@
   <div class="brand">
     <button class="logo-btn" on:click={toggleSidebar} aria-expanded={!rail} aria-label={sideTip} title={sideTip}><Logo class="logo-svg" /></button>
     <span class="title" translate="no">GitBox</span>
-    {#if (remote || remoteMode) && HostSwitcher}<svelte:component this={HostSwitcher} state={remote} {simple} />{/if}
+    {#if HostSwitcher}<svelte:component this={HostSwitcher} state={remote} {simple} />{/if}
   </div>
   <!-- Compact rings without labels, in both modes. The icon names what the
        ring tracks, the corner badge counts what is not there yet, and the

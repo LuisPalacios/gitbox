@@ -55,32 +55,30 @@ type ClientPrefs struct {
 	TerminalProfiles []TerminalProfile
 	PeriodicSync     string
 
-	ExperimentalRemote bool
-	Remotes            []RemoteEntry
-	RemoteTint         string
+	Remotes    []RemoteEntry
+	RemoteTint string
 }
 
 // ExtractPrefs returns a detached copy of the client keys of c.
 func ExtractPrefs(c *Config) ClientPrefs {
 	g := &c.Global
 	p := ClientPrefs{
-		Theme:              g.Theme,
-		Language:           g.Language,
-		UIMode:             g.UIMode,
-		ShowPullPlan:       g.ShowPullPlan,
-		ViewMode:           g.ViewMode,
-		Window:             g.Window,
-		CompactWindow:      g.CompactWindow,
-		SidebarCollapsed:   g.Collapsed != nil && g.Collapsed.Sidebar,
-		Editors:            g.Editors,
-		Terminals:          g.Terminals,
-		TerminalApps:       g.TerminalApps,
-		Shells:             g.Shells,
-		TerminalProfiles:   g.TerminalProfiles,
-		PeriodicSync:       g.PeriodicSync,
-		ExperimentalRemote: g.ExperimentalRemote,
-		Remotes:            g.Remotes,
-		RemoteTint:         g.RemoteTint,
+		Theme:            g.Theme,
+		Language:         g.Language,
+		UIMode:           g.UIMode,
+		ShowPullPlan:     g.ShowPullPlan,
+		ViewMode:         g.ViewMode,
+		Window:           g.Window,
+		CompactWindow:    g.CompactWindow,
+		SidebarCollapsed: g.Collapsed != nil && g.Collapsed.Sidebar,
+		Editors:          g.Editors,
+		Terminals:        g.Terminals,
+		TerminalApps:     g.TerminalApps,
+		Shells:           g.Shells,
+		TerminalProfiles: g.TerminalProfiles,
+		PeriodicSync:     g.PeriodicSync,
+		Remotes:          g.Remotes,
+		RemoteTint:       g.RemoteTint,
 	}
 	return p.clone()
 }
@@ -103,7 +101,6 @@ func ApplyPrefs(c *Config, p ClientPrefs) {
 	g.Shells = p.Shells
 	g.TerminalProfiles = p.TerminalProfiles
 	g.PeriodicSync = p.PeriodicSync
-	g.ExperimentalRemote = p.ExperimentalRemote
 	g.Remotes = p.Remotes
 	g.RemoteTint = p.RemoteTint
 

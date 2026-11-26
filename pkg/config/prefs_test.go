@@ -37,7 +37,6 @@ var globalKeyClass = map[string]string{
 	"pr_badges_enabled":      "domain",
 	"pr_include_drafts":      "domain",
 	"check_global_gitignore": "domain",
-	"experimental_remote":    "client",
 	"remotes":                "client",
 	"remote_tint":            "client",
 }
@@ -58,8 +57,6 @@ func fullPrefs() ClientPrefs {
 		Shells:           []ShellEntry{{ID: "zsh", Name: "zsh", Command: "/bin/zsh", Args: []string{"-l"}}},
 		TerminalProfiles: []TerminalProfile{{ID: "wez-zsh", Name: "WezTerm + zsh", TerminalID: "wez", ShellID: "zsh", Args: []string{"{path}"}, Default: true}},
 		PeriodicSync:     "15m",
-
-		ExperimentalRemote: true,
 		Remotes: []RemoteEntry{{
 			Alias: "my-server", ServerDir: "~/srv", Editor: "code",
 			Window:        &WindowState{X: 5, Y: 6, Width: 800, Height: 600},
@@ -369,12 +366,63 @@ func TestSchemaKeepsRemoteKeysOptional(t *testing.T) {
 			}
 		}
 	}
-	check([]string{"remotes", "experimental_remote"}, "properties", "global")
+	check([]string{"remotes"}, "properties", "global")
 	check([]string{"server_dir", "editor", "window", "compact_window"},
 		"properties", "global", "properties", "remotes", "items")
 
 	_, required := schemaProps(t, "properties", "global", "properties", "remotes", "items")
 	if len(required) != 1 || required[0] != "alias" {
 		t.Errorf("a remote entry must require exactly \"alias\", got %v", required)
+	}
+}
+
+// TestOlderConfigsWithoutRemoteKeys: a v5 file written by an older gitbox,
+// without remotes or with the retired experimental_remote key in either
+// state, loads with its remotes as they are, and the next save writes the
+// current schema: the remotes stay and experimental_remote is gone (#336).
+func TestOlderConfigsWithoutRemoteKeys(t *testing.T) {
+	for name, tc := range map[string]struct {
+		global  string
+		remotes []string
+	}{
+		"no remote keys":               {global: `"roots": ["~/git"]`},
+		"experimental_remote false":    {global: `"roots": ["~/git"], "experimental_remote": false`},
+		"experimental_remote true":     {global: `"roots": ["~/git"], "experimental_remote": true`},
+		"remotes with the retired key": {global: `"roots": ["~/git"], "experimental_remote": false, "remotes": [{"alias": "host-a"}, {"alias": "host-b"}]`, remotes: []string{"host-a", "host-b"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := Parse([]byte(`{"version": 5, "global": {` + tc.global + `}, "accounts": {}, "sources": {}}`))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			aliases := func(c *Config) []string {
+				var out []string
+				for _, r := range ExtractPrefs(c).Remotes {
+					out = append(out, r.Alias)
+				}
+				return out
+			}
+			if got := aliases(cfg); !slices.Equal(got, tc.remotes) {
+				t.Fatalf("remotes = %v, want %v", got, tc.remotes)
+			}
+			path := filepath.Join(t.TempDir(), "gitbox.json")
+			if err := Save(cfg, path); err != nil {
+				t.Fatalf("Save: %v", err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(data), "experimental_remote") {
+				t.Errorf("the saved file still has experimental_remote:\n%s", data)
+			}
+			again, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := aliases(again); !slices.Equal(got, tc.remotes) {
+				t.Errorf("remotes after save = %v, want %v", got, tc.remotes)
+			}
+		})
 	}
 }

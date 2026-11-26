@@ -63,11 +63,6 @@
                     "default": true,
                     "description": "Whether draft PRs count in the \"my PRs\" badge. Defaults to true when missing."
                 },
-                "experimental_remote": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Turns the experimental remote mode on for this machine, like the --experimental-remote flag. A client preference: it describes the machine that shows the window."
-                },
                 "remote_tint": {
                     "type": "string",
                     "enum": ["#3b82f6", "#14b8a6", "#8b5cf6", "#f59e0b", "#f43f5e", "#22c55e"],

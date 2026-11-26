@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
@@ -42,7 +43,7 @@ type Options struct {
 	// OnInstall is called when the server is missing and the install
 	// starts.
 	OnInstall func()
-	// OnSlowLogin is called once when the first ssh of a connection has not
+	// OnSlowLogin is called once when the first ssh of an operation has not
 	// logged in after loginWait: an agent may be waiting for the user to
 	// approve the signature. agent is AgentOnePassword when the agent ssh
 	// uses is 1Password's, empty otherwise.
@@ -69,9 +70,16 @@ const DefaultServerDir = "~/.gitbox-server"
 // or tray icon, so the window points there.
 const AgentOnePassword = "1password"
 
-// loginWait is how long the first ssh of a connection may take to log in
+// loginWait is how long the first ssh of an operation may take to log in
 // before OnSlowLogin runs. A key in an agent logs in well under a second.
 var loginWait = 3 * time.Second
+
+// loginLimit is how long the first ssh of an operation may take to log in
+// before it is stopped with CodeSSHLogin. An agent that asks for approval
+// in a menu bar, such as 1Password, may wait for as long as nobody answers.
+// The limit is above the minute after which 1Password itself usually gives
+// up, which ssh reports as CodeSSHAgent.
+var loginLimit = 75 * time.Second
 
 // agentKind recognizes the agent behind a socket path: 1Password's sockets
 // live under a folder named after it on macOS and Linux.
@@ -166,6 +174,9 @@ type runner struct {
 	log   *Log
 	// agent is the kind of ssh agent the alias uses (agentKind).
 	agent string
+	// loggedIn is set once a command of this runner printed its marker:
+	// only the first ssh logs in, the next ones reuse its control master.
+	loggedIn bool
 }
 
 func newRunner(alias string, o Options) (*runner, error) {
@@ -234,6 +245,17 @@ func (r *runner) setupControl(ctx context.Context) {
 	}
 }
 
+// abort stops cmd and, off Windows, closes the read end of its stdout. A
+// descendant of ssh that still holds the pipe, such as a ProxyCommand,
+// would otherwise keep the read waiting long after the kill. On Windows a
+// close does not end a read in progress, and ssh has no such descendants.
+func abort(cmd *exec.Cmd, stdout io.Closer) {
+	_ = cmd.Process.Kill()
+	if runtime.GOOS != "windows" {
+		_ = stdout.Close()
+	}
+}
+
 // outputCtx runs cmd and returns its stdout, killing it when ctx ends.
 func outputCtx(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 	var out bytes.Buffer
@@ -288,12 +310,36 @@ func (r *runner) run(ctx context.Context, step, script string, stdin io.Reader, 
 	if err := cmd.Start(); err != nil {
 		return nil, newError(CodeSSHMissing, "ssh could not be started")
 	}
-	stop := context.AfterFunc(ctx, func() { _ = cmd.Process.Kill() })
+	stop := context.AfterFunc(ctx, func() { abort(cmd, stdout) })
 	defer stop()
+
+	// The first ssh of the runner logs in. It reports a slow login and is
+	// stopped when it has not logged in by loginLimit.
+	var expired atomic.Bool
+	var watch []*time.Timer
+	if !r.loggedIn {
+		watch = append(watch,
+			time.AfterFunc(loginWait, func() {
+				r.log.Printf("%s: ssh has not logged in after %s; the ssh agent may be waiting for approval", step, loginWait)
+				if r.o.OnSlowLogin != nil {
+					r.o.OnSlowLogin(r.agent)
+				}
+			}),
+			time.AfterFunc(loginLimit, func() {
+				expired.Store(true)
+				abort(cmd, stdout)
+			}))
+	}
 
 	res := &result{}
 	br := bufio.NewReader(stdout)
 	found, banner, readErr := skipMarker(br, maxBanner)
+	for _, t := range watch {
+		t.Stop()
+	}
+	if found {
+		r.loggedIn = true
+	}
 	res.banner = banner
 	if found {
 		res.fields, readErr = readFields(io.LimitReader(br, maxParsed))
@@ -310,6 +356,12 @@ func (r *runner) run(ctx context.Context, step, script string, stdin io.Reader, 
 
 	if ctx.Err() != nil {
 		return res, newError(CodeSSHTimeout, "%s was cancelled", step)
+	}
+	if !found && expired.Load() {
+		if r.agent == AgentOnePassword {
+			return res, newError(CodeSSHLogin, "ssh did not log in to %s within %s; 1Password may be waiting for approval", r.alias, loginLimit)
+		}
+		return res, newError(CodeSSHLogin, "ssh did not log in to %s within %s; the ssh agent may be waiting for approval", r.alias, loginLimit)
 	}
 	if !found {
 		if readErr == errOverflow {

@@ -307,7 +307,6 @@ export interface SSHHost {
 }
 
 export interface RemotesList {
-  enabled: boolean;
   // The alias this window shows, absent in the local window (#330).
   current?: string;
   remotes: {

@@ -12,7 +12,7 @@ const ok = async () => ({})
 
 function bridge(ui, extra = {}) {
   return ui.fakeBridge(ui.window, {
-    ListRemotes: async () => ({ enabled: true, remotes: hosts, remoteEditors: ['code'] }),
+    ListRemotes: async () => ({ remotes: hosts, remoteEditors: ['code'] }),
     GetRemoteTint: async () => '#3b82f6',
     ...extra,
   })
@@ -59,7 +59,7 @@ test('the switcher of a remote window shows its host, goes back to this computer
   const ui = await mount(t)
   const { HostSwitcher, render, screen, fireEvent, waitFor } = ui
   const native = bridge(ui, {
-    ListRemotes: async () => ({ enabled: true, current: 'my-server', remotes: hosts, remoteEditors: [] }),
+    ListRemotes: async () => ({ current: 'my-server', remotes: hosts, remoteEditors: [] }),
     ShowLocalWindow: ok,
     RemoteLog: async () => ['connect: my-server'],
   })
@@ -202,7 +202,7 @@ test('the Remote hosts window uninstalls and removes several hosts at once', asy
   const { RemoteHostsWindow, render, screen, fireEvent, waitFor, within } = ui
   const three = [{ alias: 'alpha', open: false }, { alias: 'beta', open: false }, { alias: 'gamma', open: false }]
   const native = bridge(ui, {
-    ListRemotes: async () => ({ enabled: true, remoteEditors: [], remotes: three }),
+    ListRemotes: async () => ({ remoteEditors: [], remotes: three }),
     ListSSHHosts: async () => [],
     RemoteUninstall: async (alias, force) => (alias === 'beta' && !force
       ? { needsConfirm: true, otherClients: 1, done: false, rootKept: false }
@@ -315,7 +315,7 @@ test('the Remote hosts window shows a login that waits for approval', async (t) 
   const { RemoteHostsWindow, render, screen, fireEvent, waitFor } = ui
   let opened = false
   const native = bridge(ui, {
-    ListRemotes: async () => ({ enabled: true, remoteEditors: [], remotes: [
+    ListRemotes: async () => ({ remoteEditors: [], remotes: [
       opened ? { alias: 'nas', open: true, state: 'connecting', waiting: '1password' } : { alias: 'nas', open: false },
     ] }),
     ListSSHHosts: async () => [],
@@ -327,6 +327,32 @@ test('the Remote hosts window shows a login that waits for approval', async (t) 
   await fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
   await waitFor(() => assert.ok(screen.getByText(/1Password is waiting for your approval/)), { timeout: 3000 })
   assert.ok(screen.getAllByText('waiting for your approval').length >= 1)
+  assert.deepEqual(native.unexpected, [])
+})
+
+// An uninstall whose login waits for 1Password says so with the host while
+// it waits, and its login limit ends it with the approval hint (#336).
+test('the Remote hosts window shows an uninstall that waits for approval and its timeout', async (t) => {
+  const ui = await mount(t)
+  const { RemoteHostsWindow, render, screen, fireEvent, waitFor, within } = ui
+  let finish
+  const native = bridge(ui, {
+    ListRemotes: async () => ({ remoteEditors: [], remotes: [{ alias: 'nas', open: false }] }),
+    ListSSHHosts: async () => [],
+    RemoteUninstall: () => new Promise((resolve) => { finish = resolve }),
+  })
+  render(RemoteHostsWindow)
+  const list = within(await waitFor(() => screen.getByRole('listbox')))
+  await fireEvent.contextMenu(await waitFor(() => list.getByRole('option', { name: /nas/ })))
+  await fireEvent.click(within(await waitFor(() => screen.getByRole('menu'))).getByRole('menuitem', { name: /Uninstall/ }))
+  await fireEvent.click(screen.getByRole('button', { name: 'Uninstall' }))
+  await waitFor(() => assert.deepEqual(called(native, 'RemoteUninstall'), [['nas', false]]))
+
+  native.emit('remote:waiting', { schema: 1, sequence: 1, operationID: '1', configRevision: 1, payload: { alias: 'nas', waiting: '1password' }, client: true })
+  await waitFor(() => assert.ok(screen.getByText(/^nas: .*1Password is waiting for your approval/)))
+
+  finish({ error: 'ssh did not log in to nas within 1m15s; 1Password may be waiting for approval', hint: 'error.remote.ssh_login' })
+  await waitFor(() => assert.ok(screen.getByText(/^nas: SSH did not log in in time\. .*1Password/)))
   assert.deepEqual(native.unexpected, [])
 })
 

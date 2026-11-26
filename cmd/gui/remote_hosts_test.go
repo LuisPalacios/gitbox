@@ -31,23 +31,22 @@ func recordStarts(t *testing.T, fail error) func() [][]string {
 	return func() [][]string { mu.Lock(); defer mu.Unlock(); return slices.Clone(got) }
 }
 
-// remoteHostsApp is a local window's App with remote mode on and the given
-// remotes in its config file.
+// remoteHostsApp is a local window's App with the given remotes in its
+// config file.
 func remoteHostsApp(t *testing.T, remotes ...config.RemoteEntry) (*App, string) {
 	t.Helper()
 	path := seedConfig(t, "gitbox.json", func(c *config.Config) {
-		c.Global.ExperimentalRemote = true
 		c.Global.Remotes = remotes
 	})
 	return &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}, path
 }
 
 func TestRemotesWindowArgs(t *testing.T) {
-	if got := remotesWindowArgs(false, "/home/me/gitbox.json"); !slices.Equal(got, []string{"--remotes-window", "--experimental-remote"}) {
+	if got := remotesWindowArgs(false, "/home/me/gitbox.json"); !slices.Equal(got, []string{"--remotes-window"}) {
 		t.Errorf("production args = %q", got)
 	}
 	got := remotesWindowArgs(true, "/tmp/test/gitbox.json")
-	if !slices.Equal(got, []string{"--remotes-window", "--experimental-remote", "--test-mode", "--prefs-file=/tmp/test/gitbox.json"}) {
+	if !slices.Equal(got, []string{"--remotes-window", "--test-mode", "--prefs-file=/tmp/test/gitbox.json"}) {
 		t.Errorf("test-mode args = %q", got)
 	}
 	for _, args := range [][]string{got, remotesWindowArgs(false, "")} {
@@ -166,18 +165,10 @@ func TestListSSHHosts(t *testing.T) {
 
 func TestRemoteHostsWindowBindings(t *testing.T) {
 	starts := recordStarts(t, nil)
-	off, _ := remoteHostsApp(t)
-	off.cfg.Global.ExperimentalRemote = false
-	if err := off.clientPrefs().Update(func(p *config.ClientPrefs) { p.ExperimentalRemote = false }); err != nil {
-		t.Fatal(err)
-	}
-	for name, res := range map[string]RemoteResultDTO{
-		"OpenRemotesWindow": off.OpenRemotesWindow(),
-		"ShowRemoteLog":     off.ShowRemoteLog("my-server"),
-	} {
-		if res.Hint != "error.remote.not_enabled" {
-			t.Errorf("%s with remote mode off = %+v", name, res)
-		}
+	// A remote that is not configured starts nothing.
+	none, _ := remoteHostsApp(t)
+	if res := none.ShowRemoteLog("my-server"); res.Hint != "error.remote.unknown_alias" {
+		t.Errorf("ShowRemoteLog of an unknown remote = %+v", res)
 	}
 	if len(starts()) != 0 {
 		t.Fatalf("a refused call started a window: %q", starts())

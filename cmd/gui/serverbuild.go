@@ -31,8 +31,6 @@ const (
 	remoteReadOnly remoteCode = "read_only"
 	// remoteServerCrashed: the server ended while connected.
 	remoteServerCrashed remoteCode = "server_crashed"
-	// remoteNotEnabled: remote mode is off on this machine.
-	remoteNotEnabled remoteCode = "not_enabled"
 	// remoteUnknownAlias: no remote with that alias is configured.
 	remoteUnknownAlias remoteCode = "unknown_alias"
 	// remoteWindowClosed: the action needs the remote's open window (#330).
