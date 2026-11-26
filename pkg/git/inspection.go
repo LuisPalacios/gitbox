@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -54,37 +55,102 @@ func inspectOutput(path string, args ...string) (string, error) {
 	return output(path, append(profile, args...)...)
 }
 
-// TrustWarnings names effective settings that require review on a managed
-// clone. Only fixed key names can appear in a warning. Git configuration
-// values can contain credentials, commands or private machine paths.
-func (s ConfigSnapshot) TrustWarnings(ctx context.Context, clone, origin string) []string {
-	var warnings []string
-	warn := func(key string) {
-		e := GitError{Op: "config", Code: CodeUnsafeConfig, Detail: key}
-		warnings = append(warnings, e.Error())
+// The settings TrustFindings reviews, as a finding names them.
+const (
+	TrustFSMonitor = "core.fsmonitor"
+	TrustHooksPath = "core.hooksPath"
+	TrustInsteadOf = "url.*.insteadOf"
+)
+
+// The scopes a clone controls. Git reports "local" and "worktree";
+// ConfigSnapshot relabels a file included from the local config "include".
+// The user's global file and the system file are written by the user or
+// an administrator on purpose, so their settings are trusted.
+const (
+	ScopeLocal    = "local"
+	ScopeWorktree = "worktree"
+	ScopeInclude  = "include"
+)
+
+func cloneControlled(scope string) bool {
+	return scope == ScopeLocal || scope == ScopeWorktree || scope == ScopeInclude
+}
+
+// TrustFinding is a setting stored where the clone controls it that could
+// run a program or redirect the managed origin. Key and Scope come from the
+// fixed lists above: a Git value can hold a credential, a command or a
+// private path, so it never appears in a finding.
+type TrustFinding struct {
+	Key   string
+	Scope string
+}
+
+func (f TrustFinding) Error() string { return "unsafe " + f.Key + " in " + f.Scope + " config" }
+
+// Err is the error that stops a fetch or a pull of the clone. errors.As
+// finds the finding beneath it.
+func (f TrustFinding) Err() *GitError {
+	return &GitError{Op: "config", Code: CodeUnsafeConfig, Hint: "error.git." + string(CodeUnsafeConfig),
+		Detail: f.Key, Err: f, ExitCode: -1}
+}
+
+// Warning is the sentence a repair report shows for f.
+func (f TrustFinding) Warning() string {
+	where := map[string]string{
+		ScopeLocal:    "the clone's own config",
+		ScopeWorktree: "the clone's worktree config",
+		ScopeInclude:  "a file the clone's config includes",
+	}[f.Scope]
+	what := "points outside the clone"
+	switch f.Key {
+	case TrustFSMonitor:
+		what = "runs a program"
+	case TrustInsteadOf:
+		what = "sends the origin to another server"
 	}
-	switch strings.ToLower(s.Get("core.fsmonitor")) {
-	case "", "true", "false", "yes", "no", "on", "off", "0", "1":
-	default:
-		warn("core.fsmonitor")
-	}
-	if s.Get("core.hooksPath") != "" {
-		// Git expands its own path syntax (including ~ and %(prefix)).
-		value, err := outputContext(ctx, clone, "config", "--path", "--get", "core.hooksPath")
-		if err != nil || !hooksInside(clone, strings.TrimSuffix(value, "\n")) {
-			warn("core.hooksPath")
+	return f.Key + " in " + where + " " + what + ": fetch and pull stay paused until it is reviewed"
+}
+
+// TrustFindings reviews the settings a clone controls that require review
+// before Gitbox fetches or pulls it. Each setting is judged by the entry Git
+// would use; a value from the global or system config is trusted.
+func (s ConfigSnapshot) TrustFindings(ctx context.Context, clone, origin string) []TrustFinding {
+	var findings []TrustFinding
+	if e, ok := s.winning(TrustFSMonitor); ok && cloneControlled(e.Scope) {
+		switch strings.ToLower(e.Value) {
+		case "", "true", "false", "yes", "no", "on", "off", "0", "1":
+		default:
+			findings = append(findings, TrustFinding{TrustFSMonitor, e.Scope})
 		}
 	}
-	if s.rewritesURL(origin) {
+	if e, ok := s.winning(TrustHooksPath); ok && cloneControlled(e.Scope) && e.Value != "" {
+		// Git expands its own path syntax (including ~ and %(prefix)).
+		value, err := outputContext(ctx, clone, "config", "--path", "--get", TrustHooksPath)
+		if err != nil || !hooksInside(clone, strings.TrimSuffix(value, "\n")) {
+			findings = append(findings, TrustFinding{TrustHooksPath, e.Scope})
+		}
+	}
+	if e, ok := s.rewrite(origin); ok && cloneControlled(e.Scope) {
 		// --get-url applies Git's precedence rules without contacting a remote.
 		resolved, err := outputContext(ctx, clone, "ls-remote", "--get-url", "--", origin)
 		want := fetchHost(origin)
 		got := fetchHost(strings.TrimSpace(resolved))
 		if err != nil || got == "" || !strings.EqualFold(got, want) {
-			warn("url.*.insteadOf")
+			findings = append(findings, TrustFinding{TrustInsteadOf, e.Scope})
 		}
 	}
-	return warnings
+	return findings
+}
+
+// winning is the entry that sets a single-value key: Git uses the last one.
+func (s ConfigSnapshot) winning(key string) (ConfigEntry, bool) {
+	key = configKey(key)
+	for _, e := range slices.Backward(s.Entries) {
+		if e.Key == key {
+			return e, true
+		}
+	}
+	return ConfigEntry{}, false
 }
 
 // A managed origin uses a network URL or Git's user@host:path SSH form.
@@ -111,17 +177,26 @@ func fetchHost(raw string) string {
 	return host
 }
 
-func (s ConfigSnapshot) rewritesURL(origin string) bool {
-	for key, prefixes := range s.Values {
-		if strings.HasPrefix(key, "url.") && strings.HasSuffix(key, ".insteadof") {
-			for _, prefix := range prefixes {
-				if origin != "" && strings.HasPrefix(origin, prefix) {
-					return true
-				}
-			}
+// rewrite is the insteadOf entry Git applies to origin: the longest matching
+// prefix wins. On a tie it prefers a setting the clone controls, so a
+// redirect the clone wrote is never hidden behind a trusted one.
+func (s ConfigSnapshot) rewrite(origin string) (ConfigEntry, bool) {
+	var best ConfigEntry
+	found := false
+	if origin == "" {
+		return best, false
+	}
+	for _, e := range s.Entries {
+		if !strings.HasPrefix(e.Key, "url.") || !strings.HasSuffix(e.Key, ".insteadof") ||
+			e.Value == "" || !strings.HasPrefix(origin, e.Value) {
+			continue
+		}
+		if !found || len(e.Value) > len(best.Value) ||
+			len(e.Value) == len(best.Value) && cloneControlled(e.Scope) {
+			best, found = e, true
 		}
 	}
-	return false
+	return best, found
 }
 
 func hooksInside(clone, hooks string) bool {

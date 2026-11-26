@@ -398,16 +398,43 @@ func TestRepo_TrustWarningsPreserveConfiguration(t *testing.T) {
 			})
 			r := RepoContext(t.Context(), cfg, "repos", "team/project")
 			var want []string
+			var trust []git.TrustFinding
 			if tc.warning != "" {
-				want = []string{"git config: unsafe_config (" + tc.warning + ")"}
+				trust = []git.TrustFinding{{Key: tc.warning, Scope: git.ScopeLocal}}
+				want = []string{trust[0].Warning()}
 			}
-			if !slices.Equal(r.Warnings, want) || len(r.Fixed) != 0 {
-				t.Fatalf("warnings %v fixes %v, want %v and no fixes", r.Warnings, r.Fixed, want)
+			if !slices.Equal(r.Warnings, want) || !slices.Equal(r.Trust, trust) || len(r.Fixed) != 0 {
+				t.Fatalf("warnings %v trust %v fixes %v, want %v, %v and no fixes", r.Warnings, r.Trust, r.Fixed, want, trust)
+			}
+			if len(r.OtherWarnings()) != 0 {
+				t.Fatalf("trust findings leaked into other warnings: %v", r.OtherWarnings())
 			}
 			snapshot, err := git.ReadConfigSnapshot(path)
 			if err != nil || snapshot.Get(tc.key) != tc.value {
 				t.Fatalf("setting changed during heal: %v", err)
 			}
 		})
+	}
+}
+
+// A hooks folder in the user's global config is the user's choice: heal
+// neither warns about it nor touches it (#344).
+func TestRepo_GlobalHooksPathIsTrusted(t *testing.T) {
+	cfg, path := healFixture(t)
+	global := os.Getenv("GIT_CONFIG_GLOBAL")
+	if err := os.WriteFile(global, []byte("[core]\n\thooksPath = "+filepath.ToSlash(t.TempDir())+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = RepoContext(t.Context(), cfg, "repos", "team/project")
+	r := RepoContext(t.Context(), cfg, "repos", "team/project")
+	if len(r.Warnings) != 0 || len(r.Trust) != 0 {
+		t.Fatalf("global hooks folder reported: warnings %v trust %v", r.Warnings, r.Trust)
+	}
+	if err := git.ConfigSet(path, "core.hooksPath", t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	r = RepoContext(t.Context(), cfg, "repos", "team/project")
+	if want := []git.TrustFinding{{Key: git.TrustHooksPath, Scope: git.ScopeLocal}}; !slices.Equal(r.Trust, want) {
+		t.Fatalf("local hooks folder outside the clone: trust %v, want %v", r.Trust, want)
 	}
 }

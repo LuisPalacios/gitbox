@@ -45,7 +45,7 @@
       source={rowSourceKey} repo={repoName} credentialStatus={credentialStatuses[accountKey]}
       onFixCredential={() => fixProofCredential(accountKey || rowSourceKey)} />
   {:else if showIssues && issue}
-    <div class="row-explanation"><ErrorExplanation info={issue} simple={shared.simple} {accountKey} actions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} /></div>
+    <div class="row-explanation"><ErrorExplanation info={issue} simple={shared.simple} {accountKey} path={state.path || ''} actions={repoActions(rowSourceKey, repoName, state, false, accountStatus)} /></div>
   {/if}
   {/if}
 {/each}

@@ -5,6 +5,42 @@ export interface ErrorInfo {
   code?: string;
   detail?: string;
   retryAt?: number;
+  // git.unsafe_config: the setting that paused the clone and where it lives.
+  unsafe?: UnsafeConfig;
+}
+
+export interface UnsafeConfig {
+  setting: string;
+  scope: string;
+}
+
+// The catalog name of each setting a clone can be paused for (#344).
+const UNSAFE_SETTINGS: Record<string, string> = {
+  'core.hooksPath': 'hooksPath',
+  'core.fsmonitor': 'fsmonitor',
+  'url.*.insteadOf': 'insteadOf',
+};
+const UNSAFE_SCOPES = new Set(['local', 'worktree', 'include']);
+
+// unsafeHelp is what the window says about a clone paused for safety: the
+// catalog keys of the reason and of where the setting lives, and the commands
+// that show and remove it. Unknown names, from an older or untrusted server,
+// give undefined and the generic text stands.
+export function unsafeHelp(unsafe: UnsafeConfig | undefined, path?: string) {
+  const name = unsafe && Object.hasOwn(UNSAFE_SETTINGS, unsafe.setting) ? UNSAFE_SETTINGS[unsafe.setting] : '';
+  if (!unsafe || !name || !UNSAFE_SCOPES.has(unsafe.scope)) return undefined;
+  const git = path ? `git -C "${path}" config` : 'git config';
+  const commands = [name === 'insteadOf'
+    ? `${git} --show-origin --show-scope --get-regexp "^url\\..*\\.insteadof$"`
+    : `${git} --show-origin --show-scope --get-all ${unsafe.setting}`];
+  // An included file holds the setting itself, and an insteadOf rule is
+  // named by its own URL: the first command shows which file to edit.
+  if (name !== 'insteadOf' && unsafe.scope !== 'include') commands.push(`${git} --${unsafe.scope} --unset ${unsafe.setting}`);
+  return {
+    reasonKey: `error.git.unsafe_config.${name}`,
+    whereKey: `error.git.unsafe_config.scope.${unsafe.scope}`,
+    commands,
+  };
 }
 
 const actions = {
@@ -17,7 +53,7 @@ const actions = {
   'git.not_a_repo': null,
   'git.lock_held': 'retry',
   'git.repo_not_found': null,
-  'git.unsafe_config': null,
+  'git.unsafe_config': 'terminal',
   'git.unknown': null,
   'provider.unauthorized': 'credential',
   'provider.scope_denied': 'token',

@@ -11,7 +11,7 @@ import ts from 'typescript';
 
 const code = await readFile(new URL('./explain.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const { accountIssue, caughtIssue, errorAction, explain, repoIssue } =
+const { accountIssue, caughtIssue, errorAction, explain, repoIssue, unsafeHelp } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 test('I explain every declared Go Git and provider code in both languages', async () => {
@@ -113,4 +113,26 @@ test('I render offline, revoked-token and dirty-skip actions in English and Span
   } finally {
     await server.close();
   }
+});
+
+test('I explain a clone paused for safety with its own commands (#344)', () => {
+  const path = '/work/clone';
+  assert.deepEqual(unsafeHelp({ setting: 'core.hooksPath', scope: 'local' }, path), {
+    reasonKey: 'error.git.unsafe_config.hooksPath',
+    whereKey: 'error.git.unsafe_config.scope.local',
+    commands: [
+      'git -C "/work/clone" config --show-origin --show-scope --get-all core.hooksPath',
+      'git -C "/work/clone" config --local --unset core.hooksPath',
+    ],
+  });
+  assert.deepEqual(unsafeHelp({ setting: 'core.fsmonitor', scope: 'worktree' }, path).commands[1],
+    'git -C "/work/clone" config --worktree --unset core.fsmonitor');
+  // An included file or an insteadOf rule is edited where the first command points.
+  assert.equal(unsafeHelp({ setting: 'core.hooksPath', scope: 'include' }, path).commands.length, 1);
+  assert.deepEqual(unsafeHelp({ setting: 'url.*.insteadOf', scope: 'local' }).commands,
+    ['git config --show-origin --show-scope --get-regexp "^url\\..*\\.insteadof$"']);
+  for (const unknown of [undefined, { setting: 'core.sshCommand', scope: 'local' }, { setting: 'core.hooksPath', scope: 'global' }]) {
+    assert.equal(unsafeHelp(unknown, path), undefined);
+  }
+  assert.equal(explain('git.unsafe_config').action.kind, 'terminal');
 });

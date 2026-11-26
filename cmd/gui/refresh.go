@@ -461,7 +461,9 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 	defer unlock()
 	account := cfg.Accounts[cfg.Sources[source].Account]
 	addr := serverAddr(account)
-	if len(report.Warnings) > 0 {
+	if len(report.Trust) > 0 {
+		err = report.Trust[0].Err()
+	} else if len(report.Warnings) > 0 {
 		err = fmt.Errorf("repository maintenance: %s", strings.Join(report.Warnings, "; "))
 	} else {
 		remote := "origin"
@@ -506,7 +508,7 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 	}
 	payload := fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo}}
 	if report.Skipped == "" && !a.readOnly {
-		payload.RepairWarnings = append([]string{}, report.Warnings...)
+		payload.RepairWarnings = append([]string{}, report.OtherWarnings()...)
 	}
 	if errors.Is(err, errServerUnreachable) {
 		payload.Error, payload.Code, payload.Host = unreachableDetails(addr)
@@ -618,6 +620,7 @@ func describeFetchFailure(payload *fetchEventDTO, err error) {
 	if ge, ok := errors.AsType[*git.GitError](err); ok {
 		payload.Host = ge.Host
 	}
+	payload.UnsafeConfig = unsafeConfigOf(err)
 	payload.RefusedFast = git.IsRefusedFast(err)
 }
 

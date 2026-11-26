@@ -48,7 +48,7 @@ test('I summarize a fetch: now behind, offline skips, failures and local work', 
   statuses['A/1'] = 'behind';
   statuses['A/3'] = 'ahead';
   const sum = a.summarizeFetch(run, (k) => statuses[k], accountOf, ['B']);
-  assert.deepEqual(sum, { checked: 3, nowBehind: 1, skipped: 2, skippedAccounts: ['B'], unreachable: [], failed: 1, firstFailure: { key: 'C/1', error: 'repository maintenance: x' }, localWork: 1, changed: true });
+  assert.deepEqual(sum, { checked: 3, nowBehind: 1, skipped: 2, skippedAccounts: ['B'], unreachable: [], unsafe: [], failed: 1, firstFailure: { key: 'C/1', error: 'repository maintenance: x' }, localWork: 1, changed: true });
 });
 
 test('I report nothing changed when a fetch finds nothing new', () => {
@@ -72,7 +72,7 @@ test('I split a pull run into pulls and clones and summarize it', () => {
   run = a.noteDone(run, 'B/2', undefined, undefined, 'dirty');
   run = a.noteDone(run, 'B/4', undefined, undefined, undefined, '400', true);
   run = a.noteDone(run, 'B/4', 'duplicate', undefined, undefined, '400');
-  assert.deepEqual(a.summarizePull(run), { pulled: 1, cloned: 1, skipped: 1, failed: 1, failures: [{ key: 'B/1', error: 'not possible to fast-forward' }] });
+  assert.deepEqual(a.summarizePull(run), { pulled: 1, cloned: 1, skipped: 1, unsafe: [], failed: 1, failures: [{ key: 'B/1', error: 'not possible to fast-forward' }] });
   assert.deepEqual(a.progress(run), { done: 5, total: 6 });
 });
 
@@ -109,4 +109,30 @@ test('I group connection failures by host and spot an instant refusal', () => {
   run = a.noteDone(run, 'A/1');
   assert.equal(run.failures['A/1'], undefined);
   assert.deepEqual(a.summarizeFetch(run, () => 'clean', accountOf, ['B']).unreachable, [{ host: '', count: 1, fast: false }, { host: 'git.example.org', count: 1, fast: false }]);
+});
+
+test('I group clones paused for safety by setting, apart from failures (#344)', () => {
+  const unsafe = (setting) => ({ code: 'git.unsafe_config', ...(setting ? { setting } : {}) });
+  let run = a.startFetch(['A/1', 'A/2', 'A/3', 'B/1', 'B/2'], accountOf, () => 'clean');
+  run = a.noteCompletions(run, [
+    { key: 'A/1', error: 'paused', failure: unsafe('core.hooksPath') },
+    { key: 'A/2', error: 'paused', failure: unsafe('core.hooksPath') },
+    { key: 'A/3', error: 'paused', failure: unsafe('core.fsmonitor') },
+    { key: 'B/1', error: 'boom', failure: { code: 'git.unknown' } },
+    { key: 'B/2', error: 'paused', failure: unsafe() },
+  ]);
+  const sum = a.summarizeFetch(run, () => 'clean', accountOf, []);
+  assert.deepEqual(sum.unsafe, [
+    { setting: 'core.hooksPath', count: 2 }, { setting: '', count: 1 }, { setting: 'core.fsmonitor', count: 1 },
+  ]);
+  assert.equal(sum.failed, 1);
+  assert.equal(sum.firstFailure.key, 'B/1');
+  assert.equal(sum.changed, true);
+
+  let pull = a.startPull(['A/1', 'B/1'], [], accountOf, () => 'behind');
+  pull = a.noteDone(pull, 'A/1', 'paused', unsafe('core.hooksPath'));
+  pull = a.noteDone(pull, 'B/1', 'boom', { code: 'git.unknown' });
+  const pulled = a.summarizePull(pull);
+  assert.deepEqual(pulled.unsafe, [{ setting: 'core.hooksPath', count: 1 }]);
+  assert.deepEqual(pulled.failures, [{ key: 'B/1', error: 'boom' }]);
 });

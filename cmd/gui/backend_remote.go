@@ -467,6 +467,8 @@ type fetchEventDTO struct {
 	Skipped      bool   `json:"skipped,omitempty"`
 	RefusedFast  bool   `json:"refusedFast,omitempty"`
 	UpstreamGone bool   `json:"upstreamGone,omitempty"`
+	// UnsafeConfig names the setting that stopped the fetch (git.unsafe_config).
+	UnsafeConfig *UnsafeConfigDTO `json:"unsafeConfig,omitempty"`
 }
 
 type fetchDoneDTO struct {
@@ -535,21 +537,22 @@ type cloneDoneDTO struct {
 // pullDoneDTO is pull:done. Skipped is a pull skip reason, or true for an
 // unreachable server.
 type pullDoneDTO struct {
-	Run            string     `json:"run,omitempty"`
-	BehindBefore   int        `json:"behindBefore"`
-	Unchanged      bool       `json:"unchanged,omitempty"`
-	RepairWarnings []string   `json:"repairWarnings,omitzero"`
-	Source         string     `json:"source"`
-	Repo           string     `json:"repo"`
-	Error          string     `json:"error,omitempty"`
-	Code           string     `json:"code,omitempty"`
-	Host           string     `json:"host,omitempty"`
-	Skipped        skipReason `json:"skipped,omitzero"`
-	State          string     `json:"state,omitempty"`
-	Modified       *int       `json:"modified,omitempty"`
-	Untracked      *int       `json:"untracked,omitempty"`
-	Ahead          *int       `json:"ahead,omitempty"`
-	Behind         *int       `json:"behind,omitempty"`
+	Run            string           `json:"run,omitempty"`
+	BehindBefore   int              `json:"behindBefore"`
+	Unchanged      bool             `json:"unchanged,omitempty"`
+	RepairWarnings []string         `json:"repairWarnings,omitzero"`
+	Source         string           `json:"source"`
+	Repo           string           `json:"repo"`
+	Error          string           `json:"error,omitempty"`
+	Code           string           `json:"code,omitempty"`
+	Host           string           `json:"host,omitempty"`
+	Skipped        skipReason       `json:"skipped,omitzero"`
+	UnsafeConfig   *UnsafeConfigDTO `json:"unsafeConfig,omitempty"`
+	State          string           `json:"state,omitempty"`
+	Modified       *int             `json:"modified,omitempty"`
+	Untracked      *int             `json:"untracked,omitempty"`
+	Ahead          *int             `json:"ahead,omitempty"`
+	Behind         *int             `json:"behind,omitempty"`
 }
 
 // skipReason holds what pull:done says in skipped: true, false or an
@@ -618,6 +621,7 @@ var relayedEvents = map[string]payloadDecoder{
 		if err := json.Unmarshal(raw, &done); err != nil {
 			return nil, err
 		}
+		done.UnsafeConfig = keptUnsafeConfig(done.UnsafeConfig)
 		done.RepairWarnings = remoteRepairNotes(r, done.RepairWarnings)
 		return keepSentKeys(raw, done)
 	},
@@ -662,6 +666,7 @@ var relayedEvents = map[string]payloadDecoder{
 		if err := json.Unmarshal(raw, &done); err != nil {
 			return nil, err
 		}
+		done.UnsafeConfig = keptUnsafeConfig(done.UnsafeConfig)
 		done.RepairWarnings = remoteRepairNotes(r, done.RepairWarnings)
 		return keepSentKeys(raw, done)
 	},

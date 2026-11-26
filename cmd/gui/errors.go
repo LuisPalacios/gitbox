@@ -100,6 +100,60 @@ func problem(err error) *ProblemDTO {
 	return result
 }
 
+// UnsafeConfigDTO names the setting behind a git.unsafe_config failure and
+// where the clone stores it, so the window can explain how to review it.
+// Both fields come from fixed lists; the setting's value never leaves the
+// process.
+type UnsafeConfigDTO struct {
+	Setting string `json:"setting"`
+	Scope   string `json:"scope"`
+}
+
+// UnmarshalJSON keeps a finding from an untrusted server only when both
+// fields are names this build knows.
+func (u *UnsafeConfigDTO) UnmarshalJSON(data []byte) error {
+	type payload UnsafeConfigDTO
+	var wire payload
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*u = UnsafeConfigDTO{}
+	if knownTrustFinding(git.TrustFinding{Key: wire.Setting, Scope: wire.Scope}) {
+		*u = UnsafeConfigDTO(wire)
+	}
+	return nil
+}
+
+func knownTrustFinding(f git.TrustFinding) bool {
+	switch f.Key {
+	case git.TrustFSMonitor, git.TrustHooksPath, git.TrustInsteadOf:
+	default:
+		return false
+	}
+	switch f.Scope {
+	case git.ScopeLocal, git.ScopeWorktree, git.ScopeInclude:
+		return true
+	}
+	return false
+}
+
+// keptUnsafeConfig drops a server's finding that UnmarshalJSON emptied.
+func keptUnsafeConfig(u *UnsafeConfigDTO) *UnsafeConfigDTO {
+	if u == nil || u.Setting == "" {
+		return nil
+	}
+	return u
+}
+
+// unsafeConfigOf is the finding beneath err, or nil.
+func unsafeConfigOf(err error) *UnsafeConfigDTO {
+	f, ok := errors.AsType[git.TrustFinding](err)
+	if !ok || !knownTrustFinding(f) {
+		return nil
+	}
+	return &UnsafeConfigDTO{Setting: f.Key, Scope: f.Scope}
+}
+
 // gcmRemoteError refuses Git Credential Manager on a host (#242). OS is
 // the host's, so the reason names the store GCM would use there.
 type gcmRemoteError struct{ OS string }
