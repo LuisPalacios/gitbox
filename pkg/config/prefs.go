@@ -26,10 +26,9 @@ type RemoteEntry struct {
 	ServerArch    string `json:"server_arch,omitempty"`
 	ServerVersion string `json:"server_version,omitempty"`
 	LastConnected string `json:"last_connected,omitempty"`
-	// Window and CompactWindow hold the geometry of this remote's own
-	// window, so it never fights the local window over global.window.
-	Window        *WindowState `json:"window,omitempty"`
-	CompactWindow *WindowState `json:"compact_window,omitempty"`
+	// Window holds the geometry of this remote's own window, so it never
+	// fights the local window over global.window.
+	Window *WindowState `json:"window,omitempty"`
 }
 
 // ClientPrefs are the global keys that belong to the machine showing the
@@ -44,9 +43,7 @@ type ClientPrefs struct {
 	Language         string
 	UIMode           string
 	ShowPullPlan     *bool
-	ViewMode         string
 	Window           *WindowState
-	CompactWindow    *WindowState
 	SidebarCollapsed bool
 	Editors          []EditorEntry
 	Terminals        []TerminalEntry
@@ -67,9 +64,7 @@ func ExtractPrefs(c *Config) ClientPrefs {
 		Language:         g.Language,
 		UIMode:           g.UIMode,
 		ShowPullPlan:     g.ShowPullPlan,
-		ViewMode:         g.ViewMode,
 		Window:           g.Window,
-		CompactWindow:    g.CompactWindow,
 		SidebarCollapsed: g.Collapsed != nil && g.Collapsed.Sidebar,
 		Editors:          g.Editors,
 		Terminals:        g.Terminals,
@@ -92,9 +87,7 @@ func ApplyPrefs(c *Config, p ClientPrefs) {
 	g.Language = p.Language
 	g.UIMode = p.UIMode
 	g.ShowPullPlan = p.ShowPullPlan
-	g.ViewMode = p.ViewMode
 	g.Window = p.Window
-	g.CompactWindow = p.CompactWindow
 	g.Editors = p.Editors
 	g.Terminals = p.Terminals
 	g.TerminalApps = p.TerminalApps
@@ -133,32 +126,28 @@ func PreserveClientPrefs(dst, onDisk *Config) {
 
 // WindowFor returns the saved geometry of the window for a destination: the
 // local window when alias is empty, otherwise that remote's own window.
-func (p *ClientPrefs) WindowFor(alias string) (full, compact *WindowState) {
+func (p *ClientPrefs) WindowFor(alias string) *WindowState {
 	if alias == "" {
-		return p.Window, p.CompactWindow
+		return p.Window
 	}
 	if r := p.remote(alias); r != nil {
-		return r.Window, r.CompactWindow
+		return r.Window
 	}
-	return nil, nil
+	return nil
 }
 
-// SetWindow stores the geometry of the window for a destination, in the
-// compact or the full slot. It reports false when alias names no remote.
-func (p *ClientPrefs) SetWindow(alias string, compact bool, ws *WindowState) bool {
-	full, small := &p.Window, &p.CompactWindow
-	if alias != "" {
-		r := p.remote(alias)
-		if r == nil {
-			return false
-		}
-		full, small = &r.Window, &r.CompactWindow
+// SetWindow stores the geometry of the window for a destination. It reports
+// false when alias names no remote.
+func (p *ClientPrefs) SetWindow(alias string, ws *WindowState) bool {
+	if alias == "" {
+		p.Window = ws
+		return true
 	}
-	if compact {
-		*small = ws
-	} else {
-		*full = ws
+	r := p.remote(alias)
+	if r == nil {
+		return false
 	}
+	r.Window = ws
 	return true
 }
 
@@ -208,7 +197,6 @@ func (p ClientPrefs) clone() ClientPrefs {
 		p.ShowPullPlan = &show
 	}
 	p.Window = cloneWindow(p.Window)
-	p.CompactWindow = cloneWindow(p.CompactWindow)
 	p.Editors = slices.Clone(p.Editors)
 	p.Terminals = slices.Clone(p.Terminals)
 	for i := range p.Terminals {
@@ -229,7 +217,6 @@ func (p ClientPrefs) clone() ClientPrefs {
 	p.Remotes = slices.Clone(p.Remotes)
 	for i := range p.Remotes {
 		p.Remotes[i].Window = cloneWindow(p.Remotes[i].Window)
-		p.Remotes[i].CompactWindow = cloneWindow(p.Remotes[i].CompactWindow)
 	}
 	return p
 }

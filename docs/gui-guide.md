@@ -127,7 +127,7 @@ When an **Update available**, **Only online** or **Needs help** row reports a kn
 
 Names show without the organization prefix; hover a name to see it in full. Rows keep the three [launch buttons](#clone-actions), and the ⋯ menu offers Open on the web, the folder, editors, AI harnesses and **Stop showing this project**.
 
-Simple hides the rest: the Mirrors view, delete mode, the compact view and theme buttons (the theme stays in Settings), container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health shows **Connection needs checking** when the server is unreachable and **Reconnect** when a credential breaks. Settings hides the Config, PR / reviews, Global gitignore and Terminals rows. The compact view is the same in both modes.
+Simple hides the rest: the Mirrors view, delete mode, the theme button (the theme stays in Settings), container and branch badges, ahead, behind and changed counts, and the per-row fetch button. The top bar keeps **Check all** and **Update all**. Account health shows **Connection needs checking** when the server is unreachable and **Reconnect** when a credential breaks. Settings hides the Config, PR / reviews, Global gitignore and Terminals rows.
 
 With PR indicators enabled, Simple shows **Review requested** when someone asks for your review. Click the label to see the requests. Advanced shows badges with counts for your open PRs (📝) and the PRs awaiting your review (👀).
 
@@ -141,7 +141,7 @@ I use **Repair** to apply the existing clone maintenance, **Fix credential** to 
 
 ### Full view
 
-The full view shows the top bar, the sidebar, the selected view and the summary footer. The top bar holds the health rings and the Pull all, Fetch all, Delete mode, Compact view, theme, Simple/Advanced and Settings buttons; the GitBox logo at the far left folds the sidebar. The summary footer always shows both repo and mirror counts.
+The dashboard shows the top bar, the sidebar, the selected view and the summary footer. The top bar holds the health rings and the Pull all, Fetch all, Delete mode, theme, Simple/Advanced and Settings buttons; the GitBox logo at the far left folds the sidebar. The summary footer always shows both repo and mirror counts.
 
 The repo ring holds a branch icon and fills as clones get up to date. A small badge counts what isn't there yet, and hovering the ring shows the full `N of total up to date` line (Simple: `No action needed for N of total`). When the ring has something pending, clicking it opens **Needs attention** (Simple: **Needs you**). Advanced adds a [mirror ring](#mirror-health-ring) when mirrors are configured.
 
@@ -182,7 +182,7 @@ The **All repos** view folds at two levels, and an account's view folds parent c
 - **Account groups** — each account sits in its own light card, here and in **Needs attention**. Its name, in uppercase and in its provider's colour (GitHub indigo, GitLab orange, Gitea green, Forgejo red, Bitbucket blue), sits in the column of the status dots below, next to the filled ▾ caret that hangs to its left. Click the header bar or the name to fold its clone list. The header always shows how many clones it holds and how many need attention, folded or not, so a problem never hides behind a fold. The ⋯ menu on the header keeps working and never folds the group.
 - **Clones with clones below them** — a clone that has nested clones or not-yet-cloned workspace folders under it shows an outlined ▾ chevron in place of its status dot, so its name stays in line with its siblings'; its status words still say how it is. Click the chevron to fold everything below, at any depth. When the clone has updates, local changes or other details to inspect, its name opens the detail panel; otherwise, its name also folds the children. A folded row shows how many rows it hides and how many of them need attention.
 
-Gitbox remembers what you fold across restarts (`global.collapsed` in `gitbox.json`) and forgets entries for accounts or clones you delete or rename. The compact view keeps its own per-account expansion.
+Gitbox remembers what you fold across restarts (`global.collapsed` in `gitbox.json`) and forgets entries for accounts or clones you delete or rename.
 
 ### Keeping projects in sync
 
@@ -262,21 +262,6 @@ Click the name of a repo that shows available updates, local changes, conflicts 
 The panel stays compact and scrolls through the complete list. It keeps the pending-file details alongside incoming commits when both exist. The list reflects the last check for updates; **Check all** (Advanced: **Fetch all**) refreshes it. Opening the panel does not fetch or pull, and **Update** remains the explicit action that brings incoming changes into the clone.
 
 The panel refreshes when Gitbox detects new changes and closes when the clone no longer needs attention. Switching repositories while details load never replaces the new selection with an older result.
-
-### Compact view
-
-Click **◧** in the top bar to switch to compact mode, a narrow status strip about 220 px wide:
-
-- **Global health ring** — overall sync percentage and count.
-- **Account pills** — one per account with a mini ring and issue count. Click one to see its repos.
-- **Mirror pill** — when mirrors are configured, the active/total count with a coloured dot.
-- **Theme toggle** and a **◧ Full view** button at the bottom.
-
-Keep Gitbox visible beside other apps this way. Compact mode shows status only: switch back to the full view to reach the clone and account actions.
-
-<p align="center">
-  <img src="../assets/screenshot-compact.png" alt="Compact view: the overall sync ring and one row per account, one of them expanded to show its clones" width="220" />
-</p>
 
 ### Clones found on disk
 
@@ -522,7 +507,7 @@ In Advanced mode, **Settings → System check → Run** also shows the elapsed m
 
 In a local window, choose **Settings → System check → Run → Export diagnostics**. Review the JSON preview, then select **Save JSON…** to choose a file on this computer. Gitbox saves the preview exactly as shown. The bundle includes versions, configuration counts, recent operation codes and timings, fetch queue depth, scheduler state, and startup timings. Gitbox identifies repositories in error records with short hashes of their local paths. You can attach the saved file to a bug report.
 
-At startup, Gitbox checks credential permissions without reading token contents. If it detects exposure, a warning appears above the dashboard, including Compact view, and opens System check. The audit reports problems and unverifiable permissions; it never repairs them automatically. See [Credential file permissions](credentials.md#credential-file-permissions).
+At startup, Gitbox checks credential permissions without reading token contents. If it detects exposure, a warning appears above the dashboard and opens System check. The audit reports problems and unverifiable permissions; it never repairs them automatically. See [Credential file permissions](credentials.md#credential-file-permissions).
 
 The add-account and change-credential flows run the same tool check: if you pick the `gcm` credential type on a machine without Git Credential Manager, a yellow banner shows the install command instead of a cryptic authentication failure later on.
 
@@ -569,7 +554,7 @@ Once connected, the remote window is the full Gitbox window, showing and changin
 
 - **What works** — status, **Fetch all**, **Fetch**, repository details, pull request badges, mirror status, **Find projects**, credential checks and **System check**, all run on the host. So do the changes to the host's config: editing, renaming and deleting accounts, roots, mirror groups, adding discovered repositories to the config, ignoring clones, the host's settings and git config fixes, and repairing or restoring its `gitbox.json`. Adding an account and its credential setup run there too: a token is stored on the host, and an SSH key is made and kept there, with its public key copied to this computer's clipboard (see [Remote hosts](credentials.md#remote-hosts)). Cloning, pulling, deleting clones and creating repositories, the sweep, mirror setup, adoption and the reconcile also run on the host. Its daemon keeps long-running actions going when the connection drops. A PR link opens in the browser of this computer.
 - **Opening folders** — VS Code, a terminal profile and an AI harness open the folder on the host: VS Code with its Remote-SSH extension, and the terminal and the harness in a local terminal that runs `ssh -t` into the folder. On Windows a WezTerm or Alacritty profile opens the terminal in its own app, and every other profile in a new console. Other editors show dimmed with "This editor can't open folders on remote hosts", and with an editor chosen for the remote, the rest show dimmed with "This remote opens in the editor chosen in the Remote hosts window". **Reveal in Finder** or **Reveal in Explorer**, the account folder and **Open in Editor** of the config file show dimmed with "Not available for remote hosts".
-- **What is disabled** — the compact view and autostart are off in this window, with the tooltip "Not available in a remote window". GCM is not offered, because a host refuses it. Language, theme, Simple or Advanced and the sidebar are preferences of this computer, and they keep working. The local window and the remote windows share them: a change in one shows in another the next time it gets focus, and no window's save undoes it.
+- **What is disabled** — autostart is off in this window, with the tooltip "Not available in a remote window". GCM is not offered, because a host refuses it. Language, theme, Simple or Advanced and the sidebar are preferences of this computer, and they keep working. The local window and the remote windows share them: a change in one shows in another the next time it gets focus, and no window's save undoes it.
 - **The switcher** — in a remote window the host switcher shows the alias, the system of the host (Advanced only), and the connection state. Its menu also opens the connection log. A red **!** means the host sent a longer list than the window shows.
 - **The tint** — the top bar and the sidebar carry a light tint of the color chosen in the Remote hosts window, a stripe of the color runs along the top edge, and the host switcher shows the alias in a solid badge of the color, with text that keeps 4.5:1; the content, the cards and the status colors stay as in the local window, which is never tinted.
 - **Reconnect** — when the connection drops, the last state stays on screen, dimmed, under a **Disconnected from** the host banner with **Connect**, which connects again, clears any error the disconnection left and reloads everything. The actions come back once the host's clones are reconciled and their status refreshed.

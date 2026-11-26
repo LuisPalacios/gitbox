@@ -8,7 +8,6 @@ GetStartupTiming - Read timing marks for the current startup.
 GetUIMode - Read the preference for simple or advanced controls.
 GetWindowMode - Select the main, remote, terminal or host-management view.
 IsFirstRun - Decide whether to show onboarding.
-IsPositionOnScreen - Check whether the saved geometry is visible.
 MarkStartup - Record a renderer startup milestone.
 SetAutostart - Enable or disable launching Gitbox at login.
 SetCollapsed - Save the selected view, tree folds and sidebar state.
@@ -17,7 +16,6 @@ SetPeriodicSync - Change the fleet-check interval.
 SetShowPullPlan - Save whether Pull all opens its plan.
 SetTheme - Save the light, dark or system theme preference.
 SetUIMode - Change which controls the interface shows.
-SetViewMode - Switch between the full and compact layouts.
 ShowWindow - Reveal the window after the renderer applies its layout.
 
 # Configuration, onboarding and clone roots

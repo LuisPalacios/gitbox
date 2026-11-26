@@ -139,16 +139,6 @@ func TestBackupSkippedForWindowOnlyChanges(t *testing.T) {
 		t.Errorf("window-only change should not create a backup, got %d", len(matches))
 	}
 
-	// Add a compact_window entry only — still no backup.
-	cfg.Global.CompactWindow = &WindowState{X: 50, Y: 50, Width: 220, Height: 400}
-	if err := Save(cfg, path); err != nil {
-		t.Fatalf("compact-window-only Save: %v", err)
-	}
-	matches, _ = filepath.Glob(filepath.Join(dir, "gitbox-????????-??????*.json"))
-	if len(matches) != 0 {
-		t.Errorf("compact-window-only change should not create a backup, got %d", len(matches))
-	}
-
 	// Cycle the theme only — still no backup, so theme clicks never push
 	// real rollback points out of the ring.
 	for _, theme := range []string{"light", "dark", ""} {

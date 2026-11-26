@@ -19,8 +19,6 @@ var globalKeyClass = map[string]string{
 	"language":               "client",
 	"periodic_sync":          "client",
 	"window":                 "client",
-	"compact_window":         "client",
-	"view_mode":              "client",
 	"ui_mode":                "client",
 	"show_pull_plan":         "client",
 	"theme":                  "client",
@@ -47,9 +45,7 @@ func fullPrefs() ClientPrefs {
 		Language:         "es",
 		UIMode:           "simple",
 		ShowPullPlan:     new(false),
-		ViewMode:         "compact",
 		Window:           &WindowState{X: 1, Y: 2, Width: 900, Height: 700},
-		CompactWindow:    &WindowState{X: 3, Y: 4, Width: 220, Height: 400},
 		SidebarCollapsed: true,
 		Editors:          []EditorEntry{{Name: "VS Code", Command: "/usr/bin/code"}},
 		Terminals:        []TerminalEntry{{Name: "Legacy", Command: "xterm", Args: []string{"-e"}}},
@@ -59,8 +55,7 @@ func fullPrefs() ClientPrefs {
 		PeriodicSync:     "15m",
 		Remotes: []RemoteEntry{{
 			Alias: "my-server", ServerDir: "~/srv", Editor: "code",
-			Window:        &WindowState{X: 5, Y: 6, Width: 800, Height: 600},
-			CompactWindow: &WindowState{X: 7, Y: 8, Width: 210, Height: 390},
+			Window: &WindowState{X: 5, Y: 6, Width: 800, Height: 600},
 		}},
 		RemoteTint: "#8b5cf6",
 	}
@@ -307,20 +302,24 @@ func TestWindowFor(t *testing.T) {
 	p := fullPrefs()
 	ws := &WindowState{X: 42}
 
-	if !p.SetWindow("", false, ws) || p.Window != ws || p.Remotes[0].Window == ws {
-		t.Errorf("local full window not stored in global.window")
+	if !p.SetWindow("", ws) || p.Window != ws || p.Remotes[0].Window == ws {
+		t.Errorf("local window not stored in global.window")
 	}
-	if !p.SetWindow("my-server", true, ws) || p.Remotes[0].CompactWindow != ws || p.CompactWindow == ws {
-		t.Errorf("remote compact window not stored in its own entry")
+	remote := &WindowState{X: 7}
+	if !p.SetWindow("my-server", remote) || p.Remotes[0].Window != remote || p.Window != ws {
+		t.Errorf("remote window not stored in its own entry")
 	}
-	if full, compact := p.WindowFor("my-server"); full != p.Remotes[0].Window || compact != ws {
-		t.Errorf("WindowFor(my-server) = %v, %v", full, compact)
+	if got := p.WindowFor(""); got != ws {
+		t.Errorf("WindowFor(\"\") = %v", got)
 	}
-	if p.SetWindow("unknown", false, ws) {
+	if got := p.WindowFor("my-server"); got != remote {
+		t.Errorf("WindowFor(my-server) = %v", got)
+	}
+	if p.SetWindow("unknown", ws) {
 		t.Errorf("SetWindow accepted an alias that names no remote")
 	}
-	if full, compact := p.WindowFor("unknown"); full != nil || compact != nil {
-		t.Errorf("WindowFor(unknown) = %v, %v", full, compact)
+	if got := p.WindowFor("unknown"); got != nil {
+		t.Errorf("WindowFor(unknown) = %v", got)
 	}
 }
 
@@ -367,7 +366,7 @@ func TestSchemaKeepsRemoteKeysOptional(t *testing.T) {
 		}
 	}
 	check([]string{"remotes"}, "properties", "global")
-	check([]string{"server_dir", "editor", "window", "compact_window"},
+	check([]string{"server_dir", "editor", "window"},
 		"properties", "global", "properties", "remotes", "items")
 
 	_, required := schemaProps(t, "properties", "global", "properties", "remotes", "items")

@@ -154,7 +154,7 @@ func main() {
 		return
 	}
 
-	// Pre-load config to restore saved window dimensions and view mode.
+	// Pre-load config to restore saved window dimensions.
 	width, height := 1040, 700
 	minWidth, minHeight := 640, 480
 	preloadPath := config.DefaultV2Path()
@@ -165,27 +165,8 @@ func main() {
 		// The geometry is a client preference, stored per destination: the
 		// local window's own, or that of the remote this window shows.
 		prefs := config.ExtractPrefs(cfg)
-		fw, cw := prefs.WindowFor(app.remoteAlias)
-		app.savedViewMode = prefs.ViewMode
-		if fw != nil {
+		if fw := prefs.WindowFor(app.remoteAlias); fw != nil {
 			app.savedWindowPos = fw
-		}
-		if cw != nil {
-			app.savedCompactPos = cw
-		}
-		if prefs.ViewMode == "compact" {
-			minWidth, minHeight = 200, 200
-			if cw != nil {
-				if cw.Width >= 200 {
-					width = cw.Width
-				}
-				if cw.Height >= 200 {
-					height = cw.Height
-				}
-			} else {
-				width, height = 220, 400
-			}
-		} else if fw != nil {
 			if fw.Width >= 640 {
 				width = min(fw.Width, maxWindowWidth)
 			}
@@ -357,11 +338,11 @@ func runRemoteWindow(app *App, f remoteFlags) {
 	app.remote = newRemoteSession(app, f.alias)
 	app.backend = selectBackend(app)
 
-	// The window shows the host's data in the full view (#240), so it
-	// opens at the main window's size; it has no compact view yet.
+	// The window shows the host's data in the dashboard (#240), so it opens
+	// at the main window's size.
 	width, height := 1040, 700
 	p := prefs.Get()
-	if fw, _ := p.WindowFor(f.alias); fw != nil {
+	if fw := p.WindowFor(f.alias); fw != nil {
 		app.savedWindowPos = fw
 		if fw.Width >= 640 {
 			width = min(fw.Width, maxWindowWidth)

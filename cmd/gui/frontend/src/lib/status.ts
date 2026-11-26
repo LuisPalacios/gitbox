@@ -85,14 +85,6 @@ export function countBadge(field: CountBadge['field']): CountBadge {
   return COUNT_BADGES.find((b) => b.field === field) as CountBadge;
 }
 
-// The single count the compact row shows for a status, if any.
-export function statusCountBadge(status: string): CountBadge | null {
-  if (status === 'behind') return countBadge('behind');
-  if (status === 'dirty') return countBadge('modified');
-  if (status === 'ahead') return countBadge('ahead');
-  return null;
-}
-
 // ── Detail panel ──
 // Statuses with no available clone: an open detail panel folds when its
 // row reaches one of them, and clicking such a row does nothing.

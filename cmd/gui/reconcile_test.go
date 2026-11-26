@@ -407,7 +407,6 @@ func TestScanConfig_IgnoresOnlyUIState(t *testing.T) {
 		calls++
 		a.mu.Lock()
 		a.cfg.Global.Window = &config.WindowState{Width: calls}
-		a.cfg.Global.CompactWindow = &config.WindowState{Height: calls}
 		a.cfg.Global.Collapsed = &config.CollapsedState{Sidebar: true}
 		a.cfg.Global.Theme = "dark"
 		a.mu.Unlock()

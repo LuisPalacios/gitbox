@@ -120,7 +120,6 @@ cat > config/gitbox/gitbox.json <<EOF
   "global": {
     "folder": "$DEMO_ROOT/fleet",
     "language": "en",
-    "view_mode": "${DEMO_VIEW_MODE:-full}",
     "credential_ssh": { "ssh_folder": "~/.ssh" },
     "credential_gcm": { "helper": "manager", "credential_store": "wincredman" },
     "credential_token": {}

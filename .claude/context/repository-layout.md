@@ -9,7 +9,7 @@ cmd/
   gui/                    Wails v2 + Svelte GUI (GitboxApp), the only binary
     frontend/src/         Svelte frontend: App.svelte composes the shell; style.css holds the theme tokens
       lib/                Shared modules (bridge, stores, status, views, activity, notices, theme, i18n, rich, repo-tree, repo-detail + *.test.mjs) and shared pieces (Card, Logo, Rich, LauncherMenu, CredentialResult, PrecheckBanner, …)
-      lib/components/     Dashboard parts (top bar, activity strip, banners, settings, sidebar, Needs attention / All / account / Mirrors views, account card and menu, repo tree/row/detail, footer, notices, compact view)
+      lib/components/     Dashboard parts (top bar, activity strip, banners, settings, sidebar, Needs attention / All / account / Mirrors views, account card and menu, repo tree/row/detail, footer, notices)
       lib/modals/         One component per modal + modals.css (the shared dialog kit)
     serverbin/            The gitbox-server binaries GitboxApp embeds with -tags serverbin, pinned by SHA-256; gen/ is the build tool that compresses them and writes the pins
 pkg/                      Shared Go library

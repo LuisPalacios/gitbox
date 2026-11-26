@@ -128,9 +128,7 @@ type App struct {
 	workspaceUnknown []string            // guarded by reconcileMu
 	reconcilePending bool                // guarded by mu; one asynchronous stale-plan retry
 	mu               sync.Mutex
-	savedWindowPos   *config.WindowState // full-mode window state pre-loaded from config
-	savedCompactPos  *config.WindowState // compact-mode window state pre-loaded from config
-	savedViewMode    string              // "full" or "compact" pre-loaded from config
+	savedWindowPos   *config.WindowState // window state pre-loaded from config
 
 	// upstreamGone tracks repos discovered to be missing from the provider
 	// (deleted, archived private, lost access). Populated by fetch errors
@@ -1772,14 +1770,6 @@ func (a *App) setPeriodicSyncLocal(interval string) error {
 		p.PeriodicSync = interval
 		return nil
 	})
-}
-
-// WindowStateDTO is the frontend-friendly window geometry.
-type WindowStateDTO struct {
-	X      int `json:"x"`
-	Y      int `json:"y"`
-	Width  int `json:"width"`
-	Height int `json:"height"`
 }
 
 // ─── Status ───────────────────────────────────────────────────

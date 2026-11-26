@@ -83,15 +83,14 @@ func (a *App) shutdown(_ context.Context) {
 }
 
 // beforeClose is called while the window is still alive, before it is destroyed.
-// We capture and persist the window position and size to the active view mode slot.
+// We capture and persist the window position and size of this destination.
 //
 // The store refuses to save over a config it failed to load.
 func (a *App) beforeClose(_ context.Context) bool {
 	if x, y, w, h, ok := a.geometry(); ok {
 		ws := &config.WindowState{X: x, Y: y, Width: w, Height: h}
 		_ = a.clientPrefs().Update(func(p *config.ClientPrefs) {
-			// A remote window has no compact view yet (#239).
-			p.SetWindow(a.remoteAlias, p.ViewMode == "compact" && a.windowMode != "remote", ws)
+			p.SetWindow(a.remoteAlias, ws)
 		})
 	}
 	return false // don't prevent closing
@@ -164,18 +163,12 @@ func (a *App) domReady(_ context.Context) {
 		return
 	}
 
-	// Pick the right saved position based on view mode.
-	w := a.savedWindowPos
-	if a.savedViewMode == "compact" && a.savedCompactPos != nil {
-		w = a.savedCompactPos
-	}
-	if w != nil {
+	if w := a.savedWindowPos; w != nil {
 		// The saved size is the whole window, title bar included, but on
 		// macOS Wails creates the window with that size as its content, so
 		// it came back one title bar taller on every launch (#256). Setting
-		// the size again makes the window what was saved. Compact mode
-		// fits its own height from the frontend.
-		if runtime.GOOS == "darwin" && a.savedViewMode != "compact" && w.Width >= 640 && w.Height >= 480 {
+		// the size again makes the window what was saved.
+		if runtime.GOOS == "darwin" && w.Width >= 640 && w.Height >= 480 {
 			wailsrt.WindowSetSize(a.ctx, min(w.Width, maxWindowWidth), w.Height)
 		}
 		if a.isPositionOnScreen(w.X, w.Y, w.Width, w.Height) {
@@ -197,15 +190,11 @@ func (a *App) domReady(_ context.Context) {
 	// Start the window-owned registry after the renderer can receive events.
 	a.ensureWindowTasks()
 
-	// In compact mode, delay WindowShow — the frontend calls ShowWindow()
-	// after fitCompactHeight() to avoid flickering during resize.
-	if a.savedViewMode != "compact" {
-		wailsrt.WindowShow(a.ctx)
-	}
+	wailsrt.WindowShow(a.ctx)
 }
 
-// ShowWindow makes the window visible. Called by the frontend after
-// compact mode layout is measured and the window is correctly sized.
+// ShowWindow makes the window visible. The Remote hosts and Terminals
+// windows call it once their first frame is painted.
 func (a *App) ShowWindow() {
 	wailsrt.WindowShow(a.ctx)
 }
@@ -401,12 +390,6 @@ func (a *App) isPositionOnScreen(x, y, w, h int) bool {
 	return x+w > margin && y+h > margin && x < sw-margin && y < sh-margin
 }
 
-// IsPositionOnScreen is the exported binding so the frontend can validate
-// a window position before calling WindowSetPosition.
-func (a *App) IsPositionOnScreen(x, y, w, h int) bool {
-	return a.isPositionOnScreen(x, y, w, h)
-}
-
 // openDirectoryDialog is the native folder picker; tests replace it.
 var openDirectoryDialog = wailsrt.OpenDirectoryDialog
 
@@ -425,35 +408,4 @@ func (a *App) PickFolder(title string) string {
 		return ""
 	}
 	return dir
-}
-
-// SetViewMode saves the view mode and current window position/size to the
-// appropriate slot, then switches to the target mode. Returns the target
-// mode's previously saved window state (or nil if none was persisted).
-func (a *App) SetViewMode(mode string) *WindowStateDTO {
-	x, y, w, h, ok := a.geometry()
-
-	var target *config.WindowState
-	_ = a.clientPrefs().Update(func(p *config.ClientPrefs) {
-		// Save current window position to the slot we're leaving.
-		if ok {
-			p.SetWindow(a.remoteAlias, p.ViewMode == "compact", &config.WindowState{X: x, Y: y, Width: w, Height: h})
-		}
-		if mode == "compact" {
-			p.ViewMode = "compact"
-		} else {
-			p.ViewMode = ""
-		}
-		// Return the target mode's saved window state.
-		full, compact := p.WindowFor(a.remoteAlias)
-		if mode == "compact" {
-			target = compact
-		} else {
-			target = full
-		}
-	})
-	if target == nil {
-		return nil
-	}
-	return &WindowStateDTO{X: target.X, Y: target.Y, Width: target.Width, Height: target.Height}
 }

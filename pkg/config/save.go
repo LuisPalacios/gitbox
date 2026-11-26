@@ -93,8 +93,7 @@ func saveBytes(cfg *Config, path string, data []byte, files configFileOps) error
 // If the file doesn't exist yet, no backup is created.
 //
 // Skips the backup when the only difference between the on-disk file and the
-// next cfg is GUI state (global.window / global.compact_window /
-// global.collapsed). Every GUI session writes fresh window coordinates on
+// next cfg is GUI state (global.window / global.collapsed). Every GUI session writes fresh window coordinates on
 // close, every chevron click writes collapse state, and without this filter a few unrelated launches would roll out the genuine
 // pre-corruption copies before the user ever notices anything is wrong. If
 // the on-disk file is unparseable (really stale or bug-mangled), the snapshot
@@ -150,11 +149,9 @@ func EqualIgnoringUIState(a, b *Config) bool {
 	ac := *a
 	bc := *b
 	ac.Global.Window = nil
-	ac.Global.CompactWindow = nil
 	ac.Global.Collapsed = nil
 	ac.Global.Theme = ""
 	bc.Global.Window = nil
-	bc.Global.CompactWindow = nil
 	bc.Global.Collapsed = nil
 	bc.Global.Theme = ""
 	da, err := marshalConfig(&ac)

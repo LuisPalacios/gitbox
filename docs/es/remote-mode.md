@@ -78,7 +78,7 @@ Esto configura las credenciales del host, y también se ejecuta allí (consulta 
 - cambiar el tipo de credencial de una cuenta, salvo a GCM, que un host rechaza;
 - configurar, verificar y regenerar la clave SSH de una cuenta, cuya clave privada se queda en el host.
 
-La vista compacta y el arranque automático están desactivados, con el aviso «No disponible en una ventana remota»: una ventana remota los mantiene apagados.
+El arranque automático está desactivado, con el aviso «No disponible en una ventana remota»: una ventana remota lo mantiene apagado.
 
 Esto no tiene equivalente remoto, así que está desactivado con el aviso «No disponible para hosts remotos»: **Mostrar en Finder** o **Mostrar en el Explorador**, abrir la carpeta de la cuenta y **Abrir en editor** del archivo de configuración en Ajustes.
 

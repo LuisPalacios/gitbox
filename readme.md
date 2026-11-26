@@ -72,7 +72,7 @@ Discovery, cloning and repo creation work on all five providers. Mirroring is au
 Gitbox has two modes; switch between them with the toggle in the top bar. New installs start in Simple.
 
 - **Simple** is for people who don't know Git and only want their projects safe. Each project says in plain words whether the work is saved, and the screen keeps only the buttons they need.
-- **Advanced** adds every Git detail and tool: ahead, behind and changed counts, branch badges, a fetch button per row, the Mirrors view, delete mode and the compact view.
+- **Advanced** adds every Git detail and tool: ahead, behind and changed counts, branch badges, a fetch button per row, the Mirrors view and delete mode.
 
 <p align="center">
   <img src="assets/screenshot-advanced.png" alt="Advanced mode: the account sidebar and the Needs attention view, grouped into credentials, needs attention, local work, behind, and not cloned" width="820">

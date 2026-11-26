@@ -27,12 +27,10 @@ test('I show a spinning glyph while a row is unscanned or fetching', () => {
   assert.equal(s.rowBusy('unknown', false), true);
 });
 
-test('I describe count badges in a fixed order and pick the compact one', () => {
+test('I describe count badges in a fixed order', () => {
   assert.deepEqual(s.COUNT_BADGES.map((b) => `${b.glyph}${b.field}:${b.color}:${b.word}`), ['↓behind:behind:count.behind', '↑ahead:ahead:count.ahead', '✎modified:dirty:count.changed', '?untracked:not cloned:count.untracked']);
-  assert.equal(s.statusCountBadge('behind').field, 'behind');
-  assert.equal(s.statusCountBadge('dirty').field, 'modified');
-  assert.equal(s.statusCountBadge('ahead').field, 'ahead');
-  assert.equal(s.statusCountBadge('diverged'), null);
+  assert.equal(s.countBadge('behind').glyph, '↓');
+  assert.equal(s.countBadge('modified').color, 'dirty');
 });
 
 test('I open the detail panel only for statuses that need attention', () => {

@@ -116,17 +116,6 @@
                                     "width": { "type": "integer", "description": "Window width in pixels." },
                                     "height": { "type": "integer", "description": "Window height in pixels." }
                                 }
-                            },
-                            "compact_window": {
-                                "type": "object",
-                                "description": "Position and size of this remote's own window in compact view. Saved automatically.",
-                                "additionalProperties": false,
-                                "properties": {
-                                    "x": { "type": "integer", "description": "Window horizontal position (pixels from left edge of screen)." },
-                                    "y": { "type": "integer", "description": "Window vertical position (pixels from top edge of screen)." },
-                                    "width": { "type": "integer", "description": "Window width in pixels." },
-                                    "height": { "type": "integer", "description": "Window height in pixels." }
-                                }
                             }
                         }
                     }
@@ -155,36 +144,6 @@
                             "description": "Window height in pixels."
                         }
                     }
-                },
-                "compact_window": {
-                    "type": "object",
-                    "description": "GUI compact-view window position and size. Saved automatically when switching to compact mode.",
-                    "additionalProperties": false,
-                    "properties": {
-                        "x": {
-                            "type": "integer",
-                            "description": "Window horizontal position (pixels from left edge of screen)."
-                        },
-                        "y": {
-                            "type": "integer",
-                            "description": "Window vertical position (pixels from top edge of screen)."
-                        },
-                        "width": {
-                            "type": "integer",
-                            "minimum": 200,
-                            "description": "Window width in pixels."
-                        },
-                        "height": {
-                            "type": "integer",
-                            "minimum": 200,
-                            "description": "Window height in pixels."
-                        }
-                    }
-                },
-                "view_mode": {
-                    "type": "string",
-                    "enum": ["full", "compact"],
-                    "description": "Last active GUI view mode. Restored on next launch."
                 },
                 "ui_mode": {
                     "type": "string",

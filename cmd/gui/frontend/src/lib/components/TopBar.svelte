@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Top bar: the sidebar button, logo, the host switcher (#330), compact
+  // Top bar: the sidebar button, logo, the host switcher (#330), small
   // health rings (the repo ring, plus the mirror ring in Advanced), the
   // action buttons, the Simple/Advanced switch and the Settings gear.
   import { onMount } from 'svelte';
@@ -22,7 +22,6 @@
   export let pullPlanBusy = false;
   export let syncAll: () => Promise<void>;
   export let runFetchAll: () => Promise<void>;
-  export let toggleViewMode: () => Promise<void>;
   export let cycleTheme: () => void;
   export let setUIMode: (mode: 'simple' | 'advanced') => Promise<void>;
   // The sidebar button: folds the sidebar to its rail and back (⌘B / Ctrl+B).
@@ -70,7 +69,7 @@
     <span class="title" translate="no">GitBox</span>
     {#if HostSwitcher}<svelte:component this={HostSwitcher} state={remote} {simple} />{/if}
   </div>
-  <!-- Compact rings without labels, in both modes. The icon names what the
+  <!-- Small rings without labels, in both modes. The icon names what the
        ring tracks, the corner badge counts what is not there yet, and the
        hover tooltip spells it out. Simple counts saved projects, Advanced
        up-to-date clones. With something pending, a click opens Needs
@@ -118,7 +117,6 @@
     </button>
     {#if !simple}
     <button class="icon-btn" use:ro={['stopTrackingRepo']} class:delete-active={deleteMode} on:click={() => deleteMode = !deleteMode} disabled={Object.keys($accounts).length === 0} title={deleteMode ? $t('top.exitDeleteMode') : $t('top.deleteMode')}><UIIcon name="trash" /></button>
-    <button class="icon-btn" use:ro={'setViewMode'} on:click={toggleViewMode} title={$t('top.compactView')}><UIIcon name="compact" /></button>
     <button class="icon-btn" on:click={cycleTheme} title={$t('top.themeTip', { name: $t(`theme.${themeChoice}`) })}><UIIcon name={themeChoice === 'light' || themeChoice === 'dark' ? `theme-${themeChoice}` : 'theme-system'} /></button>
     {/if}
     <button class="mode-switch" class:mode-switch-on={!simple} role="switch" aria-checked={!simple}

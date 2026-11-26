@@ -24,13 +24,12 @@
   import { pushNotice, dismissNotice, errorText } from './lib/notices';
   import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
   import type { Run, Completion } from './lib/activity';
-  import { WindowSetSize, WindowSetMinSize, WindowGetSize, WindowSetPosition, WindowGetPosition, Quit } from '../wailsjs/runtime/runtime';
+  import { Quit } from '../wailsjs/runtime/runtime';
   import type { ConfigDTO, CredentialFinding, RepoState, PullSkipReason, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
   import OfflineBanner from './lib/components/OfflineBanner.svelte';
-  import CompactView from './lib/components/CompactView.svelte';
   import TopBar from './lib/components/TopBar.svelte';
   import Banners from './lib/components/Banners.svelte';
   import CredentialWarning from './lib/components/CredentialWarning.svelte';
@@ -73,8 +72,6 @@
   import { applyTint, tintOf } from './lib/tint';
   import type { ThemeChoice } from './lib/theme';
 
-  // ── View mode ──
-  let viewMode: 'full' | 'compact' = 'full';
   let languageChoice: 'en' | 'es' = 'en';
 
   // ── Experience (issue #124) ──
@@ -82,10 +79,6 @@
   // Advanced is everything. Persisted as global.ui_mode.
   let uiMode: 'simple' | 'advanced' = 'advanced';
   $: simple = uiMode === 'simple';
-
-  let compactExpanded: Record<string, boolean> = {};
-  let savedFullSize: { w: number; h: number } | null = null;
-  let savedFullPos: { x: number; y: number } | null = null;
 
   // A repo row toggles its detail panel once its first scan is in.
   function activateRepoRow(sourceKey: string, repoName: string, status: string) {
@@ -105,77 +98,6 @@
   $: configApps = ($configStore?.global?.terminal_apps || []) as TerminalAppInfo[];
   $: configShells = ($configStore?.global?.shells || []) as ShellInfo[];
   $: configProfiles = ($configStore?.global?.terminal_profiles || []) as TerminalProfileInfo[];
-
-  async function toggleViewMode() {
-    // A remote window shows the full view only (#240).
-    if (windowMode === 'remote') return;
-    // SetViewMode saves current position to the slot we're leaving,
-    // then persists the new mode.
-    if (viewMode === 'full') {
-      const size = await WindowGetSize();
-      const pos = await WindowGetPosition();
-      savedFullSize = { w: size.w, h: size.h };
-      savedFullPos = { x: pos.x, y: pos.y };
-      await bridge.setViewMode('compact');
-      viewMode = 'compact';
-      WindowSetMinSize(200, 200);
-      await tick();
-      // Wait for slide transitions on expanded accounts (120ms) + buffer.
-      setTimeout(() => fitCompactHeight(), 250);
-      // Second pass catches any remaining layout shifts.
-      setTimeout(() => fitCompactHeight(), 500);
-    } else {
-      const savedState = await bridge.setViewMode('full');
-      viewMode = 'full';
-      WindowSetMinSize(640, 480);
-      await tick();
-      const target = savedFullSize
-        ?? (savedState ? { w: savedState.width, h: savedState.height } : { w: 1040, h: 700 });
-      const pos = savedFullPos
-        ?? (savedState ? { x: savedState.x, y: savedState.y } : null);
-      setTimeout(async () => {
-        WindowSetSize(target.w, target.h);
-        if (pos) {
-          const onScreen = await bridge.isPositionOnScreen(pos.x, pos.y, target.w, target.h);
-          if (onScreen) {
-            WindowSetPosition(pos.x, pos.y);
-          }
-        }
-      }, 50);
-    }
-  }
-
-  async function toggleCompactAcct(key: string) {
-    compactExpanded[key] = !compactExpanded[key];
-    compactExpanded = compactExpanded;
-    // Wait for Svelte to render + slide transition (120ms), then resize.
-    await tick();
-    setTimeout(() => fitCompactHeight(), 200);
-  }
-
-  async function fitCompactHeight() {
-    if (viewMode !== 'compact') return;
-    const strip = document.querySelector('.compact-strip') as HTMLElement | null;
-    if (!strip) return;
-    // Clone the strip off-screen with no height constraint to measure natural height.
-    const clone = strip.cloneNode(true) as HTMLElement;
-    clone.style.position = 'absolute';
-    clone.style.left = '-9999px';
-    clone.style.top = '0';
-    clone.style.minHeight = '0';
-    clone.style.height = 'auto';
-    clone.style.overflow = 'visible';
-    clone.style.width = strip.offsetWidth + 'px';
-    document.body.appendChild(clone);
-    const contentH = clone.offsetHeight;
-    document.body.removeChild(clone);
-    // Wails WebView2: window.outerHeight ≈ innerHeight (title bar not included).
-    // Use WindowGetSize() which returns the real OS window size to compute chrome.
-    const winSize = await WindowGetSize();
-    const chrome = winSize.h - window.innerHeight;
-    const desired = Math.min(contentH + chrome, screen.availHeight);
-    WindowSetSize(220, Math.max(desired, 200));
-  }
 
   // ── Global identity warning ──
   let globalIdentityWarn: GlobalIdentityWarn | null = null;
@@ -958,11 +880,10 @@
     saveLayout();
   }
 
-  // ⌘B (macOS) or Ctrl+B folds the sidebar, except in the compact view and
-  // while typing.
+  // ⌘B (macOS) or Ctrl+B folds the sidebar, except while typing.
   function sidebarKey(e: KeyboardEvent) {
     if (e.key.toLowerCase() !== 'b' || e.altKey || e.shiftKey || !(hostOS === 'darwin' ? e.metaKey : e.ctrlKey)) return;
-    if (viewMode !== 'full' || firstRun || cfgLoadErrorModal || windowMode !== 'main') return;
+    if (firstRun || cfgLoadErrorModal || windowMode !== 'main') return;
     if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
     e.preventDefault();
     toggleSidebar();
@@ -1750,7 +1671,7 @@
   function observeFirstRow() {
     if (observedStages.has('firstRow')) return;
     const detect = () => {
-      if (!document.querySelector('.repo-row, .compact-row')) return;
+      if (!document.querySelector('.repo-row')) return;
       markStartup('firstRow');
       rowObserver?.disconnect();
       rowObserver = undefined;
@@ -1792,25 +1713,12 @@
     fetchInterval = cfg.global?.periodic_sync || 'off';
     uiMode = cfg.global?.ui_mode === 'simple' ? 'simple' : 'advanced';
     if (uiMode === 'simple') enterSimple();
-    const savedMode = cfg.global?.view_mode;
     observeFirstRow();
     configStore.set(cfg);
     repoStates.set(Object.fromEntries(Object.entries(cfg.sources).flatMap(([sourceKey, source]) =>
       Object.keys(source.repos).map(repoName => [`${sourceKey}/${repoName}`, $repoStates[`${sourceKey}/${repoName}`] ?? { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }])
     )));
     events.snapshot(snapshot.eventWatermark, () => $configStore?.revision ?? 0);
-    if (savedMode === 'compact' && windowMode !== 'remote') {
-      viewMode = 'compact';
-      await tick();
-      // Fit to content, then show the window (it starts hidden in compact mode).
-      setTimeout(async () => {
-        await fitCompactHeight();
-        bridge.showWindow();
-      }, 300);
-      // Second pass to catch font/style loading shifts.
-      setTimeout(() => fitCompactHeight(), 800);
-    }
-
     const id = ++statusPass;
     retireStream();
     let first!: () => void;
@@ -2565,15 +2473,11 @@
   <OfflineBanner hosts={networkDown} retrying={fetchingAll} onRetry={() => runFetchAll(true)} />
   <CredentialWarning findings={credentialFindings} onReview={openDoctorModal} />
 
-  {#if viewMode === 'compact'}
-  <!-- ══════ COMPACT STATUS VIEW ══════ -->
-  <CompactView {compactExpanded} {credStatuses} {treeRows} {fetchingRepos} {themeChoice} {toggleCompactAcct} {cycleTheme} {toggleViewMode} />
-  {:else}
-  <!-- ══════ FULL DASHBOARD VIEW ══════ -->
+  <!-- ══════ DASHBOARD ══════ -->
 
   <!-- ── TOP BAR ── -->
   <TopBar {simple} {syncing} pullPlanBusy={loadingPullPlan || !!pullPlan} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings remote={windowMode === 'remote' ? remoteState : null}
-    {syncAll} runFetchAll={() => runFetchAll(true)} {toggleViewMode} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} {setView} />
+    {syncAll} runFetchAll={() => runFetchAll(true)} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} {setView} />
 
   <!-- ── ACTIVITY STRIP (Fetch all / Pull all) ── -->
   <ActivityStrip run={pullRun || fetchRun} {simple} />
@@ -2617,9 +2521,6 @@
 
   <!-- ── SUMMARY FOOTER ── -->
   <Footer {simple} bind:updateInfo bind:updateApplying bind:updateError bind:updateDismissed {updateProgress} {updateDone} />
-
-  {/if}
-  <!-- end viewMode -->
 
   {#if pullPlan}
     <PullPlanModal plan={pullPlan} {simple} onCancel={() => { pullPlan = null; }} onConfirm={confirmPullPlan} />

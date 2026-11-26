@@ -38,7 +38,6 @@ func DomainHash(cfg *Config) Hash {
 	c := *cfg
 	StripClientPrefs(&c)
 	c.Global.Window = nil
-	c.Global.CompactWindow = nil
 	c.Global.Collapsed = nil
 	data, err := marshalConfig(&c)
 	if err != nil {

@@ -54,7 +54,7 @@ When Gitbox needs a token, it looks in this order:
 
 At startup, Gitbox audits the credential directory and its entries using metadata only: it does not read token contents. On macOS and Linux, it expects directory mode `0700` and file mode `0600`. On Windows, it inspects the directory and file ACLs and flags grants to identities other than the owner, SYSTEM or Administrators. It also reports permissions it cannot verify, symbolic links and unexpected entry types.
 
-Open **Settings → System check → Run** to inspect the findings and their suggested actions. If the audit detects exposure, a warning appears above the dashboard, including Compact view. The warning opens the same report. A failed inspection appears as a finding rather than a successful check.
+Open **Settings → System check → Run** to inspect the findings and their suggested actions. If the audit detects exposure, a warning appears above the dashboard. The warning opens the same report. A failed inspection appears as a finding rather than a successful check.
 
 Review and change permissions with your operating system's tools, then click **Re-check** in System check to audit again. The audit never repairs permissions automatically.
 
