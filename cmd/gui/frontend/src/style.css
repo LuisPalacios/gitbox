@@ -58,8 +58,8 @@ body {
 .icon-btn:disabled { opacity: 0.3; cursor: default; }
 .icon-btn:focus-visible { outline: 1px solid var(--border-hover); outline-offset: 1px; }
 /* Delete mode's ✕ buttons. */
-.icon-btn-danger { color: var(--alert); border-color: color-mix(in srgb, var(--alert) 45%, transparent); }
-.icon-btn-danger:hover:not(:disabled) { color: var(--alert); background: color-mix(in srgb, var(--alert) 14%, transparent); border-color: var(--alert); }
+.icon-btn-danger { color: var(--alert); border-color: rgba(var(--alert-rgb), 0.45); }
+.icon-btn-danger:hover:not(:disabled) { color: var(--alert); background: rgba(var(--alert-rgb), 0.14); border-color: var(--alert); }
 
 /* ── Text buttons ──
    Small outlined buttons with words: the account card, the view headers
@@ -123,6 +123,12 @@ body {
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   --spin-color: #0AFFFF;
   --alert: #D81E5B;
+  /* Mixed colors, computed here because older WebKitGTK builds lack
+     color-mix() (#340); lib/css-colors.test.mjs recomputes each one. */
+  --alert-rgb: 216, 30, 91;
+  --acct-bad-bg: #291921; --acct-warn-bg: #29201c;
+  --activity-bg: #0e141d; --notice-error-border: #932d52;
+  --pr-review-bg: #3c2630; --pr-review-bg-hover: #4e2535;
 }
 [data-theme="light"] {
   --bg-base: #fafafa; --bg-card: #ffffff; --bg-hover: #f4f4f5;
@@ -135,6 +141,10 @@ body {
   --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   --spin-color: #0000ff;
   --alert: #be123c;
+  --alert-rgb: 190, 18, 60;
+  --acct-bad-bg: #f9eaed; --acct-warn-bg: #fef4ed;
+  --activity-bg: #ecf2f9; --notice-error-border: #c86982;
+  --pr-review-bg: #f1dae3; --pr-review-bg-hover: #eec5d3;
 }
 html { color-scheme: dark light; }
 

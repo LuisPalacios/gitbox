@@ -97,8 +97,8 @@
     background: var(--bg-card); box-shadow: var(--card-shadow);
     display: flex; flex-direction: column; gap: 1px;
   }
-  .acct-card.bad { background: color-mix(in srgb, var(--alert) 9%, var(--bg-card)); }
-  .acct-card.warn { background: color-mix(in srgb, #F07623 8%, var(--bg-card)); }
+  .acct-card.bad { background: var(--acct-bad-bg); }
+  .acct-card.warn { background: var(--acct-warn-bg); }
   /* Tight lines: the card's buttons are shorter than elsewhere, so the three
      lines sit together without gaps that read as blank lines. */
   .line { display: flex; align-items: center; gap: 8px; min-height: 20px; min-width: 0; }

@@ -109,6 +109,7 @@ ai/                       Agent harness masters: the only hand-edited agent guid
     work-issue/           Worktree → plan → code → push → PR (stops before merge)
   rules/
     ai-harness.md         Harness authoring: masters, harness blocks, tokens, rendered files
+    frontend-css.md       Frontend colors: no color-mix(), per-theme mixed tokens
     skills-authoring.md   Skill creation guidelines
 .claude/CLAUDE.md, rules/, context/, skills/   Rendered from ai/ for Claude Code
 AGENTS.md, .codex/rules/, .codex/context/, .agents/skills/   Rendered from ai/ for Codex

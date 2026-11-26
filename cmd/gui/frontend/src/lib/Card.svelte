@@ -113,11 +113,11 @@
   .card-btn:disabled { opacity: 0.35; cursor: default; }
   .card-btn-sm { width: auto; flex: 0 0 auto; padding: 2px 8px; }
   .btn-delete-x {
-    background: none; border: 1px solid color-mix(in srgb, var(--alert) 35%, transparent); color: var(--alert);
+    background: none; border: 1px solid rgba(var(--alert-rgb), 0.35); color: var(--alert);
     cursor: pointer;
     width: 16px; height: 16px; padding: 0; flex-shrink: 0;
     border-radius: 3px; display: flex; align-items: center; justify-content: center;
     opacity: 0.7; transition: all 0.12s; line-height: 1;
   }
-  .btn-delete-x:hover { opacity: 1; background: color-mix(in srgb, var(--alert) 14%, transparent); border-color: var(--alert); }
+  .btn-delete-x:hover { opacity: 1; background: rgba(var(--alert-rgb), 0.14); border-color: var(--alert); }
 </style>

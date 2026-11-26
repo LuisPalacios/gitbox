@@ -43,7 +43,7 @@
     border: 1px solid var(--border-hover); background: var(--bg-card);
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3); font-size: 12px; color: var(--text-primary);
   }
-  .notice-error { border-color: color-mix(in srgb, var(--alert) 55%, var(--border-hover)); }
+  .notice-error { border-color: var(--notice-error-border); }
   .head { display: flex; align-items: center; gap: 8px; }
   .mark { flex: none; font-size: 12px; }
   .title { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; }
