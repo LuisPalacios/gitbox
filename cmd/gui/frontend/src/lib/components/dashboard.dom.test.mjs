@@ -239,6 +239,8 @@ test('the top bar changes experience without losing the selected view or scroll'
   const root = main.ownerDocument.documentElement
   assert.equal(root.dataset.remoteTint, undefined)
   assert.equal(root.style.getPropertyValue('--tint-top'), '')
+  assert.equal(root.style.getPropertyValue('--tint-stripe'), '')
+  assert.equal(root.style.getPropertyValue('--tint-chip-bg'), '')
   assert.equal(native.calls.filter(call => call.name === 'GetRemoteTint').length, 0)
   const page = within(main)
   await fireEvent.click(page.getByText(target))

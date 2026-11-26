@@ -1,8 +1,10 @@
 // The tint of remote windows (#331): the chosen color mixed at a fixed low
-// weight into the top bar and the sidebar, so I tell a remote window from
-// the local one at a glance. It is computed here, not with CSS color-mix(),
-// which older WebKitGTK builds lack. The text of the tinted areas is nudged
-// away from the background where the tint would bring it under 4.5:1.
+// weight into the top bar and the sidebar, plus a stripe of the color along
+// the top edge and the alias in a solid badge of it (#338), so I tell a
+// remote window from the local one at a glance. It is computed here, not
+// with CSS color-mix(), which older WebKitGTK builds lack. The text of the
+// tinted areas is nudged away from the background where the tint would
+// bring it under 4.5:1.
 
 // The presets, in the order the Remote hosts window shows them; the first
 // is the default. They mirror config.RemoteTintPresets.
@@ -48,7 +50,20 @@ export interface TintSurfaces {
   secondary: string;
   muted: string;
   dim: string;
+  // The stripe along the top edge, and the host switcher's alias badge.
+  stripe: string;
+  chipBg: string;
+  chipFg: string;
+  chipFg2: string;
+  chipHover: string;
 }
+
+// The keys applyTint publishes as --tint-<kebab-case key>.
+const TINT_KEYS: (keyof TintSurfaces)[] = [
+  'top', 'side', 'border', 'primary', 'secondary', 'muted', 'dim',
+  'stripe', 'chipBg', 'chipFg', 'chipFg2', 'chipHover',
+];
+export const tintVar = (k: string): string => `--tint-${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}`;
 
 const rgb = (hex: string): [number, number, number] => {
   const h = hex.replace('#', '');
@@ -87,6 +102,42 @@ function ensure(fg: string, bgs: string[], min: number, theme: ThemeName): strin
   return out;
 }
 
+const WHITE = '#ffffff';
+const NEAR_BLACK = '#0b0b0f';
+
+export interface Solid {
+  bg: string;
+  fg: string;
+  fg2: string;
+}
+
+// solid is a surface filled with the color whose text reads at 4.5:1. On
+// a light theme it darkens the color, at most 30 %, until white text
+// passes; failing that it keeps the color under near-black text. On a dark
+// theme it takes the most vivid mix of the color over the base, at least
+// 60 %, on which white text still passes. fg2 is the quieter text.
+export function solid(color: string, theme: ThemeName): Solid {
+  let bg = '';
+  let fg = WHITE;
+  if (theme === 'dark') {
+    for (let w = 100; w >= 60 && !bg; w--) {
+      const b = mix(THEME_TOKENS.dark.base, color, w / 100);
+      if (contrast(b, WHITE) >= MIN_CONTRAST) bg = b;
+    }
+    if (!bg) bg = ensure(mix(THEME_TOKENS.dark.base, color, 0.6), [WHITE], MIN_CONTRAST, 'light');
+  } else {
+    for (let k = 0; k <= 15 && !bg; k++) {
+      const b = mix(color, '#000000', k * 0.02);
+      if (contrast(b, WHITE) >= MIN_CONTRAST) bg = b;
+    }
+    if (!bg) { bg = color; fg = NEAR_BLACK; }
+  }
+  const quiet = mix(fg, bg, 0.22);
+  let fg2 = quiet;
+  for (let step = 1; step <= 50 && contrast(fg2, bg) < MIN_CONTRAST; step++) fg2 = mix(quiet, fg, step * 0.02);
+  return { bg, fg, fg2 };
+}
+
 // tintSurfaces is what a remote window paints with the color in a theme.
 // The section labels (dim) were under 4.5:1 before any tint; they only keep
 // the contrast they had.
@@ -96,6 +147,7 @@ export function tintSurfaces(color: string, theme: ThemeName): TintSurfaces {
   const top = mix(tk.base, color, w.surface);
   const side = mix(tk.card, color, w.surface);
   const bgs = [top, side];
+  const chip = solid(color, theme);
   return {
     top, side,
     border: mix(tk.border, color, w.border),
@@ -103,6 +155,11 @@ export function tintSurfaces(color: string, theme: ThemeName): TintSurfaces {
     secondary: ensure(tk.secondary, bgs, MIN_CONTRAST, theme),
     muted: ensure(tk.muted, bgs, MIN_CONTRAST, theme),
     dim: ensure(tk.dim, bgs, Math.min(contrast(tk.dim, tk.base), contrast(tk.dim, tk.card)), theme),
+    stripe: color,
+    chipBg: chip.bg,
+    chipFg: chip.fg,
+    chipFg2: chip.fg2,
+    chipHover: mix(chip.bg, chip.fg, 0.12),
   };
 }
 
@@ -116,10 +173,10 @@ export function tintOf(saved: string | undefined | null): string {
 export function applyTint(root: HTMLElement, color: string | null, theme: ThemeName) {
   if (!color) {
     delete root.dataset.remoteTint;
-    for (const k of ['top', 'side', 'border', 'primary', 'secondary', 'muted', 'dim']) root.style.removeProperty(`--tint-${k}`);
+    for (const k of TINT_KEYS) root.style.removeProperty(tintVar(k));
     return;
   }
   const s = tintSurfaces(color, theme);
   root.dataset.remoteTint = color;
-  for (const [k, v] of Object.entries(s)) root.style.setProperty(`--tint-${k}`, v);
+  for (const k of TINT_KEYS) root.style.setProperty(tintVar(k), s[k]);
 }

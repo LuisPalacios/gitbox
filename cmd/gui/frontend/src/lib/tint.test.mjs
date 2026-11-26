@@ -58,6 +58,45 @@ test('every preset tints both surfaces and keeps text readable in both themes', 
   }
 });
 
+// The stripe and the alias badge make a remote window stand out (#338):
+// the badge is a solid shade of the color whose text reads at 4.5:1.
+const SOLID = {
+  light: {
+    '#3b82f6': ['#3472d8', '#ffffff'], '#14b8a6': ['#0e8478', '#ffffff'], '#8b5cf6': ['#8558ec', '#ffffff'],
+    '#f59e0b': ['#f59e0b', '#0b0b0f'], '#f43f5e': ['#d73753', '#ffffff'], '#22c55e': ['#22c55e', '#0b0b0f'],
+  },
+  dark: {
+    '#3b82f6': ['#3573da', '#ffffff'], '#14b8a6': ['#118579', '#ffffff'], '#8b5cf6': ['#8659ed', '#ffffff'],
+    '#f59e0b': ['#a26a0b', '#ffffff'], '#f43f5e': ['#d83954', '#ffffff'], '#22c55e': ['#1a8743', '#ffffff'],
+  },
+};
+
+test('every preset gets a stripe and a readable solid badge in both themes', () => {
+  for (const theme of themes) {
+    for (const { color } of tint.TINT_PRESETS) {
+      const s = tint.tintSurfaces(color, theme);
+      const where = `${color} in ${theme}`;
+      assert.equal(s.stripe, color, `${where}: the stripe is the color itself`);
+      assert.deepEqual([s.chipBg, s.chipFg], SOLID[theme][color], `${where}: badge shade`);
+      for (const fg of ['chipFg', 'chipFg2']) {
+        const c = tint.contrast(s[fg], s.chipBg);
+        assert.ok(c >= 4.5, `${where}: ${fg} ${s[fg]} on ${s.chipBg} is ${c.toFixed(2)}:1`);
+      }
+      // The second text (system, chevron) is never louder than the alias; on
+      // a badge already near 4.5:1 it can only equal it.
+      assert.ok(tint.contrast(s.chipFg2, s.chipBg) <= tint.contrast(s.chipFg, s.chipBg) + 1e-9, `${where}: second text louder`);
+      assert.notEqual(s.chipHover, s.chipBg, `${where}: the badge shows its hover`);
+      assert.deepEqual(tint.solid(color, theme), { bg: s.chipBg, fg: s.chipFg, fg2: s.chipFg2 });
+    }
+  }
+});
+
+test('the tint is published as kebab-case CSS variables', () => {
+  assert.equal(tint.tintVar('top'), '--tint-top');
+  assert.equal(tint.tintVar('chipBg'), '--tint-chip-bg');
+  assert.equal(tint.tintVar('chipFg2'), '--tint-chip-fg2');
+});
+
 test('the mix and the contrast follow their definitions', () => {
   assert.equal(tint.mix('#000000', '#ffffff', 0.5), '#808080');
   assert.equal(tint.mix('#18181b', '#3b82f6', 0), '#18181b');

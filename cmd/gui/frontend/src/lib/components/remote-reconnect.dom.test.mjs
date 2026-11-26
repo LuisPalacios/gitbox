@@ -159,6 +159,11 @@ test('a remote window paints its tint and follows a new color', async (t) => {
   await waitFor(() => assert.equal(root.dataset.remoteTint, '#8b5cf6'))
   assert.match(root.style.getPropertyValue('--tint-top'), /^#[0-9a-f]{6}$/)
   assert.match(root.style.getPropertyValue('--tint-side'), /^#[0-9a-f]{6}$/)
+  // The stripe along the top edge and the alias badge (#338).
+  assert.equal(root.style.getPropertyValue('--tint-stripe'), '#8b5cf6')
+  for (const k of ['--tint-chip-bg', '--tint-chip-fg', '--tint-chip-fg2', '--tint-chip-hover']) {
+    assert.match(root.style.getPropertyValue(k), /^#[0-9a-f]{6}$/, k)
+  }
   assert.ok(window.document.querySelector('.topbar'), 'the top bar is there to be tinted')
   assert.ok(window.document.querySelector('.side'), 'the sidebar is there to be tinted')
   // The title still names the host.
@@ -167,5 +172,6 @@ test('a remote window paints its tint and follows a new color', async (t) => {
   emit('remote:tint', 40, '41', '#22c55e', true)
   await waitFor(() => assert.equal(root.dataset.remoteTint, '#22c55e'))
   assert.notEqual(root.style.getPropertyValue('--tint-top'), before)
+  assert.equal(root.style.getPropertyValue('--tint-stripe'), '#22c55e')
   assert.equal(native.calls.filter((c) => c.name === 'RemoteReconnect').length, 0, 'no reconnect')
 })

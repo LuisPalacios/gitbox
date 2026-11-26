@@ -112,7 +112,7 @@ The window then marks the action as failed with the connection error, so nothing
 
 ### The host switcher and the connection
 
-A remote window tints its top bar and its sidebar with the color chosen in the Remote hosts window, blue by default, so it never looks like the local window.
+A remote window tints its top bar and its sidebar with the color chosen in the Remote hosts window, blue by default, draws a stripe of it along the top edge and shows the alias in a solid badge of it, so it never looks like the local window.
 
 In a remote window the host switcher next to the title shows the alias, the system of the host in Advanced mode, and the connection state. Its menu opens the connection log, another remote host already added, the local window, and the Remote hosts window. The **Connection log** button of the Remote hosts window brings an open window of the host to the front with its log, and each window records its connection state so the switcher of every other window can show it.
 
