@@ -7,7 +7,7 @@
   // Uninstall and Remove live in the context menu of the list, which acts on
   // every selected host.
   import { onMount, tick } from 'svelte';
-  import { bridge } from '../bridge';
+  import { bridge, events } from '../bridge';
   import type { RemoteResult, RemotesList, SSHHost } from '../bridge';
   import { configStore, themeStore } from '../stores';
   import { TINT_PRESETS, DEFAULT_TINT, tintOf, tintSurfaces } from '../tint';
@@ -17,7 +17,7 @@
   import type { EditorInfo } from '../types';
   import { tooltip } from '../tooltip';
 
-  let remotes: RemotesList = { enabled: true, remotes: [] };
+  let remotes: RemotesList = { remotes: [] };
   // The color of remote windows' tint (#331), and what it paints in the
   // current theme, for the preview.
   let tint = DEFAULT_TINT;
@@ -132,7 +132,14 @@
     // for ten minutes without one, it ends (#330).
     const beat = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 60_000);
     const quick = setInterval(() => { if (busy === '' && (settling || Date.now() < watchUntil)) loadHosts(); }, 1_000);
-    return () => { window.removeEventListener('focus', refresh); clearInterval(beat); clearInterval(quick); };
+    // An uninstall whose login waits for the ssh agent says so here, with
+    // the host, until the login goes through or its limit ends it (#336).
+    const offWaiting = events.on('remote:waiting', (w) => {
+      if (busy !== 'uninstall') return;
+      msg = `${w.alias}: ${$t(w.waiting === '1password' ? 'remote.waiting.1password' : 'remote.waiting.agent')}`;
+      msgBad = false;
+    });
+    return () => { window.removeEventListener('focus', refresh); clearInterval(beat); clearInterval(quick); offWaiting(); };
   });
 
   function say(res: RemoteResult, ok: string): boolean {
@@ -341,7 +348,7 @@
 <div class="rh">
   <aside class="rh-side">
     <header class="rh-head">
-      <h1>{$t('remotesWindow.title')}<span class="badge">{$t('settings.remotes.experimental')}</span></h1>
+      <h1>{$t('remotesWindow.title')}</h1>
       <p>{$t('remotesWindow.intro')}</p>
     </header>
     <div class="rh-list" role="listbox" aria-label={$t('remotesWindow.title')} aria-multiselectable="true">
@@ -414,7 +421,7 @@
 
       <dl class="facts">
         <div><dt>{$t('remotesWindow.system')}</dt><dd translate="no">{current.serverOS ? `${current.serverOS}/${current.serverArch || '?'}` : $t('remotesWindow.unknown')}</dd></div>
-        <div><dt>{$t('remotesWindow.server')}</dt><dd translate="no">{current.serverVersion || $t('remotesWindow.unknown')}</dd></div>
+        <div><dt>{$t('remotesWindow.server')}</dt><dd translate="no">{current.serverVersion || $t(current.lastConnected ? 'remotesWindow.notInstalled' : 'remotesWindow.unknown')}</dd></div>
         <div><dt>{$t('remotesWindow.lastConnected')}</dt><dd>{when(current.lastConnected)}</dd></div>
         <div><dt>{$t('settings.remotes.serverDir')}</dt><dd translate="no">{current.serverDir || $t('remotesWindow.serverDirDefault')}</dd></div>
       </dl>
@@ -527,10 +534,6 @@
   .rh-head { padding: 20px 18px 10px; }
   .rh-head h1 { margin: 0; font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
   .rh-head p { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); line-height: 1.45; }
-  .badge {
-    padding: 0 5px; border-radius: 3px; font-size: 9px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
-    color: #b45309; background: rgba(245, 158, 11, 0.14);
-  }
   .rh-list { flex: 1; overflow-y: auto; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }
   .rh-host {
     display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: none; border-radius: 8px;

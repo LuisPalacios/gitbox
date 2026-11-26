@@ -1,3 +1,11 @@
 # Notas de la próxima versión
 
-No hay cambios destacables desde v2.8.1. La [versión v2.8.1](https://github.com/LuisPalacios/gitbox/releases/tag/v2.8.1) recoge lo que incluyó.
+## El modo remoto está siempre activo
+
+El selector de equipo junto al título aparece en cada ventana, sin opción ni ajuste. Gitbox ignora la opción retirada `--experimental-remote`, y el siguiente guardado quita `experimental_remote` de `gitbox.json`. Un `gitbox.json` sin claves remotas carga como antes. Consulta [Modo remoto](remote-mode.md#el-selector-de-equipo).
+
+GitboxApp 2.7.4 y anteriores quitan la lista `remotes` de `gitbox.json` al guardarlo, sin copia de seguridad. Actualiza todas las copias de GitboxApp de una máquina antes de añadir remotos en ella.
+
+## La desinstalación espera la aprobación y luego se detiene
+
+Cuando una desinstalación desde la ventana Equipos remotos espera al agente SSH, la ventana lo dice con el nombre del equipo y, con 1Password, señala su icono de la barra de menús o de la bandeja. Un inicio de sesión que sigue esperando a los 75 segundos se detiene con `ssh_login`, y la desinstalación sigue con el siguiente equipo. Las conexiones, las reinstalaciones y los diagnósticos comparten el mismo límite. Un rechazo de 1Password tras un inicio de sesión lento se muestra como el error del agente, con el mismo aviso. Tras una desinstalación, el equipo sigue en la lista y su ficha muestra **No instalado** en lugar de la versión antigua del servidor.

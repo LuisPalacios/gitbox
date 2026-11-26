@@ -72,7 +72,6 @@ func main() {
 	//                         own OS window so the editor can scroll on its
 	//                         own and the parent window stays interactive).
 	parentPID := 0
-	experimentalRemote := false
 	// --remote <alias> runs this process as the window of one remote
 	// (#239); see runRemoteWindow.
 	remoteArgs, remoteErr := parseRemoteFlags(os.Args[1:])
@@ -123,13 +122,8 @@ func main() {
 		if arg == "--terminals-window" {
 			app.windowMode = "terminals"
 		}
-		// --experimental-remote opts in to remote mode (#233): it shows
-		// the Remotes section of Settings, like the experimental_remote
-		// key, and a remote window needs it.
-		if arg == "--experimental-remote" {
-			experimentalRemote = true
-			app.experimentalRemote = true
-		}
+		// --experimental-remote is retired (#336): remote mode is always
+		// on, and the argument is ignored so old shortcuts keep working.
 		// --parent-pid=<PID> tells the Manager subprocess which gitbox.exe
 		// to watch. When that PID disappears, the watcher self-terminates
 		// — the safety net so the Manager can never outlive its parent
@@ -172,7 +166,6 @@ func main() {
 		// local window's own, or that of the remote this window shows.
 		prefs := config.ExtractPrefs(cfg)
 		fw, cw := prefs.WindowFor(app.remoteAlias)
-		experimentalRemote = experimentalRemote || prefs.ExperimentalRemote
 		app.savedViewMode = prefs.ViewMode
 		if fw != nil {
 			app.savedWindowPos = fw
@@ -204,7 +197,7 @@ func main() {
 
 	// Decide the backend after the preload. The terminals subprocess
 	// returned above and always runs the local backend.
-	app.backend = selectBackend(app, experimentalRemote)
+	app.backend = selectBackend(app)
 
 	windowTitle := "gitbox"
 	if app.testMode {
@@ -359,11 +352,10 @@ func runRemoteWindow(app *App, f remoteFlags) {
 	app.prefs = prefs
 	app.cfgPath = path
 	app.testMode = f.testMode
-	app.experimentalRemote = true
 	app.remoteAlias = f.alias
 	app.windowMode = "remote"
 	app.remote = newRemoteSession(app, f.alias)
-	app.backend = selectBackend(app, true)
+	app.backend = selectBackend(app)
 
 	// The window shows the host's data in the full view (#240), so it
 	// opens at the main window's size; it has no compact view yet.
@@ -439,7 +431,6 @@ func runRemotesWindow(app *App, f remoteFlags) {
 	app.prefs = newFilePrefs(path)
 	app.cfgPath = path
 	app.testMode = f.testMode
-	app.experimentalRemote = true
 	app.windowMode = "remotes"
 	quitRemotesWindow = func(a *App) {
 		if a.ctx != nil {

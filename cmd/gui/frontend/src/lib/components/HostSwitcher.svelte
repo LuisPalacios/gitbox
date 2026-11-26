@@ -18,7 +18,7 @@
   export let simple = false;
 
   let open = false;
-  let list: RemotesList = { enabled: true, remotes: [] };
+  let list: RemotesList = { remotes: [] };
   let message = '';
   let root: HTMLDivElement;
   let trigger: HTMLButtonElement;

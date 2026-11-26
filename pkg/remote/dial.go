@@ -153,7 +153,9 @@ func (r *runner) start(ctx context.Context, l layout, build, pin, action string)
 		_ = pw.Close()
 		close(s.done)
 	}()
-	stop := context.AfterFunc(ctx, s.kill)
+	// Until the handshake ends, a cancel also closes stdout, so a
+	// descendant of ssh that holds the pipe cannot keep the read waiting.
+	stop := context.AfterFunc(ctx, func() { abort(cmd, stdout) })
 	defer stop()
 
 	s.out = bufio.NewReaderSize(stdout, 64<<10)

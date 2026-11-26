@@ -79,8 +79,6 @@ type App struct {
 	// remote is the connection of a remote window (remote.go); nil in the
 	// local window.
 	remote *remoteSession
-	// experimentalRemote is set by --experimental-remote.
-	experimentalRemote bool
 	// checkAlias replaces ssh -G in tests; nil runs it.
 	checkAlias func(ctx context.Context, alias string) error
 	// windowGeom reads the window position and size; nil asks Wails. Tests

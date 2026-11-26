@@ -8,7 +8,7 @@
 | ------------------------------ | ----------------------------------------------------------------------------------------------- |
 | [Guía de la GUI](gui-guide.md) | Instalación, primer arranque, cuentas, sincronización, acciones, mirrors, contenedores, ajustes |
 | [Credenciales](credentials.md) | Configuración de GCM, token y SSH, scopes de token, resolución de problemas                     |
-| [Modo remoto](remote-mode.md)  | Experimental: repositorios de otro ordenador por SSH, configuración, códigos de error           |
+| [Modo remoto](remote-mode.md)  | Repositorios de otro ordenador por SSH, configuración, códigos de error                         |
 
 ## Para colaboradores
 

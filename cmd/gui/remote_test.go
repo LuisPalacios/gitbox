@@ -80,10 +80,10 @@ func remoteApp(t *testing.T, dial remoteDialer) (*App, *recordingSink) {
 	})
 	a := NewApp()
 	a.prefs = newFilePrefs(local)
-	a.remoteAlias, a.windowMode, a.experimentalRemote = "my-server", "remote", true
+	a.remoteAlias, a.windowMode = "my-server", "remote"
 	a.remote = newRemoteSession(a, "my-server")
 	a.remote.dial = dial
-	a.backend = selectBackend(a, true)
+	a.backend = selectBackend(a)
 	return a, &recordingSink{}
 }
 
@@ -269,25 +269,27 @@ func TestParseRemoteFlags(t *testing.T) {
 		wantErr string
 	}{
 		{nil, remoteFlags{}, ""},
-		{[]string{"--experimental-remote"}, remoteFlags{experimental: true}, ""},
-		{[]string{"--remote", "my-server", "--experimental-remote"}, remoteFlags{alias: "my-server", experimental: true}, ""},
-		{[]string{"--remote=my-server", "--experimental-remote"}, remoteFlags{alias: "my-server", experimental: true}, ""},
-		{[]string{"--remote", "my-server", "--experimental-remote", "--test-mode", "--prefs-file=/tmp/x.json"},
-			remoteFlags{alias: "my-server", experimental: true, testMode: true, prefsFile: "/tmp/x.json"}, ""},
-		{[]string{"--remote", "my-server"}, remoteFlags{}, "needs --experimental-remote"},
+		{[]string{"--remote", "my-server"}, remoteFlags{alias: "my-server"}, ""},
+		{[]string{"--remote=my-server"}, remoteFlags{alias: "my-server"}, ""},
+		{[]string{"--remote", "my-server", "--test-mode", "--prefs-file=/tmp/x.json"},
+			remoteFlags{alias: "my-server", testMode: true, prefsFile: "/tmp/x.json"}, ""},
+		// The retired flag is still accepted, and ignored (#336): old
+		// shortcuts and windows started by an older parent pass it.
+		{[]string{"--experimental-remote"}, remoteFlags{}, ""},
+		{[]string{"--remote", "my-server", "--experimental-remote"}, remoteFlags{alias: "my-server"}, ""},
+		{[]string{"--remotes-window", "--experimental-remote"}, remoteFlags{remotesWindow: true}, ""},
 		{[]string{"--remote"}, remoteFlags{}, "needs the ssh_config alias"},
-		{[]string{"--remote", "-oProxyCommand=x", "--experimental-remote"}, remoteFlags{}, "not a valid"},
-		{[]string{"--remote", "my-server", "--experimental-remote", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "--prefs-file is only for"},
+		{[]string{"--remote", "-oProxyCommand=x"}, remoteFlags{}, "not a valid"},
+		{[]string{"--remote", "my-server", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "--prefs-file is only for"},
 		{[]string{"--test-mode", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "--prefs-file is only for"},
 		// The Remote hosts window and the log request (#330).
-		{[]string{"--remotes-window", "--experimental-remote"}, remoteFlags{remotesWindow: true, experimental: true}, ""},
-		{[]string{"--remotes-window", "--experimental-remote", "--test-mode", "--prefs-file=/tmp/x.json"},
-			remoteFlags{remotesWindow: true, experimental: true, testMode: true, prefsFile: "/tmp/x.json"}, ""},
-		{[]string{"--remote", "my-server", "--experimental-remote", "--show-log"}, remoteFlags{alias: "my-server", experimental: true, showLog: true}, ""},
-		{[]string{"--remotes-window"}, remoteFlags{}, "needs --experimental-remote"},
-		{[]string{"--remotes-window", "--remote", "my-server", "--experimental-remote"}, remoteFlags{}, "open different windows"},
-		{[]string{"--show-log", "--experimental-remote"}, remoteFlags{}, "only for a remote window"},
-		{[]string{"--remotes-window", "--experimental-remote", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "--prefs-file is only for"},
+		{[]string{"--remotes-window"}, remoteFlags{remotesWindow: true}, ""},
+		{[]string{"--remotes-window", "--test-mode", "--prefs-file=/tmp/x.json"},
+			remoteFlags{remotesWindow: true, testMode: true, prefsFile: "/tmp/x.json"}, ""},
+		{[]string{"--remote", "my-server", "--show-log"}, remoteFlags{alias: "my-server", showLog: true}, ""},
+		{[]string{"--remotes-window", "--remote", "my-server"}, remoteFlags{}, "open different windows"},
+		{[]string{"--show-log"}, remoteFlags{}, "only for a remote window"},
+		{[]string{"--remotes-window", "--prefs-file=/tmp/x.json"}, remoteFlags{}, "--prefs-file is only for"},
 	}
 	for _, c := range cases {
 		got, err := parseRemoteFlags(c.args)
@@ -304,11 +306,11 @@ func TestParseRemoteFlags(t *testing.T) {
 }
 
 func TestRemoteWindowArgs(t *testing.T) {
-	if got := remoteWindowArgs("my-server", false, "/home/me/gitbox.json"); !slices.Equal(got, []string{"--remote", "my-server", "--experimental-remote"}) {
+	if got := remoteWindowArgs("my-server", false, "/home/me/gitbox.json"); !slices.Equal(got, []string{"--remote", "my-server"}) {
 		t.Errorf("production args = %q", got)
 	}
 	got := remoteWindowArgs("my-server", true, "/tmp/test/gitbox.json")
-	if !slices.Equal(got, []string{"--remote", "my-server", "--experimental-remote", "--test-mode", "--prefs-file=/tmp/test/gitbox.json"}) {
+	if !slices.Equal(got, []string{"--remote", "my-server", "--test-mode", "--prefs-file=/tmp/test/gitbox.json"}) {
 		t.Errorf("test-mode args = %q", got)
 	}
 	for _, args := range [][]string{got, remoteWindowArgs("my-server", false, "")} {
@@ -333,24 +335,10 @@ func TestRemotesSettings(t *testing.T) {
 		return nil
 	}
 
-	if got := a.ListRemotes(); got.Enabled || len(got.Remotes) != 0 {
-		t.Errorf("ListRemotes with remote mode off = %+v", got)
-	}
-	if res := a.AddRemote("my-server", ""); res.Hint != "error.remote.not_enabled" {
-		t.Errorf("AddRemote with remote mode off = %+v", res)
-	}
-	if res := a.ConnectRemote("my-server"); res.Hint != "error.remote.not_enabled" {
-		t.Errorf("ConnectRemote with remote mode off = %+v", res)
-	}
-
-	// The key turns it on like the flag does. It is a client preference, so
-	// it goes through the store: a key set only in memory would give way to
-	// the file at the next save (#240).
-	if err := a.clientPrefs().Update(func(p *config.ClientPrefs) { p.ExperimentalRemote = true }); err != nil {
-		t.Fatal(err)
-	}
-	if !a.ListRemotes().Enabled {
-		t.Error("experimental_remote did not enable the Remotes section")
+	// Remote mode is always on (#336): a config without remote keys lists
+	// no remotes and accepts the first one, with no flag and no key.
+	if got := a.ListRemotes(); len(got.Remotes) != 0 {
+		t.Errorf("ListRemotes of a config without remotes = %+v", got)
 	}
 	if res := a.AddRemote(" my-server ", "~/srv/gitbox"); res.Error != "" {
 		t.Fatalf("AddRemote = %+v", res)

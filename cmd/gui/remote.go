@@ -21,7 +21,7 @@ import (
 )
 
 // Remote mode on the client (#233, #239). A remote window is its own
-// process, GitboxApp --remote <alias> --experimental-remote: it loads only
+// process, GitboxApp --remote <alias>: it loads only
 // the client preferences, shows its window at once, and connects from
 // domReady through pkg/remote to a gitbox-server it installs and verifies.
 // Once connected it shows the host's data read-only (P4, #240). The main window lists
@@ -124,16 +124,22 @@ type RemoteEntryDTO struct {
 }
 
 // RemotesDTO is what the host switcher and the Remote hosts window show
-// (#330). Enabled is false unless remote mode is on, by the flag or the
-// experimental_remote key. Current is the alias this window shows, empty in
-// the local window.
+// (#330). Current is the alias this window shows, empty in the local
+// window.
 type RemotesDTO struct {
-	Enabled bool             `json:"enabled"`
 	Current string           `json:"current,omitempty"`
 	Remotes []RemoteEntryDTO `json:"remotes"`
 	// RemoteEditors are the editor commands a remote can be set to
 	// (pkg/remote.RemoteEditors).
 	RemoteEditors []string `json:"remoteEditors"`
+}
+
+// RemoteWaitingDTO is the remote:waiting payload: an uninstall from the
+// Remote hosts window whose login to Alias waits for the ssh agent,
+// "agent" or "1password" (#336).
+type RemoteWaitingDTO struct {
+	Alias   string `json:"alias"`
+	Waiting string `json:"waiting"`
 }
 
 // remoteConn is a started gitbox-server: what a dialer returns.
@@ -671,12 +677,24 @@ func (a *App) RemoteUninstall(alias string, force bool) RemoteUninstallDTO {
 	if err != nil {
 		return RemoteUninstallDTO{RemoteResultDTO: resultOf(err)}
 	}
+	// A login that waits for the ssh agent says so in the window that asked
+	// (#336); the login limit of pkg/remote ends it when nobody approves.
+	o.OnSlowLogin = func(agent string) {
+		emit(a.newOperation(), "remote:waiting", RemoteWaitingDTO{Alias: alias, Waiting: waitingFor(agent)})
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), remoteOpTimeout)
 	defer cancel()
 	res, err := remote.Uninstall(ctx, alias, o, force)
 	if err != nil {
 		log.Printf("uninstall: failed: %s", userMsg(err))
 		return RemoteUninstallDTO{RemoteResultDTO: resultOf(err)}
+	}
+	// The host keeps its entry, but no longer a server: the Remote hosts
+	// window then reads "Not installed" instead of the old version (#336).
+	if res.Done {
+		if err := a.clientPrefs().Update(func(p *config.ClientPrefs) { p.ForgetRemoteServer(alias) }); err != nil {
+			log.Printf("uninstall: the host's facts were not saved: %s", userMsg(err))
+		}
 	}
 	return RemoteUninstallDTO{
 		NeedsConfirm: !res.Done && res.OtherClients > 0, OtherClients: res.OtherClients,
@@ -758,12 +776,6 @@ func (r *serverDoctorReport) sanitize() {
 	}
 }
 
-// remoteEnabled reports whether remote mode is on: the flag or the
-// experimental_remote key.
-func (a *App) remoteEnabled() bool {
-	return a.experimentalRemote || a.clientPrefs().Get().ExperimentalRemote
-}
-
 // prefsPath is the client's own gitbox.json.
 func (a *App) prefsPath() string {
 	if a.cfgPath != "" {
@@ -790,7 +802,7 @@ func (a *App) freshPrefs() config.ClientPrefs {
 // its connection is, and what the host reported last.
 func (a *App) ListRemotes() RemotesDTO {
 	a.touchRemotesWindow()
-	out := RemotesDTO{Enabled: a.remoteEnabled(), Current: a.remoteAlias, Remotes: []RemoteEntryDTO{}, RemoteEditors: remote.RemoteEditorCommands()}
+	out := RemotesDTO{Current: a.remoteAlias, Remotes: []RemoteEntryDTO{}, RemoteEditors: remote.RemoteEditorCommands()}
 	dir := config.WindowsDir(a.prefsPath())
 	for _, r := range a.freshPrefs().Remotes {
 		open, state := config.WindowOpen(dir, r.Alias)
@@ -940,9 +952,6 @@ func (a *App) watchRemoteTint(ctx context.Context) {
 // and saves it to this machine's gitbox.json. ssh resolves any name, so the
 // check catches a broken ssh config, not an unknown host.
 func (a *App) AddRemote(alias, serverDir string) RemoteResultDTO {
-	if !a.remoteEnabled() {
-		return resultOf(&remoteError{remoteNotEnabled, "remote mode is off on this machine"})
-	}
 	alias, serverDir = strings.TrimSpace(alias), strings.TrimSpace(serverDir)
 	remotes := a.clientPrefs().Get().Remotes
 	entry := config.RemoteEntry{Alias: alias, ServerDir: serverDir}
@@ -988,9 +997,6 @@ func (a *App) RemoveRemote(alias string) RemoteResultDTO {
 // Connect reaches the single-instance lock of that alias, which focuses the
 // open window.
 func (a *App) ConnectRemote(alias string) RemoteResultDTO {
-	if !a.remoteEnabled() {
-		return resultOf(&remoteError{remoteNotEnabled, "remote mode is off on this machine"})
-	}
 	if _, ok := findRemote(a.clientPrefs().Get().Remotes, alias); !ok {
 		return resultOf(&remoteError{remoteUnknownAlias, fmt.Sprintf("no remote named %s is configured", alias)})
 	}
@@ -1004,9 +1010,6 @@ func (a *App) ConnectRemote(alias string) RemoteResultDTO {
 // connection log shown (#330). The log lives in that window's process, so
 // a remote without an open window has none to show.
 func (a *App) ShowRemoteLog(alias string) RemoteResultDTO {
-	if !a.remoteEnabled() {
-		return resultOf(&remoteError{remoteNotEnabled, "remote mode is off on this machine"})
-	}
 	if _, ok := findRemote(a.freshPrefs().Remotes, alias); !ok {
 		return resultOf(&remoteError{remoteUnknownAlias, fmt.Sprintf("no remote named %s is configured", alias)})
 	}
@@ -1023,9 +1026,6 @@ func (a *App) ShowRemoteLog(alias string) RemoteResultDTO {
 // own, like a remote window, so it outlives the window that opened it. A
 // second call reaches its single-instance lock, which focuses it.
 func (a *App) OpenRemotesWindow() RemoteResultDTO {
-	if !a.remoteEnabled() {
-		return resultOf(&remoteError{remoteNotEnabled, "remote mode is off on this machine"})
-	}
 	if err := startWindow(remotesWindowArgs(a.testMode, a.cfgPath)); err != nil {
 		return resultOf(fmt.Errorf("the Remote hosts window could not be started"))
 	}
@@ -1068,7 +1068,7 @@ const showLogFlag = "--show-log"
 // remotesWindowArgs are the arguments of the Remote hosts window's process.
 // In test mode it reads the remotes of the test window that opened it.
 func remotesWindowArgs(testMode bool, cfgPath string) []string {
-	args := []string{"--remotes-window", "--experimental-remote"}
+	args := []string{"--remotes-window"}
 	if testMode && cfgPath != "" {
 		args = append(args, "--test-mode", "--prefs-file="+cfgPath)
 	}
@@ -1078,7 +1078,7 @@ func remotesWindowArgs(testMode bool, cfgPath string) []string {
 // remoteWindowArgs are the arguments of a remote window's process. In test
 // mode it reads the remotes from the test config of this window.
 func remoteWindowArgs(alias string, testMode bool, cfgPath string) []string {
-	args := []string{"--remote", alias, "--experimental-remote"}
+	args := []string{"--remote", alias}
 	if testMode && cfgPath != "" {
 		args = append(args, "--test-mode", "--prefs-file="+cfgPath)
 	}
@@ -1087,10 +1087,9 @@ func remoteWindowArgs(alias string, testMode bool, cfgPath string) []string {
 
 // remoteFlags are the command-line flags of a remote window.
 type remoteFlags struct {
-	alias        string
-	prefsFile    string
-	experimental bool
-	testMode     bool
+	alias     string
+	prefsFile string
+	testMode  bool
 	// remotesWindow runs the Remote hosts window (#330).
 	remotesWindow bool
 	// showLog asks a remote window to show its connection log (#330).
@@ -1098,10 +1097,11 @@ type remoteFlags struct {
 }
 
 // parseRemoteFlags reads --remote <alias> (or --remote=<alias>),
-// --remotes-window, --show-log, --experimental-remote, --test-mode and
-// --prefs-file=<path>. It fails on a --remote or --remotes-window without
-// --experimental-remote, on both at once, on --show-log without --remote,
-// and on --prefs-file without --test-mode and one of the two.
+// --remotes-window, --show-log, --test-mode and --prefs-file=<path>. It
+// fails on --remote and --remotes-window at once, on --show-log without
+// --remote, and on --prefs-file without --test-mode and one of the two.
+// The retired --experimental-remote is ignored like any unknown argument,
+// so a shortcut or an older window that still passes it keeps working.
 func parseRemoteFlags(args []string) (remoteFlags, error) {
 	var f remoteFlags
 	remoteSeen := false
@@ -1121,8 +1121,6 @@ func parseRemoteFlags(args []string) (remoteFlags, error) {
 			f.remotesWindow = true
 		case arg == showLogFlag:
 			f.showLog = true
-		case arg == "--experimental-remote":
-			f.experimental = true
 		case arg == "--test-mode":
 			f.testMode = true
 		case strings.HasPrefix(arg, "--prefs-file="):
@@ -1134,12 +1132,8 @@ func parseRemoteFlags(args []string) (remoteFlags, error) {
 		return f, errors.New("--remote needs the ssh_config alias of a remote")
 	case remoteSeen && config.ValidateRemotes([]config.RemoteEntry{{Alias: f.alias}}) != nil:
 		return f, fmt.Errorf("--remote %q is not a valid ssh_config alias", f.alias)
-	case remoteSeen && !f.experimental:
-		return f, errors.New("--remote needs --experimental-remote: remote mode is experimental")
 	case remoteSeen && f.remotesWindow:
 		return f, errors.New("--remote and --remotes-window open different windows")
-	case f.remotesWindow && !f.experimental:
-		return f, errors.New("--remotes-window needs --experimental-remote: remote mode is experimental")
 	case f.showLog && !remoteSeen:
 		return f, errors.New("--show-log is only for a remote window (--remote)")
 	case f.prefsFile != "" && (!f.testMode || (!remoteSeen && !f.remotesWindow)):

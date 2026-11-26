@@ -53,11 +53,11 @@ func TestRemoteSmoke(t *testing.T) {
 
 	// The main window: add the remote.
 	path := seedConfig(t, "gitbox.json", nil)
-	main := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true, experimentalRemote: true}
+	main := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}
 	if res := main.AddRemote(alias, serverDir); res.Error != "" {
 		t.Fatalf("AddRemote: %+v", res)
 	}
-	if got := main.ListRemotes(); !got.Enabled || len(got.Remotes) != 1 || got.Remotes[0].ServerDir != serverDir {
+	if got := main.ListRemotes(); len(got.Remotes) != 1 || got.Remotes[0].ServerDir != serverDir {
 		t.Fatalf("ListRemotes = %+v", got)
 	}
 	t.Logf("step 1 add: %s with server_dir %s saved to the test config", alias, serverDir)
@@ -65,9 +65,9 @@ func TestRemoteSmoke(t *testing.T) {
 	// The remote window, built the way runRemoteWindow builds it.
 	win := NewApp()
 	win.prefs = newFilePrefs(path)
-	win.cfgPath, win.experimentalRemote, win.remoteAlias, win.windowMode = path, true, alias, "remote"
+	win.cfgPath, win.remoteAlias, win.windowMode = path, alias, "remote"
 	win.remote = newRemoteSession(win, alias)
-	win.backend = selectBackend(win, true)
+	win.backend = selectBackend(win)
 	sink := &recordingSink{}
 	win.events = sink
 

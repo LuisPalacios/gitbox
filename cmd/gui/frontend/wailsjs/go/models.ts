@@ -358,7 +358,6 @@ export namespace config {
 	    pr_badges_enabled?: boolean;
 	    pr_include_drafts?: boolean;
 	    check_global_gitignore?: boolean;
-	    experimental_remote?: boolean;
 	    remotes?: RemoteEntry[];
 	    remote_tint?: string;
 	
@@ -392,7 +391,6 @@ export namespace config {
 	        this.pr_badges_enabled = source["pr_badges_enabled"];
 	        this.pr_include_drafts = source["pr_include_drafts"];
 	        this.check_global_gitignore = source["check_global_gitignore"];
-	        this.experimental_remote = source["experimental_remote"];
 	        this.remotes = this.convertValues(source["remotes"], RemoteEntry);
 	        this.remote_tint = source["remote_tint"];
 	    }
@@ -1756,7 +1754,6 @@ export namespace main {
 	    }
 	}
 	export class RemotesDTO {
-	    enabled: boolean;
 	    current?: string;
 	    remotes: RemoteEntryDTO[];
 	    remoteEditors: string[];
@@ -1767,7 +1764,6 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.enabled = source["enabled"];
 	        this.current = source["current"];
 	        this.remotes = this.convertValues(source["remotes"], RemoteEntryDTO);
 	        this.remoteEditors = source["remoteEditors"];

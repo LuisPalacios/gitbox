@@ -12,7 +12,9 @@ import (
 type extraJSON string
 
 var (
-	globalJSONKeys = append(jsonKeys[GlobalConfig](), "folder", "extra_folders", "cards_open")
+	// Retired keys count as known, so the next save drops them instead of
+	// keeping them as extensions: experimental_remote is gone since #336.
+	globalJSONKeys = append(jsonKeys[GlobalConfig](), "folder", "extra_folders", "cards_open", "experimental_remote")
 	// Test mode reads this fixture metadata separately, including the token.
 	accountJSONKeys = append(jsonKeys[Account](), "_test")
 	sourceJSONKeys  = jsonKeys[Source]()

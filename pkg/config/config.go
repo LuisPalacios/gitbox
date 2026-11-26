@@ -106,11 +106,10 @@ type GlobalConfig struct {
 	// configs and fresh installs both opt in by default.
 	CheckGlobalGitignore *bool `json:"check_global_gitignore,omitempty"`
 
-	// ExperimentalRemote turns remote mode (#233) on for this machine, like
-	// the --experimental-remote flag. Remotes are its destinations. Both are
-	// client preferences: see ClientPrefs in prefs.go.
-	ExperimentalRemote bool          `json:"experimental_remote,omitempty"`
-	Remotes            []RemoteEntry `json:"remotes,omitempty"`
+	// Remotes are this machine's remote hosts (#233), a client preference:
+	// see ClientPrefs in prefs.go. Remote mode is always on (#336); the
+	// retired experimental_remote key is read and dropped (extensions.go).
+	Remotes []RemoteEntry `json:"remotes,omitempty"`
 	// RemoteTint is the color that tints the top bar and the sidebar of
 	// remote windows (#331), one of RemoteTintPresets; empty means the
 	// default blue. A client preference.

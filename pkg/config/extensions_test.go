@@ -13,7 +13,7 @@ const extensionsFixture = `{
 	"global": {
 		"roots": ["~/fleet"], "future_z": [true, null], "future_a": {"n": 9007199254740993},
 		"folder": "~/retired", "extra_folders": ["~/retired-extra"], "cards_open": ["obsolete"],
-		"THEME": "dark"
+		"experimental_remote": true, "THEME": "dark"
 	},
 	"accounts": {"sample": {
 		"provider": "github", "url": "https://example.org", "username": "user",
@@ -67,7 +67,7 @@ func assertDiskExtensions(t *testing.T, data []byte, accountKey, sourceKey strin
 			t.Errorf("%s = %s, want %s (%v)", value.name, value.raw, value.want, err)
 		}
 	}
-	for _, absent := range []string{`"unknown_top"`, `"folder"`, `"extra_folders"`, `"cards_open"`, `"THEME"`, `"_test"`, "fixture-token-canary", `"workspaces"`} {
+	for _, absent := range []string{`"unknown_top"`, `"folder"`, `"extra_folders"`, `"cards_open"`, `"experimental_remote"`, `"THEME"`, `"_test"`, "fixture-token-canary", `"workspaces"`} {
 		if bytes.Contains(data, []byte(absent)) {
 			t.Errorf("%s survived disk serialization", absent)
 		}

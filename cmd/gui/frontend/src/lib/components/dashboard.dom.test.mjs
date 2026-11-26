@@ -68,7 +68,7 @@ async function dashboard(t, global = {}) {
     SetCollapsed: async () => {},
     SetUIMode: async () => {},
     SetShowPullPlan: async () => {},
-    ListRemotes: async () => ({ enabled: false, entries: [] }),
+    ListRemotes: async () => ({ remotes: [], remoteEditors: [] }),
     PreviewPullAll: async () => ({
       planID: 'fixture-plan', configRevision: revision, stale: false,
       willClone: [], willUpdate: [{ ...row, behind: 1 }],

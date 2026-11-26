@@ -267,6 +267,7 @@ var eventClass = map[string]eventInfo{
 	"remote:show-log":          {classLocal, "P3b"},
 	"remote:tint":              {classLocal, "P3b"},
 	"remote:state":             {classLocal, "P3b"},
+	"remote:waiting":           {classLocal, "P3b"},
 	"status:one":               {classRemote, "P5"},
 	"status:batch":             {classRemote, "P4"},
 	"status:updated":           {classRemote, "P4"},

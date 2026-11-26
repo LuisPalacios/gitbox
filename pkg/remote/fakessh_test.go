@@ -43,6 +43,7 @@ case $mode in
 esac
 if [ "$alias" = untrusted ]; then echo "Host key verification failed." >&2; exit 255; fi
 [ -n "$FAKE_SSH_DELAY" ] && sleep "$FAKE_SSH_DELAY"
+if [ "$alias" = denied ]; then echo "user@denied: Permission denied (publickey)." >&2; exit 255; fi
 [ -n "$FAKE_SSH_BANNER" ] && cat "$FAKE_SSH_BANNER"
 PATH="$FAKE_SSH_BIN:$PATH" HOME="$FAKE_SSH_HOME" exec /bin/sh -c "$*"
 `
@@ -579,6 +580,111 @@ func TestSlowLoginNamesTheAgent(t *testing.T) {
 			defer mu.Unlock()
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("OnSlowLogin calls = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCancelEndsAStalledLogin: a cancelled operation ends even when a
+// descendant of ssh still holds its stdout. The fake's delay runs sleep as
+// such a child, the way a ProxyCommand would.
+func TestCancelEndsAStalledLogin(t *testing.T) {
+	f := newFake(t, fakeServer)
+	t.Setenv("FAKE_SSH_DELAY", "30")
+	c, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	t0 := time.Now()
+	_, err := Uninstall(c, "host", f.opts, false)
+	if took := time.Since(t0); took > 10*time.Second {
+		t.Errorf("Uninstall took %s after the cancel", took)
+	}
+	if codeOf(err) != CodeSSHTimeout {
+		t.Errorf("Uninstall = %v (%s), want %s", err, codeOf(err), CodeSSHTimeout)
+	}
+}
+
+// TestLoginLimitStopsUninstall: an uninstall whose ssh never logs in, as
+// with an agent that waits for an approval nobody gives, reports the slow
+// login once with the agent named and stops at loginLimit with
+// CodeSSHLogin, long before the operation's own deadline.
+func TestLoginLimitStopsUninstall(t *testing.T) {
+	f := newFake(t, fakeServer)
+	oldWait, oldLimit := loginWait, loginLimit
+	loginWait, loginLimit = 100*time.Millisecond, 600*time.Millisecond
+	t.Cleanup(func() { loginWait, loginLimit = oldWait, oldLimit })
+	t.Setenv("FAKE_SSH_AGENT", "/Users/x/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock")
+	t.Setenv("FAKE_SSH_DELAY", "30")
+	o := f.opts
+	o.ControlDir = t.TempDir()
+	var mu sync.Mutex
+	var slow []string
+	o.OnSlowLogin = func(agent string) { mu.Lock(); slow = append(slow, agent); mu.Unlock() }
+	t0 := time.Now()
+	_, err := Uninstall(ctx(t), "host", o, false)
+	if took := time.Since(t0); took > 10*time.Second {
+		t.Errorf("Uninstall took %s", took)
+	}
+	if codeOf(err) != CodeSSHLogin || !strings.Contains(err.Error(), "1Password") {
+		t.Errorf("Uninstall = %v (%s), want %s naming 1Password", err, codeOf(err), CodeSSHLogin)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Equal(slow, []string{AgentOnePassword}) {
+		t.Errorf("OnSlowLogin calls = %q, want one for 1Password", slow)
+	}
+}
+
+// TestLoginLimitOnlyBoundsTheLogin: once the first ssh logged in, a slow
+// remote command is not a slow login: the limit and the hint are gone.
+func TestLoginLimitOnlyBoundsTheLogin(t *testing.T) {
+	f := newFake(t, fakeServer)
+	oldWait, oldLimit := loginWait, loginLimit
+	loginWait, loginLimit = 100*time.Millisecond, 300*time.Millisecond
+	t.Cleanup(func() { loginWait, loginLimit = oldWait, oldLimit })
+	o := f.opts
+	called := false
+	o.OnSlowLogin = func(string) { called = true }
+	r, err := newRunner("host", o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.run(ctx(t), "first", `printf "\0GBX\0"`, nil); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if _, err := r.run(ctx(t), "slow", `sleep 1; printf "\0GBX\0x\0"`, nil); err != nil {
+		t.Fatalf("a slow command after the login failed: %v", err)
+	}
+	if called {
+		t.Error("OnSlowLogin ran for a command after the login")
+	}
+}
+
+// TestSlowDenialWithOnePasswordIsTheAgent: 1Password that gives up on an
+// approval can leave ssh with a bare "permission denied". After a slow
+// login with 1Password that is CodeSSHAgent, with its approval hint; a fast
+// denial, or one with another agent, stays CodeSSHAuth.
+func TestSlowDenialWithOnePasswordIsTheAgent(t *testing.T) {
+	f := newFake(t, fakeServer)
+	old := loginWait
+	loginWait = 100 * time.Millisecond
+	t.Cleanup(func() { loginWait = old })
+	const onePassword = "/Users/x/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+	for _, tc := range []struct {
+		name, agent, delay string
+		want               Code
+	}{
+		{"slow with 1Password", onePassword, "1", CodeSSHAgent},
+		{"fast with 1Password", onePassword, "", CodeSSHAuth},
+		{"slow with another agent", "/tmp/ssh-x/agent.1", "1", CodeSSHAuth},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("FAKE_SSH_AGENT", tc.agent)
+			t.Setenv("FAKE_SSH_DELAY", tc.delay)
+			o := f.opts
+			o.ControlDir = t.TempDir()
+			_, err := Uninstall(ctx(t), "denied", o, false)
+			if codeOf(err) != tc.want {
+				t.Errorf("Uninstall = %v (%s), want %s", err, codeOf(err), tc.want)
 			}
 		})
 	}

@@ -164,18 +164,14 @@ func TestEventNamesRegistered(t *testing.T) {
 	}
 }
 
-// TestLocalOnlyWithoutFlag pins that only the local backend can be built
-// without --experimental-remote, and that a bare App falls back to it.
-func TestLocalOnlyWithoutFlag(t *testing.T) {
+// TestLocalOnlyWithoutRemoteSession pins that a window without a remote
+// session gets the local backend, and that a bare App falls back to it.
+func TestLocalOnlyWithoutRemoteSession(t *testing.T) {
 	a := &App{}
 	if _, ok := a.be().(localBackend); !ok {
 		t.Fatalf("bare App backend = %T, want localBackend", a.be())
 	}
-	if got, ok := selectBackend(a, false).(localBackend); !ok || got.a != a {
-		t.Fatalf("selectBackend without the flag = %T, want localBackend bound to the app", selectBackend(a, false))
-	}
-	// Dormant flag: remote mode has no backend yet (#233).
-	if _, ok := selectBackend(a, true).(localBackend); !ok {
-		t.Fatalf("selectBackend with the dormant flag = %T, want localBackend", selectBackend(a, true))
+	if got, ok := selectBackend(a).(localBackend); !ok || got.a != a {
+		t.Fatalf("selectBackend without a remote session = %T, want localBackend bound to the app", selectBackend(a))
 	}
 }

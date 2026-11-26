@@ -306,6 +306,11 @@ export interface RemoteStateDTO {
   resumed?: boolean;
 }
 
+export interface RemoteWaitingDTO {
+  alias: string;
+  waiting: string;
+}
+
 export interface StatusResult {
   source: string;
   repo: string;
@@ -370,6 +375,7 @@ export interface EventPayloads {
   "remote:show-log": null;
   "remote:state": RemoteStateDTO;
   "remote:tint": string;
+  "remote:waiting": RemoteWaitingDTO;
   "status:batch": StatusBatch;
   "status:one": StatusResult;
   "status:updated": StatusResult[] | null;
