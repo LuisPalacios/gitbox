@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const src = await readFile(new URL('./first-project.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(src, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const { firstCloneOutcome } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const { firstCloneOutcome, firstProjectRoute } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const event = { source: 'account', repo: 'org/one', path: '/projects/one' };
 const status = { ...event, state: 'clean' };
@@ -23,4 +23,13 @@ test('I keep skipped and failed downloads out of the success screen', async () =
   for (const change of [{ skipped: true }, { error: 'failed' }, { path: '' }, { path: '/other' }]) {
     assert.equal(await firstCloneOutcome({ ...event, ...change }, event.path, () => assert.fail('did not start a checkout')), 'failed');
   }
+});
+
+test('the first project starts on an existing clone only when the root may hold one', () => {
+  const preview = { exists: true, existingClones: 0, sampled: false };
+  assert.equal(firstProjectRoute(null), 'download');
+  assert.equal(firstProjectRoute(preview), 'download');
+  assert.equal(firstProjectRoute({ ...preview, existingClones: 2 }), 'adopt');
+  assert.equal(firstProjectRoute({ ...preview, sampled: true }), 'adopt');
+  assert.equal(firstProjectRoute({ ...preview, exists: false, existingClones: 2 }), 'download');
 });

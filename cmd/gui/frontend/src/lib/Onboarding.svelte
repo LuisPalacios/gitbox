@@ -16,6 +16,7 @@
   import type { ErrorInfo } from './explain';
   import CredentialSteps from './CredentialSteps.svelte';
   import FirstProject from './FirstProject.svelte';
+  import { firstProjectRoute } from './first-project';
 
   export let simple: boolean;
   export let mode: 'first-run' | 'add' = 'first-run';
@@ -59,9 +60,12 @@
     if (dir) folder = dir;
   }
 
-  async function saveFolder(choice: 'download' | 'adopt') {
+  // Both choices save the root, which is the only required setting: the
+  // guide goes on to connect an account and the first project, which starts
+  // on an existing clone when the root holds one; Skip opens gitbox (#355).
+  async function saveFolder(next: 'guided' | 'skip') {
     if (!rootPreview?.writable || folderBusy) return;
-    route = choice;
+    route = firstProjectRoute(rootPreview);
     folderError = '';
     folderProblem = undefined;
     if (!folder.trim()) { folderError = $t('onboard.folderRequired'); return; }
@@ -69,11 +73,14 @@
     try {
       // Also switches config saving on and starts new installs in Simple.
       await bridge.initRoot(folder.trim());
-      step = 'connect';
     } catch (err) {
       folderProblem = caughtIssue(err);
+      folderBusy = false;
+      return;
     }
     folderBusy = false;
+    if (next === 'skip') onDone(null);
+    else step = 'connect';
   }
 
   // ── Step 2: connect ──
@@ -429,10 +436,11 @@
         <p class="ob-desc">{$t(rootPreview.sampled ? 'onboard.sampledClones' : 'onboard.cloneCount', { count: rootPreview.existingClones })}</p>
       {/if}
       <p class="ob-hint">{$t('onboard.stayPut')}</p>
-      <button class="ob-btn ob-primary ob-wide" on:click={() => saveFolder('download')} disabled={folderBusy || !rootPreview?.writable}>{$t('onboard.downloadProject')}</button>
-      {#if rootPreview?.exists && (rootPreview.existingClones || rootPreview.sampled)}
-        <button class="ob-btn ob-wide" on:click={() => saveFolder('adopt')} disabled={folderBusy || !rootPreview.writable}>{$t('onboard.adoptProject')}</button>
-      {/if}
+      <button class="ob-btn ob-primary ob-wide" on:click={() => saveFolder('guided')} disabled={folderBusy || !rootPreview?.writable}>{$t('onboard.guidedSetup')}</button>
+      <p class="ob-hint ob-center">{$t('onboard.guidedHint')}</p>
+      <div class="ob-links">
+        <button class="ob-link" on:click={() => saveFolder('skip')} disabled={folderBusy || !rootPreview?.writable}>{$t('onboard.skipSetup')}</button>
+      </div>
 
     {:else if step === 'connect'}
       <h2 class="ob-heading">{$t('onboard.connectTitle')}</h2>
@@ -614,6 +622,7 @@
   .ob-heading { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
   .ob-desc { font-size: 13px; color: var(--text-secondary); margin: 0 0 14px; line-height: 1.4; }
   .ob-hint, .ob-small { font-size: 11px; color: var(--text-muted); margin: 4px 0 12px; line-height: 1.4; }
+  .ob-center { text-align: center; margin: 8px 0 0; }
   .ob-error { font-size: 12px; color: #D81E5B; margin: 8px 0; font-weight: 600; }
 
   .ob-label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 10px 0 4px; }

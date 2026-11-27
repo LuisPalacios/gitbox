@@ -74,8 +74,8 @@ test('a host without gitbox.json gets the first-run onboarding, saved on the hos
   assert.equal(screen.queryByRole('button', { name: 'Browse' }), null)
   await waitFor(() => assert.ok(screen.getByText(hostRoot)))
 
-  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Download a project' }).disabled, false))
-  await fireEvent.click(screen.getByRole('button', { name: 'Download a project' }))
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Guided setup' }).disabled, false))
+  await fireEvent.click(screen.getByRole('button', { name: 'Guided setup' }))
   await waitFor(() => assert.deepEqual(calls('InitRoot').map((call) => call.args), [[hostRoot]]))
 
   // Skipping the account loads the host's data over the same connection.
@@ -103,5 +103,20 @@ test('a disconnect during onboarding shows the connection card and saves nothing
   await waitFor(() => assert.ok(screen.getByText(`Set up gitbox on ${alias}`)))
   assert.ok(calls('IsFirstRun').length > asked, 'the reconnect did not ask the host again')
   assert.equal(calls('InitRoot').length, 0)
+  assert.deepEqual(native.unexpected, [])
+})
+
+test('Skip on a host without gitbox.json saves the host root and opens its dashboard', async (t) => {
+  const ui = await firstRunWindow(t)
+  const { screen, fireEvent, waitFor, native, emit, calls } = ui
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Skip and open gitbox' }).disabled, false))
+  await fireEvent.click(screen.getByRole('button', { name: 'Skip and open gitbox' }))
+  await waitFor(() => assert.deepEqual(calls('InitRoot').map((call) => call.args), [[hostRoot]]))
+  await waitFor(() => assert.equal(calls('BeginStatus').length, 1))
+  const [passID] = calls('BeginStatus')[0].args
+  emit('status:batch', 11, '7', { passID, revision: 1, items: [], done: true })
+  await waitFor(() => assert.ok(ui.window.document.querySelector('.topbar')))
+  assert.equal(screen.queryByText('Connect where your projects are stored'), null, 'Skip went through the guide')
+  assert.equal(calls('RemoteReconnect').length, 0, 'Skip reconnected')
   assert.deepEqual(native.unexpected, [])
 })
