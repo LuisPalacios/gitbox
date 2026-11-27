@@ -1,9 +1,9 @@
 <script lang="ts">
-  // The view of a remote window before its first connection, and when the
-  // host has no config to show (#239, #240): who it talks to and how the
-  // connection is doing, with Disconnect, Show log and Run doctor (in the
-  // log). Uninstalling the server lives in the context menu of the Remote
-  // hosts window (#330). Simple mode says it in one plain sentence; error
+  // The view of a remote window before its first connection, and while a
+  // window setting up a host without a config is not connected (#239,
+  // #240, #349): who it talks to and how the connection is doing, with
+  // Disconnect, Show log and Run doctor (in the log). Uninstalling the
+  // server lives in the context menu of the Remote hosts window (#330). Simple mode says it in one plain sentence; error
   // codes appear only in the connection log.
   import { onMount, onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
@@ -14,8 +14,6 @@
   import ConnectionLog from './ConnectionLog.svelte';
 
   export let simple = false;
-  // noConfig: connected, but the host has no gitbox.json to show (#240).
-  export let noConfig = false;
 
   let st: RemoteState = { state: 'connecting', alias: '' };
   let lines: string[] = [];
@@ -87,9 +85,6 @@
         <dt>{$t('remote.fact.server')}</dt><dd>{st.serverVersion}</dd>
       </dl>
     {/if}
-    {#if st.state === 'connected' && noConfig}
-      <p class="note">{$t('remote.noConfig', { alias: st.alias })}</p>
-    {/if}
 
     {#if actionError}<p class="reason">{actionError}</p>{/if}
 
@@ -155,7 +150,6 @@
   }
   .facts dt { color: var(--text-muted); }
   .facts dd { margin: 0; font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace; color: var(--text-secondary); }
-  .note { margin: 12px 0 0 23px; font-size: 12px; color: var(--text-muted); }
   .actions { margin: 20px 0 0 23px; display: flex; flex-wrap: wrap; gap: 8px; }
   .confirm {
     margin: 14px 0 0 23px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;

@@ -551,6 +551,8 @@ La ventana Equipos remotos es una ventana propia, que abre **Gestionar equipos r
 
 En una ventana remota, el onboarding y **Raíces** aceptan una carpeta escrita para el host en lugar del diálogo de carpetas: la línea bajo el campo dice a qué la resuelve el host.
 
+Un host sin `gitbox.json` abre el onboarding de la primera ejecución, titulado **Configura gitbox en** y el alias. La carpeta, la cuenta y el primer proyecto se configuran en el host, y el host guarda su propio `gitbox.json`, y crea `~/.config/gitbox/` cuando falta. No se escribe nada allí hasta que elijo la carpeta, así que desconectar antes deja el host como estaba. Cuando la conexión se cae durante el onboarding, la ventana muestra la tarjeta de conexión; la siguiente conexión pregunta otra vez al host y abre el panel si la carpeta se guardó, o el onboarding en caso contrario.
+
 Una vez conectada, la ventana del remoto es la ventana completa de Gitbox, que muestra y cambia el host:
 
 - **Qué funciona** — el estado, **Fetch de todo**, **Fetch**, los detalles del repositorio, las insignias de pull requests, el estado de los espejos, **Buscar proyectos**, las comprobaciones de credenciales y **Comprobación del sistema**, todo ejecutado en el host. También los cambios de la configuración del host: editar, renombrar y borrar cuentas, las raíces, los grupos de espejos, añadir repositorios descubiertos a la configuración, ignorar clones, los ajustes y los arreglos de la configuración de git del host, y reparar o restaurar su `gitbox.json`. Añadir una cuenta y configurar sus credenciales también se ejecutan allí: un token se guarda en el host, y una clave SSH se crea y se queda allí, con su clave pública copiada al portapapeles de este ordenador (consulta [Hosts remotos](credentials.md#hosts-remotos)). Clonar, actualizar, borrar clones y crear repositorios, la limpieza, la configuración de espejos, la adopción y la reconciliación también se ejecutan en el host. Su daemon mantiene en marcha las operaciones largas cuando la conexión se cae. Un enlace de PR se abre en el navegador de este ordenador.
@@ -561,7 +563,7 @@ Una vez conectada, la ventana del remoto es la ventana completa de Gitbox, que m
 - **Reconectar** — cuando la conexión se cae, el último estado se queda en pantalla, atenuado, bajo un aviso **Desconectado de** el host con **Conectar**, que vuelve a conectar, borra cualquier error que dejó la desconexión y recarga todo. Las acciones vuelven cuando los clones del host están reconciliados y su estado actualizado.
 - **Enlaces** — un enlace `https` se abre enseguida. Un enlace `http`, como el de una cuenta de Gitea en la red local, se abre tras un diálogo que muestra la dirección completa. Cualquier otro tipo de enlace se rechaza. Esto vale también para la ventana principal.
 
-Antes, `ssh <alias>` tiene que entrar sin pedir nada, y el host necesita un `gitbox.json` con credenciales que funcionen. [Modo remoto](remote-mode.md) explica la configuración, qué se instala y dónde, qué funciona en un remoto, qué hace una conexión caída con un clon, el registro de conexión y cada código de error.
+Antes, `ssh <alias>` tiene que entrar sin pedir nada. Un host sin `gitbox.json` recibe uno mediante el onboarding de arriba. [Modo remoto](remote-mode.md) explica la configuración, qué se instala y dónde, qué funciona en un remoto, qué hace una conexión caída con un clon, el registro de conexión y cada código de error.
 
 ### Notificación de actualización
 

@@ -42,7 +42,7 @@ The window appears at once and connects in the background. It reads **Connecting
 
 ## What a remote window can do
 
-The remote window is the full gitbox window, fed by the host. It needs a host that already has a `gitbox.json`, for example a computer that also runs GitboxApp; token and SSH credentials can be set up from the window. A host without one keeps the connection card, which says so; setting it up from here comes in a later version.
+The remote window is the full gitbox window, fed by the host. A host that has no `gitbox.json` yet opens the first-run onboarding, which sets up the clone root, an account and a first project on the host; the host saves the file itself, through the same safe save as every other change, and nothing is written before I choose the folder. Token and SSH credentials can be set up from the window.
 
 A text that speaks of this computer names the host instead, because the action runs there over SSH: the row menu reads **Delete from my-server…**, and the delete dialog says which host's folder goes.
 

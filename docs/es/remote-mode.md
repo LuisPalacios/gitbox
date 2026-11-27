@@ -42,7 +42,7 @@ La ventana aparece enseguida y conecta en segundo plano. Dice **Conectando con m
 
 ## Qué puede hacer una ventana remota
 
-La ventana del remoto es la ventana completa de gitbox, alimentada por el host. Necesita un host que ya tenga un `gitbox.json`, por ejemplo un ordenador que también ejecuta GitboxApp; las credenciales de token y SSH se pueden configurar desde la ventana. Un host sin él se queda en la tarjeta de conexión, que lo dice; configurarlo desde aquí llega en una versión posterior.
+La ventana del remoto es la ventana completa de gitbox, alimentada por el host. Un host que todavía no tiene `gitbox.json` abre el onboarding de la primera ejecución, que configura en el host la raíz de clones, una cuenta y un primer proyecto; el host guarda el archivo él mismo, con el mismo guardado seguro que cualquier otro cambio, y no se escribe nada antes de que elija la carpeta. Las credenciales de token y SSH se pueden configurar desde la ventana.
 
 Un texto que habla de este ordenador nombra el host en su lugar, porque la acción se ejecuta allí por SSH: el menú de la fila dice **Borrar de my-server…**, y el diálogo de borrado dice de qué host es la carpeta que se va.
 

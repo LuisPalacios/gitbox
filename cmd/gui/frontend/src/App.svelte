@@ -1435,12 +1435,13 @@
   // A remote window (#240) shows the connection card until the host's data
   // first arrives, then the full UI, limited to what its server serves
   // (#294). After a disconnect it keeps
-  // the last state, dimmed, under a Reconnect banner.
+  // the last state, dimmed, under a Reconnect banner. A host without a
+  // config shows the first-run onboarding, run on the host (#349); while
+  // that window is not connected it shows the card, which can reconnect.
   let remoteState: RemoteState | null = null;
   let remoteLoaded = false;
-  let remoteNoConfig = false;
   let remoteLoading = false;
-  $: remoteShowMain = windowMode === 'remote' && remoteLoaded;
+  $: remoteShowMain = windowMode === 'remote' && remoteLoaded && !(firstRun && remoteState?.state !== 'connected');
   // Actions stay off from the disconnect until the host's state is known
   // again: through the reload, the reconcile and the status refresh that
   // follow each reconnect (#295).
@@ -1477,8 +1478,9 @@
     // A connection that resumed the host's daemon with every event the
     // window missed keeps the view, the rows and the work in flight; the
     // window reads the config and the status again, and starts no fetch
-    // and no reconcile (#247).
-    if (remoteLoaded && s.resumed) {
+    // and no reconcile (#247). A window still in onboarding loads again:
+    // the host may have saved its config before the cut (#349).
+    if (remoteLoaded && s.resumed && !firstRun) {
       try {
         await reloadFromDisk();
         const refreshed = nextStatus(30_000);
@@ -1499,6 +1501,9 @@
       fetchOperations.clear();
       fetchOperation = '';
       mirrorDiscoveryDone = '';
+      // Onboarding waits behind the card until the host says whether it
+      // still has no config.
+      if (firstRun) remoteLoaded = false;
     }
     try {
       remoteWindow.set(true);
@@ -1514,9 +1519,8 @@
       fetchingRepos = {};
       repoStates.set({});
       await startMain();
-      remoteNoConfig = firstRun;
-      // A host without a config keeps the card, which says so.
-      remoteLoaded = !firstRun;
+      // A host without a config shows the onboarding, which saves it there.
+      remoteLoaded = true;
       if (!firstRun) {
         // What the host's clones are now: a clone the cut stopped shows as
         // missing or incomplete before any action is offered.
@@ -2456,7 +2460,7 @@
 <!-- ── REMOTE WINDOW (#239, #240): the connection card until the host's
      data arrives, then the full UI below, limited ── -->
 {#if windowMode === 'remote' && RemoteConnected && !remoteShowMain}
-  <svelte:component this={RemoteConnected} {simple} noConfig={remoteNoConfig} />
+  <svelte:component this={RemoteConnected} {simple} />
 {/if}
 
 {#if windowMode === 'main' || remoteShowMain}
