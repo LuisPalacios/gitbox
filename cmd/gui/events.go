@@ -17,6 +17,10 @@ type EventMetadata struct {
 	OperationID    string `json:"operationID"`
 	Sequence       uint64 `json:"sequence"`
 	Client         bool   `json:"client,omitempty"`
+	// Session names the session that produced the event. "" is the
+	// process's default session, the one it was launched for; any other
+	// session is "local" or "remote:<alias>".
+	Session string `json:"session,omitempty"`
 }
 
 type Envelope[T any] struct {
@@ -38,6 +42,8 @@ type eventStream struct {
 	revision uint64
 	sequence uint64
 	next     uint64
+	// session is the id this stream stamps on its events.
+	session string
 }
 
 type eventOperation struct {
@@ -45,6 +51,7 @@ type eventOperation struct {
 	id       string
 	revision uint64
 	client   bool
+	session  string
 }
 
 func (a *App) newOperation() eventOperation {
@@ -52,7 +59,7 @@ func (a *App) newOperation() eventOperation {
 	stream.mu.Lock()
 	defer stream.mu.Unlock()
 	stream.next++
-	return eventOperation{app: a, id: strconv.FormatUint(stream.next, 10), revision: stream.revision}
+	return eventOperation{app: a, id: strconv.FormatUint(stream.next, 10), revision: stream.revision, session: stream.session}
 }
 
 func (a *App) transport() EventSink {
@@ -84,6 +91,7 @@ func emit[T any](op eventOperation, name string, payload T) {
 		EventMetadata: EventMetadata{
 			Schema: eventSchema, ConfigRevision: op.revision, OperationID: op.id,
 			Sequence: stream.sequence, Client: op.client || eventClass[name].Class == classLocal,
+			Session: op.session,
 		},
 		Payload: payload,
 	})

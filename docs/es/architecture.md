@@ -110,6 +110,8 @@ El struct `App` hace dos trabajos, y `cmd/gui` los mantiene separados para que e
 
 Cada evento pasa por un único `EventSink` (`events.go`): el código llama a `a.sink().Emit("nombre", …)` con un nombre literal, `startup` instala el sink de Wails, y un `App` sin sink descarta los eventos.
 
+Cada evento lleva la sesión que lo produjo (`EventMetadata.Session`). Una sesión vacía es la sesión por defecto del proceso, aquella con la que se lanzó, y no viaja por el cable. Cualquier otra sesión es `local` o `remote:<alias>`. El relé remoto pone su propia sesión en cada evento que reenvía y nunca deja pasar la del host. El frontend mantiene una suscripción de Wails por nombre de evento y entrega cada evento solo al router de su sesión (`createSessionSubscriptions` en `lib/events.ts`); `events` en `lib/bridge.ts` es el router de la sesión por defecto.
+
 `classification.go` registra cada binding del renderer, operación exclusiva del backend y evento como LOCAL, REMOTE o MIXED, con la fase responsable y si cambia el estado del host. Los tests de guarda comprueban la cobertura y la concordancia con `Backend`. El servidor atiende los métodos RPC enumerados en `server.go`.
 
 #### Preferencias de cliente

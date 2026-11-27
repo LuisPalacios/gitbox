@@ -6,6 +6,7 @@ export interface EventMetadata {
   operationID: string;
   sequence: number;
   client?: boolean;
+  session?: string;
 }
 
 export interface cloneDoneDTO {
