@@ -128,7 +128,8 @@ health() {
 
 coordination() {
     uv run ai/scripts/test_coordinate_issues.py &&
-        uv run ai/scripts/test_coordinate_roadmap.py
+        uv run ai/scripts/test_coordinate_roadmap.py &&
+        uv run ai/scripts/test_work_issue_access.py
 }
 
 vet() { go vet ./...; }
