@@ -9,7 +9,7 @@
   import Logo from './Logo.svelte';
   import { remoteTextHost, t } from './i18n';
   import { openExternal } from './external';
-  import { remoteHost, remoteWindow } from './stores';
+  import { remoteWindow } from './stores';
   import { gcmOffered } from './gcmRemote';
   import ErrorExplanation from './components/ErrorExplanation.svelte';
   import { accountIssue, caughtIssue, errorInfo } from './explain';
@@ -421,7 +421,7 @@
       {#if folderProblem}<ErrorExplanation info={folderProblem} {simple} />{/if}
       <div class="ob-row">
         <input class="ob-input" id="ob-root" bind:value={folder} aria-label={$t('onboard.folderPick')} translate="no" />
-        {#if !$remoteHost}<button class="ob-btn" on:click={browse}>{$t('onboard.browse')}</button>{/if}
+        {#if !$remoteWindow}<button class="ob-btn" on:click={browse}>{$t('onboard.browse')}</button>{/if}
       </div>
       {#if rootPreview}
         <p class="ob-small"><code>{rootPreview.abs}</code> / {$t('onboard.tree')}</p>

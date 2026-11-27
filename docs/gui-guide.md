@@ -551,6 +551,8 @@ The Remote hosts window is a window of its own, which **Manage remote hosts…**
 
 In a remote window, Onboarding and **Roots** take a folder typed for the host instead of the folder dialog: the line under the field says what the host resolves it to.
 
+A host with no `gitbox.json` opens the first-run onboarding, titled **Set up gitbox on** and the alias. The folder, the account and the first project are set up on the host, and the host saves its own `gitbox.json`, creating `~/.config/gitbox/` when it is missing. Nothing is written there until I choose the folder, so disconnecting before then leaves the host as it was. When the connection drops during onboarding, the window shows the connection card; the next connection asks the host again and opens the dashboard if the folder was saved, or the onboarding otherwise.
+
 Once connected, the remote window is the full Gitbox window, showing and changing the host:
 
 - **What works** — status, **Fetch all**, **Fetch**, repository details, pull request badges, mirror status, **Find projects**, credential checks and **System check**, all run on the host. So do the changes to the host's config: editing, renaming and deleting accounts, roots, mirror groups, adding discovered repositories to the config, ignoring clones, the host's settings and git config fixes, and repairing or restoring its `gitbox.json`. Adding an account and its credential setup run there too: a token is stored on the host, and an SSH key is made and kept there, with its public key copied to this computer's clipboard (see [Remote hosts](credentials.md#remote-hosts)). Cloning, pulling, deleting clones and creating repositories, the sweep, mirror setup, adoption and the reconcile also run on the host. Its daemon keeps long-running actions going when the connection drops. A PR link opens in the browser of this computer.
@@ -561,7 +563,7 @@ Once connected, the remote window is the full Gitbox window, showing and changin
 - **Reconnect** — when the connection drops, the last state stays on screen, dimmed, under a **Disconnected from** the host banner with **Connect**, which connects again, clears any error the disconnection left and reloads everything. The actions come back once the host's clones are reconciled and their status refreshed.
 - **Links** — an `https` link opens at once. An `http` link, such as a LAN Gitea account, opens after a dialog that shows the full address. Any other kind of link is refused. This applies to the main window too.
 
-`ssh <alias>` must log in without any prompt first, and the host needs a `gitbox.json` with working credentials. [Remote mode](remote-mode.md) covers the setup, what is installed and where, what works on a remote, what a dropped connection does to a clone, the connection log and every error code.
+`ssh <alias>` must log in without any prompt first. A host without a `gitbox.json` gets one through the onboarding above. [Remote mode](remote-mode.md) covers the setup, what is installed and where, what works on a remote, what a dropped connection does to a clone, the connection log and every error code.
 
 ### Update notification
 
