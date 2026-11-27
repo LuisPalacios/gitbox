@@ -14,7 +14,7 @@ func TestListConfigBackups_SameSecondSnapshots(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a := &App{cfgPath: filepath.Join(dir, "gitbox.json")}
+	a := newTestApp(withCfgPath(filepath.Join(dir, "gitbox.json")))
 	backups := a.ListConfigBackups()
 	if len(backups) != 3 {
 		t.Fatalf("backups = %v", backups)

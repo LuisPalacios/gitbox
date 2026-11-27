@@ -18,7 +18,7 @@ import (
 func ownerApp(t *testing.T) (*App, string) {
 	t.Helper()
 	path := seedConfig(t, "gitbox.json", nil)
-	a := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}
+	a := newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded())
 	onDisk := loadConfig(t, path)
 	onDisk.Global.Theme = "dark"
 	if err := config.Save(onDisk, path); err != nil {
@@ -120,7 +120,7 @@ func mirrorApp(t *testing.T) (*App, *recordingSink) {
 		c.Mirrors = map[string]config.Mirror{"m": {AccountSrc: "src", AccountDst: "dst", Repos: map[string]config.MirrorRepo{"r0": {Direction: "push", Origin: "src"}}}}
 	})
 	events := &recordingSink{}
-	a := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true, events: events}
+	a := newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded(), withEvents(events))
 	a.network.down = map[string]bool{
 		serverAddr(a.cfg.Accounts["src"]): true,
 		serverAddr(a.cfg.Accounts["dst"]): true,

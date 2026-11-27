@@ -22,7 +22,7 @@ func windowOn(t *testing.T, path string) *App {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &App{cfg: cfg, cfgPath: path, cfgLoaded: true, cfgBase: base}
+	return newTestApp(withCfg(cfg), withCfgPath(path), withCfgLoaded(), withCfgBase(base))
 }
 
 // TestConfigChangedConflict: two windows on one gitbox.json and a plain
@@ -88,7 +88,7 @@ func TestFilePrefsUpdateUnderLock(t *testing.T) {
 	// loaded the same file before either begins writing.
 	const envPath = "GITBOX_TEST_TERMINALS_CONFIG"
 	if path := os.Getenv(envPath); path != "" {
-		child := &App{cfgPath: path}
+		child := newTestApp(withCfgPath(path))
 		child.useOwnPrefsFile()
 		fmt.Println("ready")
 		if _, err := io.ReadAll(os.Stdin); err != nil {

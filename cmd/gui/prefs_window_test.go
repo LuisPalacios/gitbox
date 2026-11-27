@@ -18,7 +18,7 @@ func TestWindowGeometryTarget(t *testing.T) {
 
 	t.Run("local window", func(t *testing.T) {
 		path := seedConfig(t, "gitbox.json", nil)
-		a := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}
+		a := newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded())
 
 		a.windowGeom = geom(10)
 		a.beforeClose(context.Background())
@@ -38,7 +38,7 @@ func TestWindowGeometryTarget(t *testing.T) {
 			c.Global.Window = ws(1)
 			c.Global.Remotes = []config.RemoteEntry{{Alias: "other"}, {Alias: "my-server"}}
 		})
-		a := newTestApp(fileBackend(t, backendPath), localPath)
+		a := newPrefsApp(fileBackend(t, backendPath), localPath)
 		a.remoteAlias = "my-server"
 		before := stamp(t, backendPath)
 

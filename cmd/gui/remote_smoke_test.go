@@ -53,7 +53,7 @@ func TestRemoteSmoke(t *testing.T) {
 
 	// The main window: add the remote.
 	path := seedConfig(t, "gitbox.json", nil)
-	main := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}
+	main := newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded())
 	if res := main.AddRemote(alias, serverDir); res.Error != "" {
 		t.Fatalf("AddRemote: %+v", res)
 	}

@@ -71,7 +71,7 @@ func TestOpenExternal(t *testing.T) {
 // user, and opens it once confirmed.
 func TestOpenInBrowserAsksForHTTP(t *testing.T) {
 	opened := recordBrowser(t)
-	a := &App{}
+	a := newTestApp()
 	res, err := a.OpenInBrowser("http://lan-gitea.local/alice", false)
 	if err != nil || !res.NeedsConfirm || res.URL != "http://lan-gitea.local/alice" || len(*opened) != 0 {
 		t.Fatalf("unconfirmed http: %+v, %v, opened %v", res, err, *opened)

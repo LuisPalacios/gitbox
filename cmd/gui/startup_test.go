@@ -10,16 +10,19 @@ import (
 
 func startupTestApp(root string) *App {
 	parent := filepath.Join(root, "account-a", "org", "container")
-	return &App{cfg: &config.Config{
-		Version:  config.CurrentVersion,
-		Global:   config.GlobalConfig{Roots: []string{root}, UIMode: "simple", Theme: "light", PeriodicSync: "15m", Collapsed: &config.CollapsedState{Repos: []string{"account-a/org/container"}, Sidebar: true, View: "account:account-b"}},
-		Accounts: map[string]config.Account{"account-a": {Provider: "github"}, "account-b": {Provider: "github"}},
-		Sources: map[string]config.Source{
-			"account-a": {Account: "account-a", Repos: map[string]config.Repo{"org/container": {Container: true}}, RepoOrder: []string{"org/container"}},
-			"account-b": {Account: "account-b", Repos: map[string]config.Repo{"org/child": {CloneFolder: filepath.Join(parent, "child")}}, RepoOrder: []string{"org/child"}},
-		},
-		SourceOrder: []string{"account-a", "account-b"},
-	}, cfgPath: filepath.Join(root, "config.json")}
+	return newTestApp(
+		withCfg(&config.Config{
+			Version:  config.CurrentVersion,
+			Global:   config.GlobalConfig{Roots: []string{root}, UIMode: "simple", Theme: "light", PeriodicSync: "15m", Collapsed: &config.CollapsedState{Repos: []string{"account-a/org/container"}, Sidebar: true, View: "account:account-b"}},
+			Accounts: map[string]config.Account{"account-a": {Provider: "github"}, "account-b": {Provider: "github"}},
+			Sources: map[string]config.Source{
+				"account-a": {Account: "account-a", Repos: map[string]config.Repo{"org/container": {Container: true}}, RepoOrder: []string{"org/container"}},
+				"account-b": {Account: "account-b", Repos: map[string]config.Repo{"org/child": {CloneFolder: filepath.Join(parent, "child")}}, RepoOrder: []string{"org/child"}},
+			},
+			SourceOrder: []string{"account-a", "account-b"},
+		}),
+		withCfgPath(filepath.Join(root, "config.json")),
+	)
 }
 
 func TestStartupSnapshot_NestingBeforeClonesExist(t *testing.T) {

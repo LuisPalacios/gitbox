@@ -25,7 +25,7 @@ func TestPickFolderRefusedInRemote(t *testing.T) {
 	if got := h.app.PickFolder("x"); got != "" || opened != 0 {
 		t.Errorf("a remote window picked %q after %d dialogs", got, opened)
 	}
-	local := &App{}
+	local := newTestApp()
 	if got := local.PickFolder("x"); got != "/picked" || opened != 1 {
 		t.Errorf("a local window picked %q after %d dialogs", got, opened)
 	}

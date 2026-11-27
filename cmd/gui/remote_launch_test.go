@@ -291,7 +291,7 @@ func TestRemoteTerminalAppleScript(t *testing.T) {
 // The window learns which editors open remote folders from the state it
 // shows.
 func TestRemoteStateListsRemoteEditors(t *testing.T) {
-	s := &remoteSession{a: &App{}, alias: "my-server"}
+	s := &remoteSession{a: newTestApp(), alias: "my-server"}
 	if got := s.info().RemoteEditors; !reflect.DeepEqual(got, remote.RemoteEditorCommands()) {
 		t.Errorf("RemoteEditors = %q", got)
 	}

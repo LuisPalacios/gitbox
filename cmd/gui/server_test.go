@@ -180,7 +180,7 @@ func TestServerKeepsHostPrefs(t *testing.T) {
 			a = newServerApp(path)
 			newRPCServer(a, io.Discard)
 		} else {
-			a = &App{cfgPath: path}
+			a = newTestApp(withCfgPath(path))
 		}
 		a.be().Init(context.Background())
 

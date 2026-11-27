@@ -38,7 +38,7 @@ func remoteHostsApp(t *testing.T, remotes ...config.RemoteEntry) (*App, string) 
 	path := seedConfig(t, "gitbox.json", func(c *config.Config) {
 		c.Global.Remotes = remotes
 	})
-	return &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}, path
+	return newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded()), path
 }
 
 func TestRemotesWindowArgs(t *testing.T) {

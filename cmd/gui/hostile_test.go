@@ -90,7 +90,7 @@ func startHostile(t *testing.T, handlers map[string]rpc.Handler) *hostileServer 
 		t.Fatal(err)
 	}
 	h.remote = remote
-	h.app = &App{backend: remote, prefs: newFilePrefs(seedConfig(t, "client.json", nil)), events: h.events}
+	h.app = newTestApp(withBackend(remote), withPrefs(newFilePrefs(seedConfig(t, "client.json", nil))), withEvents(h.events))
 	t.Cleanup(func() {
 		remote.Close()
 		cancel()

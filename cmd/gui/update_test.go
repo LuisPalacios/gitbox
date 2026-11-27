@@ -18,7 +18,7 @@ func TestApplyUpdate_AppImageRefuses(t *testing.T) {
 	t.Setenv("APPIMAGE", "/home/me/Applications/gitbox-x86_64.AppImage")
 	t.Setenv("APPDIR", "")
 
-	a := &App{}
+	a := newTestApp()
 	err := a.ApplyUpdate()
 	if err == nil {
 		t.Fatal("ApplyUpdate() inside an AppImage succeeded, want an error")
@@ -48,7 +48,7 @@ func TestUpdateStartupConfirmsOnlyAfterConfigLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := &App{updateRecovery: r, cfgLoadError: "unreadable"}
+	app := newTestApp(withUpdateRecovery(r), withCfgLoadError("unreadable"))
 	if offer, err := app.CheckUpdateRecovery(true); err != nil || offer != "" {
 		t.Fatalf("first bridge: %q %v", offer, err)
 	}
@@ -56,7 +56,7 @@ func TestUpdateStartupConfirmsOnlyAfterConfigLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app = &App{updateRecovery: r, cfgLoaded: true}
+	app = newTestApp(withUpdateRecovery(r), withCfgLoaded())
 	if offer, err := app.CheckUpdateRecovery(true); err != nil || offer != "v1.2.3" {
 		t.Fatalf("retry: %q %v", offer, err)
 	}

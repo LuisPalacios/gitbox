@@ -24,17 +24,19 @@ func prTestApp(t *testing.T, count int, lister prListerFunc) (*App, *recordingSi
 	t.Helper()
 	dir := t.TempDir()
 	events := &recordingSink{}
-	a := &App{
-		cfg: &config.Config{
+	a := newTestApp(
+		withCfg(&config.Config{
 			Version:  config.CurrentVersion,
 			Global:   config.GlobalConfig{Roots: []string{dir}},
 			Accounts: make(map[string]config.Account),
 			Sources:  make(map[string]config.Source),
-		},
-		cfgPath: filepath.Join(dir, "gitbox.json"), cfgLoaded: true, events: events,
-		prs:          prRefreshState{lister: lister},
-		refreshHooks: &refreshHooks{dial: func(context.Context, string) error { return nil }},
-	}
+		}),
+		withCfgPath(filepath.Join(dir, "gitbox.json")),
+		withCfgLoaded(),
+		withEvents(events),
+		withPRs(prRefreshState{lister: lister}),
+		withRefreshHooks(&refreshHooks{dial: func(context.Context, string) error { return nil }}),
+	)
 	for i := range count {
 		key := fmt.Sprintf("account-%d", i)
 		a.cfg.Accounts[key] = config.Account{Provider: "github", URL: "https://example.invalid", Username: key, Name: key, Email: key + "@example.invalid", DefaultCredentialType: "token"}

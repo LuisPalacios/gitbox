@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 
@@ -41,7 +40,7 @@ func newWorkspaceTestApp(t *testing.T) (*App, string) {
 	if err := config.Save(cfg, cfgPath); err != nil {
 		t.Fatalf("seeding config: %v", err)
 	}
-	return &App{cfg: cfg, cfgPath: cfgPath, cfgLoaded: true, mu: sync.Mutex{}}, cfgPath
+	return newTestApp(withCfg(cfg), withCfgPath(cfgPath), withCfgLoaded()), cfgPath
 }
 
 func TestSetRepoContainer_Persists(t *testing.T) {

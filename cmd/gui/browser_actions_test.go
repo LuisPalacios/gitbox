@@ -2,7 +2,6 @@ package main
 
 import (
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -27,7 +26,7 @@ func appWithCreatedRepo(accountURL string) *App {
 			},
 		},
 	}
-	return &App{cfg: cfg, cfgPath: "", mu: sync.Mutex{}}
+	return newTestApp(withCfg(cfg), withCfgPath(""))
 }
 
 func TestRepoWebURL_PostCreateShape(t *testing.T) {

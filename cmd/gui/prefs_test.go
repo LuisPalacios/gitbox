@@ -17,11 +17,11 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/ops"
 )
 
-// newTestApp builds an App the way a non-local backend will: the backend
+// newPrefsApp builds an App the way a non-local backend will: the backend
 // owns its config, and the client preferences live in the gitbox.json at
 // localPath.
-func newTestApp(backend Backend, localPath string) *App {
-	return &App{backend: backend, prefs: newFilePrefs(localPath)}
+func newPrefsApp(backend Backend, localPath string) *App {
+	return newTestApp(withBackend(backend), withPrefs(newFilePrefs(localPath)))
 }
 
 // seedConfig writes a valid config with one account and one source, changed
@@ -55,7 +55,7 @@ func fileBackend(t *testing.T, path string) Backend {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return localBackend{&App{cfg: cfg, cfgPath: path, cfgLoaded: true}}
+	return localBackend{newTestApp(withCfg(cfg), withCfgPath(path), withCfgLoaded())}
 }
 
 func loadConfig(t *testing.T, path string) *config.Config {
@@ -96,7 +96,7 @@ func TestPrefsOverlay(t *testing.T) {
 		c.Global.Theme = "light"
 		c.Global.IgnoredClones = []string{"/on/the/client"}
 	})
-	a := newTestApp(fileBackend(t, backendPath), localPath)
+	a := newPrefsApp(fileBackend(t, backendPath), localPath)
 
 	check := func(what string, dto ConfigDTO, err error, theme string) {
 		t.Helper()
@@ -151,7 +151,7 @@ func TestCollapsedSplit(t *testing.T) {
 	// The local file knows the same source, so a leaked source key would
 	// survive the prune on save and fail the test.
 	localPath := seedConfig(t, "local.json", nil)
-	a := newTestApp(fileBackend(t, backendPath), localPath)
+	a := newPrefsApp(fileBackend(t, backendPath), localPath)
 
 	state := config.CollapsedState{Sidebar: true, Sources: []string{"acct"}, View: "all"}
 	if err := a.SetCollapsed(state); err != nil {
@@ -199,7 +199,7 @@ func TestLocalModeSingleFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}
+	a := newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded())
 	if _, ok := a.clientPrefs().(sharedPrefs); !ok {
 		t.Fatalf("a local App must share its config with the preferences, got %T", a.clientPrefs())
 	}
@@ -333,7 +333,7 @@ func newCrossWindow(t *testing.T) crossWindow {
 		c.Global.Theme = "light"
 		c.Global.Language = "en"
 	})
-	local := &App{cfgPath: path}
+	local := newTestApp(withCfgPath(path))
 	local.be().Init(context.Background())
 	t.Cleanup(local.closeLocal)
 	return crossWindow{path: path, local: local, remote: newFilePrefs(path)}
@@ -417,7 +417,7 @@ func TestLocalPrefChangeKeepsAnotherWindowsPrefs(t *testing.T) {
 // accounts and roots as well as preferences.
 func TestTerminalsWindowWritesOnlyPrefs(t *testing.T) {
 	w := newCrossWindow(t)
-	term := &App{cfgPath: w.path, windowMode: "terminals"}
+	term := newTestApp(withCfgPath(w.path), withWindowMode("terminals"))
 	term.useOwnPrefsFile()
 	term.be().Init(context.Background())
 

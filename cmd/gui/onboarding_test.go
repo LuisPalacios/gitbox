@@ -141,7 +141,7 @@ func TestOnboardingTestFixtureStartsInIsolation(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(cleanup)
-		a := &App{cfgPath: path, testMode: true, testFirstRun: firstRun}
+		a := newTestApp(withCfgPath(path), withTestMode(), withTestFirstRun(firstRun))
 		a.initLocal(context.Background())
 		if a.IsFirstRun() != first || a.GetLanguage() != "es" {
 			t.Fatalf("first run = %v, language %s", a.IsFirstRun(), a.GetLanguage())
