@@ -320,6 +320,7 @@ class MarkdownTest(unittest.TestCase):
                 "uv run -q ai/scripts/test_fixing_markdown.py",
                 "uv run -q ai/scripts/test_coordinate_issues.py",
                 "uv run -q ai/scripts/test_coordinate_roadmap.py",
+                "uv run -q ai/scripts/test_work_issue_access.py",
                 "uv run -q ai/scripts/sync.py verify --quiet",
             ])
         self.assertEqual(self.snapshot(), before)

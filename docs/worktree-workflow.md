@@ -26,7 +26,7 @@ $wu-coordinate-tasks <N> --count 30 --concurrency 20 --active <issue-numbers>
 $wu-coordinate-tasks <N> --resume <owner>
 ```
 
-In Claude Code I replace `$wu-coordinate-tasks` with `/wu-coordinate-tasks`. There the supervisor asks me to run `/add-dir` for each new worktree before launching its worker, including later arrivals, because sibling worktrees sit outside the session's working directory. The work unit number is mandatory, including on resume: if I omit it, the supervisor asks and never infers a container or falls back to the global backlog. With only the work-unit number, the supervisor uses `--count 3 --concurrency 3 --active none`. It applies defaults to omitted options, keeps any values I supply and checks existing reservations and live work. Before starting, it always announces the effective options, including publication and work-unit update permissions. On resume it reports the saved roster size and concurrency. Checkboxes provide context; native relationships and live issue and PR state determine which work belongs to this unit and remains pending. I do not need to open a conversation for each worker.
+In Claude Code I replace `$wu-coordinate-tasks` with `/wu-coordinate-tasks`. There the supervisor offers the one-time `~/.wt` grant before the first dispatch. When I decline it or it is not yet in effect, the supervisor asks me to run `/add-dir` for each new worktree before launching its worker, including later arrivals, because worktrees sit outside the session's working directory. The work unit number is mandatory, including on resume: if I omit it, the supervisor asks and never infers a container or falls back to the global backlog. With only the work-unit number, the supervisor uses `--count 3 --concurrency 3 --active none`. It applies defaults to omitted options, keeps any values I supply and checks existing reservations and live work. Before starting, it always announces the effective options, including publication and work-unit update permissions. On resume it reports the saved roster size and concurrency. Checkboxes provide context; native relationships and live issue and PR state determine which work belongs to this unit and remains pending. I do not need to open a conversation for each worker.
 
 The invocation authorizes local selection, planning, implementation, verification and commits. I can explicitly authorize publication for the selected batch with `--publish`, which covers its branch pushes and PR creation or updates after checks pass. `--update-work-unit` authorizes minimal completion-checkbox updates to that container after verified resolution. I create additional tasks through `wu-tasks`; the coordinator does not create them. These options do not authorize a merge, a force push, real credential changes or remote staging. The supervisor keeps publication and questions in the main conversation; workers do not publish. Asking how the skill works does not start a batch.
 
@@ -63,17 +63,36 @@ From the main clone:
 
 1. Open a fresh Claude Code or Codex window.
 2. Type `/work-issue 42`.
-3. The skill reads the issue and shows its title, labels, branch name and worktree path. The branch is `<type>/<N>-<slug>`: `fix` for a `bug` issue, `feat` for an `enhancement`, `chore` otherwise. The slug comes from the title, and the worktree goes to `../gitbox-<N>-<slug>`.
-4. Once I confirm it is the right issue, the skill creates the worktree from `origin/main` and continues there.
+3. The skill reads the issue and shows its title, labels, branch name and worktree path. The branch is `<type>/<N>-<slug>`: `fix` for a `bug` issue, `feat` for an `enhancement`, `chore` otherwise. The slug comes from the title, and the worktree goes to `~/.wt/<repo>/<N>-<slug>` in my home folder (`%USERPROFILE%\.wt` on Windows).
+4. Once I confirm it is the right issue, the skill creates the worktree from `origin/main`, proves it can work there without new prompts, and continues there.
 
 To work on issue 43 at the same time, I open a second window and run `/work-issue 43` there. I can also open a new session directly inside a worktree; the skill resumes from the right phase.
+
+## One-time access setup
+
+A worktree under `~/.wt` sits outside the folder where I started the session, so each tool needs permission to work there. The skill checks that permission at the start, shows me the exact change and applies it only when I say yes. I grant it once per tool and machine:
+
+- **Claude Code:** `~/.wt` in `permissions.additionalDirectories` and the rule `Edit(~/.wt/**)` in `~/.claude/settings.json`. Claude Code asks me to confirm the write, because it protects that file.
+- **Codex:** `~/.wt` and the Go caches in `writable_roots` of `~/.codex/config.toml`, plus allow rules in `~/.codex/rules/default.rules` for `git add`, `git fetch origin` and a commit that runs no hooks from the worktree. The sandbox keeps the main clone's `.git` read-only, so those git commands run outside it. No rule covers `git push`, a rebase or any `gh` command. After a new grant I relaunch Codex.
+
+When I decline, the skill falls back to a grant for the current session: `/add-dir <worktree>` in Claude Code, `--add-dir <worktree>` in Codex. Either way, an access preflight probes file writes, git, Go and the build tools from the worktree before any implementation. It asks for everything missing in one request and stops when it cannot prove a capability. In Codex, `npm ci`, `./scripts/gate.sh` and the rebase still ask for approval.
+
+The project allowlist in `.claude/settings.json` covers the local commands the skill runs, such as staging, committing, the frontend build and the gate. It never covers a push, a PR or an issue edit; a test fails if a rule would allow one.
+
+## Unattended runs
+
+When the session never asks for permissions, `/work-issue <N>` runs unattended. In Claude Code that means auto mode or bypass permissions mode, for example `claude --dangerously-skip-permissions`; `--allow-dangerously-skip-permissions` alone only makes bypass selectable. In Codex it means `approval_policy = "never"` or `--yolo`. I can also force it with `/work-issue <N> unattended`.
+
+An unattended run asks me nothing until the end. It skips the issue confirmation, the "ready to plan?" question and the plan approval, writes its plan into the conversation, implements, verifies and runs the local gate. Then it stops with one report: commits, results, the smoke check for runtime changes and the exact publication command. Nothing reaches GitHub until I approve it. When something needs my decision, such as two worktrees for the same issue or a failed probe, the run ends with that report instead of a question. It never applies the one-time grant on its own.
+
+In a session that does ask for permissions, the skill keeps every gate and warns me once that prompts will appear. Claude Code always asks to confirm a `cd <dir> && git …` chain, whatever the allow rules say, so the skill enters the worktree with a standalone `cd` and runs its commands without that prefix.
 
 ## The gates
 
 The skill stops at each gate and tells me what comes next:
 
-1. **Preflight**: it checks that it runs in the main clone, switches the `gh` account, fetches `origin`, reads the issue, and proposes the branch and worktree path.
-2. **Create worktree**: after my confirmation it runs `git worktree add ../gitbox-<N>-<slug> -b <branch> origin/main`.
+1. **Preflight**: it adopts the issue's existing worktree when there is one, switches the `gh` account, fetches `origin`, reads the issue, proposes the branch and worktree path, and checks the one-time access grant.
+2. **Create worktree**: after my confirmation it stops on path or branch collisions and runs `git worktree add --no-track -b <branch> <worktree> origin/main`. Then the access preflight probes, from the worktree, everything the next steps need and asks for anything missing in one request.
 3. **Understand**: it re-reads the issue, summarises it in five lines and asks whether I'm ready to plan.
 4. **Plan**: it adopts my plan or writes one with me. See [Providing my own plan](#providing-my-own-plan).
 5. **Implement**: edit and commit cycles. The final commit carries `Closes #<N>`. Everything stays local.
@@ -118,13 +137,13 @@ The source trees are isolated, but some state is shared across worktrees:
 
 ## Worktrees and Gitbox's own clone detection
 
-When the main clone lives under one of Gitbox's clone roots, a sibling worktree sits inside that root too. The reconcile pass finds it and lists it under **Unmatched clones** as "a git worktree of another clone". A worktree isn't a clone of its own: its `.git` is a pointer file to the main clone, so Gitbox never offers to adopt it.
+A worktree under `~/.wt` stays outside my clone roots, unless a root covers my whole home folder. A worktree inside a clone root, such as one created at the old sibling path `../gitbox-<N>-<slug>`, shows up in the reconcile pass, which lists it under **Unmatched clones** as "a git worktree of another clone". A worktree isn't a clone of its own: its `.git` is a pointer file to the main clone, so Gitbox never offers to adopt it.
 
 Three ways to live with it:
 
 1. Ignore it. The row disappears when `/merge-pr` removes the worktree.
 2. Click **Ignore** on its row in Unmatched clones to hide it.
-3. Create the worktree outside every clone root with `git worktree add` by hand. The skill always uses the sibling path.
+3. Keep `~/.wt` outside every clone root. The skill always creates new worktrees there.
 
 ## When main advances under me
 
@@ -157,10 +176,10 @@ To clean up by hand (abandoned work, a crashed session):
 
 ```bash
 # Remove a worktree. Refuses if dirty.
-git worktree remove ../gitbox-42-my-slug
+git worktree remove ~/.wt/gitbox/42-my-slug
 
 # Force-remove even if dirty.
-git worktree remove --force ../gitbox-42-my-slug
+git worktree remove --force ~/.wt/gitbox/42-my-slug
 
 # Prune metadata for worktrees deleted from disk without git knowing.
 git worktree prune

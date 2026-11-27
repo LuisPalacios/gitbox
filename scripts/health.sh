@@ -437,7 +437,8 @@ run_docs_parity() { uv run -q scripts/docs_parity.py; }
 run_harness() {
     # Test shared maintenance tools, then verify both renders against ai/.
     local suite
-    for suite in test_sync.py test_fixing_markdown.py test_coordinate_issues.py test_coordinate_roadmap.py; do
+    for suite in test_sync.py test_fixing_markdown.py test_coordinate_issues.py test_coordinate_roadmap.py \
+        test_work_issue_access.py; do
         uv run -q "$HARNESS/$suite" >"$tmp/harness-test.full" 2>&1 \
             || { cat "$tmp/harness-test.full"; return 1; }
     done

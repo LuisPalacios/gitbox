@@ -253,16 +253,16 @@ I use two work modes: an independent issue without children, or a top-level `wor
 
 Use `{{INVOKE}}wu-coordinate-tasks <N> --count 30 --concurrency 20 --active none` to authorize up to 30 tasks of one work unit and request 20 simultaneous workers. With only the work-unit number, use `--count 3 --concurrency 3 --active none`. Always announce the effective options before starting. Concurrency is capped at 25 and falls with session capacity, dependencies and file conflicts. The container number is required; if missing, ask. Never select from the global backlog or infer membership from body references. Declare other sessions with `--active <issues>`; the skill combines that information with live evidence and atomic local reservations. Its default authority covers local work. `--publish` explicitly adds push and PR publication for the selected batch; merge remains separate.
 
-For multi-issue work where several agent sessions run in parallel, use the `{{INVOKE}}work-issue <N>` skill. It creates a sibling worktree at `../gitbox-<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. `{{INVOKE}}merge-pr <PR#>` handles rebase check, local gate check, merge, and worktree cleanup as a separate, deliberate action.
+For multi-issue work where several agent sessions run in parallel, use the `{{INVOKE}}work-issue <N>` skill. It creates a worktree at `~/.wt/<repo>/<N>-<slug>`, drives the plan → code → auto-test → user-smoke-test → sync → push → PR flow, and stops before merge. Without permission prompts it runs unattended, stopping only before publication. `{{INVOKE}}merge-pr <PR#>` handles rebase check, local gate check, merge, and worktree cleanup as a separate, deliberate action.
 
 If I already have a plan written (in the issue body, a local file, or a URL), I can pass it with `{{INVOKE}}work-issue <N> <plan-source>`. The skill evaluates completeness: adopts it if it covers files-to-change, verification, and key decisions; extends it with a plan if partial; creates a full plan if absent, using the available planning capability.
 
 Cross-cutting rules when a session is running inside a worktree:
 
-- Stay in the worktree directory. Never edit files outside it, never check out a different branch in it.
+- Stay in the worktree: name its absolute path in every command and file path, never edit outside it, never check out another branch in it.
 - Global state is shared across worktrees: `~/.config/gitbox/gitbox.json`, system git config, GCM, SSH agent. Never run interactive credential or init-wizard flows in two sessions at once.
 - Before any `gh` command, derive the expected user from this clone's `remote.origin.url` (not a hardcoded name) and switch with `gh auth switch` if needed. The skill does this automatically.
-- If the worktree path falls under a gitbox-managed folder, expect GitboxApp's status and discovery views to list it as an orphan. It's not actually orphaned — just unrecognised by the scanner. Safe to ignore.
+- A worktree under a gitbox clone root shows in GitboxApp as an orphan; safe to ignore.
 
 See `docs/worktree-workflow.md` for the full walkthrough.
 
