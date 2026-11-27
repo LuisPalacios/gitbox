@@ -122,7 +122,7 @@ To apply the Claude Code grant, edit `~/.claude/settings.json` with the Edit too
 
 ## Step 2b: Access preflight
 
-Prove, before any implementation, that every capability Steps 3–6 need is available in `WT`. Run each probe from `WT`, one at a time, and show the result as a table of granted and missing items:
+Prove, before any implementation, that every capability Steps 3–6 need is available in `WT`. Run each probe from `WT`, one tool call per message, and show the result as a table of granted and missing items:
 
 - File write: write a probe file at `<WT>/cmd/gui/build/bin/.wt-probe` (git-ignored) with the file tool, then overwrite it once.
 - Git: `git status --porcelain`, `git add --dry-run .`, and the commit form with `--dry-run --allow-empty -m probe`. On a clean tree that dry run exits 1 with "nothing to commit"; that output counts as granted, a denial or a sandbox error does not.
