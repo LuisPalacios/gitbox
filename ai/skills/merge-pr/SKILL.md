@@ -30,7 +30,7 @@ Follow "Agent capabilities" in `{{ENTRY}}`: use supported tools or a conversatio
 - **Derive the gh user from this clone's `remote.origin.url`** — never hardcode.
 - **Name the directory of every command.** `MAIN` is the first `worktree` entry of `git worktree list --porcelain`; the PR's worktree is the entry on its branch. Never rely on an earlier `cd`, and run path-sensitive commands one at a time.
 <!-- harness:claude -->
-- Start each Bash command with `cd "<dir>" && …`.
+- Change directory with a standalone `cd "<dir>"`, confirm it with `git rev-parse --show-toplevel`, then run commands without a `cd` prefix: Claude Code asks for confirmation on any `cd <dir> && git …`. A `cd` outside the session's working directories does not persist; ask for `/add-dir <dir>` first.
 <!-- /harness -->
 <!-- harness:codex -->
 - Set the shell tool's working directory to the directory for each command.

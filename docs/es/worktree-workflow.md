@@ -79,6 +79,14 @@ Cuando lo rechazo, el skill recurre a un permiso para la sesión actual: `/add-d
 
 La lista de permisos del proyecto en `.claude/settings.json` cubre los comandos locales que ejecuta el skill, como preparar y hacer commits, el build del frontend y el gate. Nunca cubre un push, un PR ni la edición de un issue; un test falla si una regla permitiera alguno.
 
+## Ejecuciones desatendidas
+
+Cuando la sesión nunca pide permisos, `/work-issue <N>` se ejecuta de forma desatendida. En Claude Code eso significa el modo auto o el modo bypass permissions, por ejemplo `claude --dangerously-skip-permissions`; `--allow-dangerously-skip-permissions` por sí solo solo permite seleccionar bypass. En Codex significa `approval_policy = "never"` o `--yolo`. También puedo forzarlo con `/work-issue <N> unattended`.
+
+Una ejecución desatendida no me pregunta nada hasta el final. Omite la confirmación del issue, la pregunta "¿listo para planificar?" y la aprobación del plan, escribe su plan en la conversación, implementa, verifica y ejecuta el gate local. Después se detiene con un solo informe: commits, resultados, la comprobación de smoke para cambios de runtime y el comando exacto de publicación. Nada llega a GitHub hasta que lo apruebo. Cuando algo necesita mi decisión, como dos worktrees para el mismo issue o una sonda que falla, la ejecución termina con ese informe en lugar de una pregunta. Nunca aplica por su cuenta el permiso único.
+
+En una sesión que sí pide permisos, el skill mantiene todas las puertas y me avisa una vez de que aparecerán peticiones. Claude Code siempre pide confirmar una cadena `cd <dir> && git …`, digan lo que digan las reglas de permiso, así que el skill entra en el worktree con un `cd` suelto y ejecuta sus comandos sin ese prefijo.
+
 ## Las puertas
 
 El skill se detiene en cada puerta y me dice qué viene después:

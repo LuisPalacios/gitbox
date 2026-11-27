@@ -79,6 +79,14 @@ When I decline, the skill falls back to a grant for the current session: `/add-d
 
 The project allowlist in `.claude/settings.json` covers the local commands the skill runs, such as staging, committing, the frontend build and the gate. It never covers a push, a PR or an issue edit; a test fails if a rule would allow one.
 
+## Unattended runs
+
+When the session never asks for permissions, `/work-issue <N>` runs unattended. In Claude Code that means auto mode or bypass permissions mode, for example `claude --dangerously-skip-permissions`; `--allow-dangerously-skip-permissions` alone only makes bypass selectable. In Codex it means `approval_policy = "never"` or `--yolo`. I can also force it with `/work-issue <N> unattended`.
+
+An unattended run asks me nothing until the end. It skips the issue confirmation, the "ready to plan?" question and the plan approval, writes its plan into the conversation, implements, verifies and runs the local gate. Then it stops with one report: commits, results, the smoke check for runtime changes and the exact publication command. Nothing reaches GitHub until I approve it. When something needs my decision, such as two worktrees for the same issue or a failed probe, the run ends with that report instead of a question. It never applies the one-time grant on its own.
+
+In a session that does ask for permissions, the skill keeps every gate and warns me once that prompts will appear. Claude Code always asks to confirm a `cd <dir> && git …` chain, whatever the allow rules say, so the skill enters the worktree with a standalone `cd` and runs its commands without that prefix.
+
 ## The gates
 
 The skill stops at each gate and tells me what comes next:

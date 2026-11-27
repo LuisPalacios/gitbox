@@ -19,16 +19,28 @@ $work-issue <N> issue                Adopt the plan written inside the issue bod
 $work-issue <N> <path-or-url>        Adopt the plan from a local file or URL
 ```
 
-`<N>` is the GitHub issue number. The plan source is optional.
+`<N>` is the GitHub issue number. The plan source is optional. Adding `unattended` anywhere after `<N>` forces the unattended mode described in "Run modes".
 
 ## Golden rules (never skip)
 
 - **Never push, PR, merge, or comment on an issue/PR without explicit user go-ahead.** Local commits are free; publishing is not. An explicit authorization in the current session applies only to the actions and scope it names; do not ask again for an action it already covers.
 - **Never hardcode a GitHub username.** Derive the expected owner from this clone's `remote.origin.url` — the skill must work on any fork.
 - **Work only inside the worktree** after Step 2. Record `MAIN` (the `main` line of `wt_access.py find`) and `WT` (the worktree's absolute path with forward slashes). Never edit, build, commit or check out a branch in `MAIN`: another session may be working there. Use absolute paths inside `WT` for every file read and edit. Run path-sensitive commands one at a time, never in parallel. Never write through `git -C`. Never check out a different branch in `WT`.
+- **Run commands bare.** Add no `; echo`, `$?`, pipe or redirection only to report a status; read the exit status from the tool result.
 - **Set the shell tool's working directory to `WT`** for every command instead of a `cd` prefix, so the allow rules match.
 - **Anonymise anything that lands on GitHub** (PR title/body, commit messages that will be pushed). No local paths, no private account keys, no org names unrelated to this repository. See "Anonymize before posting to GitHub" in `AGENTS.md`.
 - **Build the GUI** after any change under `cmd/` or `pkg/` — `go build ./...` alone does not exercise the Wails build tags, the embedded frontend, or the `git.HideWindow` Windows rule.
+
+## Run modes
+
+Decide the mode at the start of Step 1 and say which one applies.
+
+- **Unattended** when the session never asks for permissions, or when the invocation includes `unattended`. Ask the user nothing until the end: skip the confirmations of Steps 1, 3 and 4, write the plan into the conversation instead of waiting for approval, and work through Step 6, local gate included. Then stop with the Step 7 report and wait for publication approval. A condition the skill cannot resolve alone (several worktrees for the issue, a collision, a container issue, a probe that fails, a check it cannot fix) ends the run with that report instead of a question. Never apply a user-level grant unattended; recommend it in the report.
+- **Attended** otherwise: keep every gate. When the session asks for permissions, say once at the start that prompts will appear and how to relaunch for unattended work, then continue.
+
+Never claim that no permission prompt appeared: the agent cannot see the prompts the user approves.
+
+The session is unattended with `approval_policy = "never"` or `--yolo`. Otherwise Codex asks for approvals; the relaunch hint is `codex --yolo`.
 
 ## Resumability
 
@@ -97,7 +109,7 @@ Worktree:  <WT>
 Grant:     granted | missing (diff above)
 ```
 
-Ask: "Is this the right issue? Proceed?" and, when the grant is missing, "Add the one-time grant for `~/.wt`?" Do not create the worktree until the user answers yes. Apply the grant only after an explicit yes to it.
+Ask: "Is this the right issue? Proceed?" and, when the grant is missing, "Add the one-time grant for `~/.wt`?" Do not create the worktree until the user answers yes. Apply the grant only after an explicit yes to it. In unattended mode, show the block and continue without asking or applying a grant.
 
 To apply the Codex grant, run `wt_access.py apply --harness codex --yes` and rerun `check`. Codex reads its configuration at startup: after a new grant, create the worktree (Step 2), then stop and ask the user to relaunch Codex in `MAIN` and run `$work-issue <N>` again, which adopts the worktree.
 
@@ -115,12 +127,12 @@ To apply the Codex grant, run `wt_access.py apply --harness codex --yes` and rer
 Prove, before any implementation, that every capability Steps 3–6 need is available in `WT`. Run each probe from `WT`, one at a time, and show the result as a table of granted and missing items:
 
 - File write: write a probe file at `<WT>/cmd/gui/build/bin/.wt-probe` (git-ignored) with the file tool, then overwrite it once.
-- Git: `git status --porcelain`, `git add --dry-run .`, and the commit form with `--dry-run --allow-empty -m probe`.
+- Git: `git status --porcelain`, `git add --dry-run .`, and the commit form with `--dry-run --allow-empty -m probe`. On a clean tree that dry run exits 1 with "nothing to commit"; that output counts as granted, a denial or a sandbox error does not.
 - Go: `go vet ./internal/...` and `gofmt -s -l pkg/git`.
 - Tools: `npm --version`, `wails version`, `uv --version`, and `test -x scripts/gate.sh`.
 - Location: `git rev-parse --show-toplevel` prints `WT`.
 
-Collect every missing item into one grouped request for the user and wait. When a probe cannot be proved, because access was denied or the result is ambiguous, stop before Step 3 and say what could not be proved. Never continue on the assumption that a capability exists. After the preflight passes, Steps 3–6 must not need a new permission.
+Collect every missing item into one grouped request for the user and wait; unattended, stop with the report instead. When a probe cannot be proved, because access was denied or the result is ambiguous, stop before Step 3 and say what could not be proved. Never continue on the assumption that a capability exists. After the preflight passes, Steps 3–6 must not need a new permission.
 
 When file probes fail, ask the user to relaunch Codex with `--add-dir <WT>`, or to accept the grant. The commit form is the `commit with:` line printed by `check --harness codex`; always commit through it, so a commit never runs hooks from the worktree. Tell the user which prompts remain expected in Codex: `npm ci` (network), `./scripts/gate.sh` (SSH and the gate marker in the common git directory) and the Step 8 rebase.
 
@@ -130,7 +142,7 @@ When file probes fail, ask the user to relaunch Codex with `--add-dir <WT>`, or 
 - Explore only the files the issue clearly touches, using targeted filename and content searches.
 - Summarise in ≤5 lines: what the problem is, where it lives, what success looks like.
 
-**Gate:** ask the user "Ready to plan?" before moving on.
+**Gate (attended):** ask the user "Ready to plan?" before moving on. Unattended, continue.
 
 ## Step 4: Plan — or adopt an existing one
 
@@ -139,6 +151,8 @@ Resolve the plan source:
 - **Explicit second argument** — treat as a path or URL if it's not the literal `issue`. Fetch URLs with an available web tool; read local paths with an available file-reading tool.
 - **Second argument is `issue`** — extract any section from the issue body titled `Plan`, `Implementation`, `Approach`, or `Proposed solution` (case-insensitive).
 - **No second argument** — scan the issue body for the same section headings anyway (cheap), but do not assume one exists.
+
+Unattended, write the plan (adopted, extended or new) into the conversation with the same completeness check, and continue to Step 5 without plan mode or approval.
 
 **Completeness check** — a plan is complete enough to adopt only if it covers all three:
 
@@ -192,6 +206,8 @@ Doc-only changes (`.md`, `docs/`, comments, `ai/` and the harness files it rende
 ## Step 7: User smoke-test gate
 
 Follow the "Never push without asking first" protocol from `AGENTS.md`. Check whether current-session authorization already covers the proposed publication action and scope. Existing publication authorization does not waive the required user smoke test for runtime changes.
+
+Unattended, this is where the run stops: send one report with the commits, the Step 6 results and gate marker, any recommended grant, the smoke check below for runtime changes, and the exact publication command. Then wait.
 
 **Runtime-affecting changes** (anything under `cmd/` or `pkg/`, build config, UI behaviour):
 
