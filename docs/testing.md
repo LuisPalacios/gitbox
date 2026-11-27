@@ -26,7 +26,7 @@ I check changes to the work-unit skills with the harness gate:
 ./scripts/health.sh harness markdown shellcheck actionlint
 ```
 
-The harness gate includes `ai/scripts/test_coordinate_issues.py` and `ai/scripts/test_coordinate_roadmap.py`. They use local fixtures for the shared registry, the worker queue at simulated capacities of 15 and four, and the optional work-unit checklist helper. I describe their coverage in [testing-reference.md](testing-reference.md#agent-harness-maintenance-tests).
+The harness gate includes `ai/scripts/test_coordinate_issues.py`, `ai/scripts/test_coordinate_roadmap.py` and `ai/scripts/test_work_issue_access.py`. They use local fixtures for the shared registry, the worker queue at simulated capacities of 15 and four, the optional work-unit checklist helper, and the `work-issue` worktree root and access grants. I describe their coverage in [testing-reference.md](testing-reference.md#agent-harness-maintenance-tests).
 
 I also review the workflow in a fresh Codex and Claude Code session: `wu-container` drafts populated HLR and acceptance criteria, `wu-tasks` maps tasks to those criteria, and `wu-coordinate-tasks` asks for a missing container number. I check that coordination excludes standalone issues and tasks from another parent, holds dependent tasks until integration and preserves the specified work unit on resume. I use read-only scenarios for these checks; testing discovery does not authorize publication. Changes limited to the harness skip Go tests and GUI builds; I still run the full health check before a PR.
 

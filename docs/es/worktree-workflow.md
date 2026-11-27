@@ -26,7 +26,7 @@ $wu-coordinate-tasks <N> --count 30 --concurrency 20 --active <issue-numbers>
 $wu-coordinate-tasks <N> --resume <owner>
 ```
 
-En Claude Code sustituyo `$wu-coordinate-tasks` por `/wu-coordinate-tasks`. Ahí el supervisor me pide que ejecute `/add-dir` para cada worktree nuevo antes de lanzar su agente, también en los lanzamientos posteriores, porque los worktrees hermanos quedan fuera del directorio de trabajo de la sesión. El número de work unit es obligatorio, también al reanudar: si lo omito, el supervisor lo pregunta y nunca deduce un contenedor ni recurre al backlog global. Si solo indico el número de la work unit, el supervisor usa `--count 3 --concurrency 3 --active none`. Aplica los valores por defecto a las opciones que omito, respeta los que indico y comprueba las reservas y el trabajo en curso. Antes de empezar, siempre anuncia las opciones efectivas, incluidos los permisos de publicación y actualización de la work unit. Al reanudar, muestra el tamaño del lote guardado y su concurrencia. Las casillas aportan contexto; las relaciones nativas y el estado actual de issues y PR determinan qué trabajo pertenece a esta unidad y sigue pendiente. No necesito abrir una conversación por agente.
+En Claude Code sustituyo `$wu-coordinate-tasks` por `/wu-coordinate-tasks`. Ahí el supervisor me ofrece el permiso único de `~/.wt` antes del primer lanzamiento. Cuando lo rechazo o todavía no está en vigor, el supervisor me pide que ejecute `/add-dir` para cada worktree nuevo antes de lanzar su agente, también en los lanzamientos posteriores, porque los worktrees quedan fuera del directorio de trabajo de la sesión. El número de work unit es obligatorio, también al reanudar: si lo omito, el supervisor lo pregunta y nunca deduce un contenedor ni recurre al backlog global. Si solo indico el número de la work unit, el supervisor usa `--count 3 --concurrency 3 --active none`. Aplica los valores por defecto a las opciones que omito, respeta los que indico y comprueba las reservas y el trabajo en curso. Antes de empezar, siempre anuncia las opciones efectivas, incluidos los permisos de publicación y actualización de la work unit. Al reanudar, muestra el tamaño del lote guardado y su concurrencia. Las casillas aportan contexto; las relaciones nativas y el estado actual de issues y PR determinan qué trabajo pertenece a esta unidad y sigue pendiente. No necesito abrir una conversación por agente.
 
 La invocación autoriza selección, planificación, implementación, verificación y commits locales. Puedo autorizar explícitamente la publicación del lote seleccionado con `--publish`, que cubre los pushes de sus ramas y la creación o actualización de PR después de superar las comprobaciones. `--update-work-unit` autoriza actualizaciones mínimas de casillas de finalización en ese contenedor tras verificar la resolución. Creo tareas adicionales mediante `wu-tasks`; el coordinador no las crea. Estas opciones no autorizan un merge, un push forzado, cambios de credenciales reales ni staging remoto. El supervisor mantiene la publicación y las preguntas en la conversación principal; los agentes no publican. Preguntar cómo funciona el skill no inicia un lote.
 
@@ -63,17 +63,28 @@ Desde el clon principal:
 
 1. Abro una ventana nueva de Claude Code o Codex.
 2. Escribo `/work-issue 42`.
-3. El skill lee el issue y muestra su título, sus etiquetas, el nombre de la rama y la ruta del worktree. La rama es `<type>/<N>-<slug>`: `fix` para un issue `bug`, `feat` para un `enhancement` y `chore` en los demás casos. El slug sale del título, y el worktree va a `../gitbox-<N>-<slug>`.
-4. Cuando confirmo que es el issue correcto, el skill crea el worktree desde `origin/main` y continúa allí.
+3. El skill lee el issue y muestra su título, sus etiquetas, el nombre de la rama y la ruta del worktree. La rama es `<type>/<N>-<slug>`: `fix` para un issue `bug`, `feat` para un `enhancement` y `chore` en los demás casos. El slug sale del título, y el worktree va a `~/.wt/<repo>/<N>-<slug>` en mi carpeta personal (`%USERPROFILE%\.wt` en Windows).
+4. Cuando confirmo que es el issue correcto, el skill crea el worktree desde `origin/main`, demuestra que puede trabajar allí sin nuevas peticiones de permiso y continúa allí.
 
 Para trabajar en el issue 43 al mismo tiempo, abro una segunda ventana y ejecuto `/work-issue 43` en ella. También puedo abrir una sesión nueva directamente dentro de un worktree; el skill reanuda desde la fase correcta.
+
+## Configuración de acceso única
+
+Un worktree bajo `~/.wt` queda fuera de la carpeta donde inicié la sesión, así que cada herramienta necesita permiso para trabajar allí. El skill comprueba ese permiso al empezar, me muestra el cambio exacto y solo lo aplica cuando digo que sí. Lo concedo una vez por herramienta y máquina:
+
+- **Claude Code:** `~/.wt` en `permissions.additionalDirectories` y la regla `Edit(~/.wt/**)` en `~/.claude/settings.json`. Claude Code me pide confirmar la escritura, porque protege ese archivo.
+- **Codex:** `~/.wt` y las cachés de Go en `writable_roots` de `~/.codex/config.toml`, más reglas de permiso en `~/.codex/rules/default.rules` para `git add`, `git fetch origin` y un commit que no ejecuta hooks del worktree. El sandbox mantiene el `.git` del clon principal en solo lectura, así que esos comandos de git se ejecutan fuera de él. Ninguna regla cubre `git push`, un rebase ni ningún comando `gh`. Tras un permiso nuevo, vuelvo a lanzar Codex.
+
+Cuando lo rechazo, el skill recurre a un permiso para la sesión actual: `/add-dir <worktree>` en Claude Code, `--add-dir <worktree>` en Codex. En ambos casos, una comprobación de acceso prueba desde el worktree la escritura de archivos, git, Go y las herramientas de build antes de cualquier implementación. Pide todo lo que falta en una sola petición y se detiene cuando no puede demostrar una capacidad. En Codex, `npm ci`, `./scripts/gate.sh` y el rebase siguen pidiendo aprobación.
+
+La lista de permisos del proyecto en `.claude/settings.json` cubre los comandos locales que ejecuta el skill, como preparar y hacer commits, el build del frontend y el gate. Nunca cubre un push, un PR ni la edición de un issue; un test falla si una regla permitiera alguno.
 
 ## Las puertas
 
 El skill se detiene en cada puerta y me dice qué viene después:
 
-1. **Preflight**: comprueba que se ejecuta en el clon principal, cambia la cuenta de `gh`, hace fetch de `origin`, lee el issue y propone la rama y la ruta del worktree.
-2. **Crear worktree**: tras mi confirmación ejecuta `git worktree add ../gitbox-<N>-<slug> -b <branch> origin/main`.
+1. **Preflight**: adopta el worktree existente del issue cuando lo hay, cambia la cuenta de `gh`, hace fetch de `origin`, lee el issue, propone la rama y la ruta del worktree, y comprueba el permiso de acceso único.
+2. **Crear worktree**: tras mi confirmación se detiene ante colisiones de ruta o de rama y ejecuta `git worktree add --no-track -b <branch> <worktree> origin/main`. Después, la comprobación de acceso prueba desde el worktree todo lo que necesitan los pasos siguientes y pide lo que falte en una sola petición.
 3. **Entender**: relee el issue, lo resume en cinco líneas y me pregunta si estoy listo para planificar.
 4. **Plan**: adopta mi plan o escribe uno conmigo. Consulta [Proporcionar mi propio plan](#proporcionar-mi-propio-plan).
 5. **Implementar**: ciclos de edición y commit. El último commit lleva `Closes #<N>`. Todo se queda en local.
@@ -118,13 +129,13 @@ Los árboles de código están aislados, pero parte del estado se comparte entre
 
 ## Worktrees y la detección de clones propia de Gitbox
 
-Cuando el clon principal vive bajo una de las raíces de clonado de Gitbox, un worktree hermano queda también dentro de esa raíz. La pasada de reconcile lo encuentra y lo lista en **Clones sin ubicar** como "un worktree de git de otro clon". Un worktree no es un clon propio: su `.git` es un archivo puntero al clon principal, así que Gitbox nunca ofrece adoptarlo.
+Un worktree bajo `~/.wt` queda fuera de mis raíces de clonado, salvo que una raíz cubra toda mi carpeta personal. Un worktree dentro de una raíz de clonado, como uno creado en la antigua ruta hermana `../gitbox-<N>-<slug>`, aparece en la pasada de reconcile, que lo lista en **Clones sin ubicar** como "un worktree de git de otro clon". Un worktree no es un clon propio: su `.git` es un archivo puntero al clon principal, así que Gitbox nunca ofrece adoptarlo.
 
 Tres formas de convivir con ello:
 
 1. Ignorarlo. La fila desaparece cuando `/merge-pr` elimina el worktree.
 2. Hacer clic en **Ignorar** en su fila de Clones sin ubicar para ocultarlo.
-3. Crear el worktree fuera de todas las raíces de clonado con `git worktree add` a mano. El skill siempre usa la ruta hermana.
+3. Mantener `~/.wt` fuera de todas las raíces de clonado. El skill siempre crea ahí los worktrees nuevos.
 
 ## Cuando main avanza debajo de mí
 
@@ -157,10 +168,10 @@ Para limpiar a mano (trabajo abandonado, una sesión que se cayó):
 
 ```bash
 # Eliminar un worktree. Se niega si está dirty.
-git worktree remove ../gitbox-42-my-slug
+git worktree remove ~/.wt/gitbox/42-my-slug
 
 # Forzar la eliminación aunque esté dirty.
-git worktree remove --force ../gitbox-42-my-slug
+git worktree remove --force ~/.wt/gitbox/42-my-slug
 
 # Podar metadatos de worktrees borrados del disco sin que git lo sepa.
 git worktree prune
