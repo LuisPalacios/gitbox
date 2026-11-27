@@ -59,115 +59,121 @@
 
 {#if showSettings}
   <div class="settings" transition:slide={{ duration: 150 }}>
-    {#if !simple}
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.configTip')}>{$t('settings.config')}</span>
-      <button use:remoteOff={unavailableOff($remoteHost)} class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
-      <span class="settings-value">{configPath}</span>
-    </div>
-    {/if}
-    {#if !$remoteWindow}<FleetRecipe {roots} onImported={onRecipeImported} />{/if}
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.rootsTip')}>{$t('settings.roots')}</span>
-      <button class="settings-action-btn" on:click={openRoots}>{$t('settings.change')}</button>
-      <span class="settings-value">{roots[0] || $t('settings.notSet')}{#if roots.length > 1}&nbsp;<span class="roots-more">{$t('settings.rootsMore', { n: roots.length - 1 })}</span>{/if}</span>
-    </div>
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.languageTip')}>{$t('settings.language')}</span>
-      <div class="theme-toggle">
-        <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')} translate="no">English</button>
-        <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')} translate="no">Español</button>
-      </div>
-    </div>
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.themeTip')}>{$t('settings.theme')}</span>
-      <div class="theme-toggle">
-        <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => setTheme('system')}>{$t('theme.system')}</button>
-        <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => setTheme('light')}>{$t('theme.light')}</button>
-        <button class="theme-btn" class:theme-active={themeChoice === 'dark'} on:click={() => setTheme('dark')}>{$t('theme.dark')}</button>
-      </div>
-    </div>
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.periodicStatusTip')}>{simple ? $t('simple.checkChanges') : $t('settings.periodicStatus')}</span>
-      <div class="theme-toggle">
-        <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
-        <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
-        <button class="theme-btn" class:theme-active={fetchInterval === '15m'} on:click={() => setFetchInterval('15m')}>15m</button>
-        <button class="theme-btn" class:theme-active={fetchInterval === '30m'} on:click={() => setFetchInterval('30m')}>30m</button>
-      </div>
-      {#if lastFetchTime}
-        <span class="settings-value" style="font-size:10px; margin-left:4px">{$t('settings.lastFetch', { time: lastFetchTime })}</span>
-      {/if}
-    </div>
-    <div class="settings-row">
-      <span class="settings-label">{$t(simple ? 'settings.showUpdatePlan' : 'settings.showPullPlan')}</span>
-      <div class="theme-toggle">
-        {#each pullPlanChoices as choice}
-          <button class="theme-btn" class:theme-active={pullPlanChoice === choice} aria-pressed={pullPlanChoice === choice}
-            on:click={() => setShowPullPlan(choice)}>{$t(`pullPlan.preference.${choice}`)}</button>
-        {/each}
-      </div>
-    </div>
-    {#if autostartSupported}
+    <section class="settings-section" aria-labelledby="settings-general-title">
+      <h3 class="settings-section-title" id="settings-general-title">{$t('settings.general')}</h3>
       <div class="settings-row">
-        <span class="settings-label" use:tooltip={$t('settings.runAtStartupTip')}>{$t('settings.runAtStartup')}</span>
+        <span class="settings-label" use:tooltip={$t('settings.languageTip')}>{$t('settings.language')}</span>
         <div class="theme-toggle">
-          <button use:ro={'setAutostart'} class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
-          <button use:ro={'setAutostart'} class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
+          <button class="theme-btn" class:theme-active={languageChoice === 'en'} on:click={() => setLanguage('en')} translate="no">English</button>
+          <button class="theme-btn" class:theme-active={languageChoice === 'es'} on:click={() => setLanguage('es')} translate="no">Español</button>
         </div>
       </div>
-    {/if}
-    {#if !simple}
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.prReviewsTip')}>{$t('settings.prReviews')}</span>
-      <div class="theme-toggle">
-        <button use:ro={'setPRBadgesEnabled'} class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
-        <button use:ro={'setPRBadgesEnabled'} class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
-      </div>
-      {#if $prSettings.enabled}
-        <span class="settings-sublabel" use:tooltip={$t('settings.includeDraftsTip')}>{$t('settings.includeDrafts')}</span>
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.themeTip')}>{$t('settings.theme')}</span>
         <div class="theme-toggle">
-          <button use:ro={'setPRIncludeDrafts'} class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
-          <button use:ro={'setPRIncludeDrafts'} class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
+          <button class="theme-btn" class:theme-active={themeChoice === 'system'} on:click={() => setTheme('system')}>{$t('theme.system')}</button>
+          <button class="theme-btn" class:theme-active={themeChoice === 'light'} on:click={() => setTheme('light')}>{$t('theme.light')}</button>
+          <button class="theme-btn" class:theme-active={themeChoice === 'dark'} on:click={() => setTheme('dark')}>{$t('theme.dark')}</button>
+        </div>
+      </div>
+      {#if autostartSupported}
+        <div class="settings-row">
+          <span class="settings-label" use:tooltip={$t('settings.runAtStartupTip')}>{$t('settings.runAtStartup')}</span>
+          <div class="theme-toggle">
+            <button use:ro={'setAutostart'} class="theme-btn" class:theme-active={!autostartOn} on:click={() => { if (autostartOn) toggleAutostart(); }}>{$t('common.off')}</button>
+            <button use:ro={'setAutostart'} class="theme-btn" class:theme-active={autostartOn} on:click={() => { if (!autostartOn) toggleAutostart(); }}>{$t('common.on')}</button>
+          </div>
         </div>
       {/if}
-    </div>
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.globalGitignoreTip')}>{$t('settings.globalGitignore')}</span>
-      <div class="theme-toggle">
-        <button use:ro={'setCheckGlobalGitignore'} class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
-        <button use:ro={'setCheckGlobalGitignore'} class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
+      {#if !simple}
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.terminalsTip')}>{$t('settings.terminals')}</span>
+        <button class="settings-action-btn" on:click={openTerminalsManagerWindow} disabled={terminalsManagerOpening}>
+          {#if terminalsManagerOpening}
+            <span class="settings-action-spinner" aria-hidden="true"></span>
+            {$t('settings.opening')}
+          {:else}
+            {$t('settings.manager')}
+          {/if}
+        </button>
       </div>
-    </div>
-    {/if}
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.systemCheckTip')}>{$t('settings.systemCheck')}</span>
-      <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
-      {#if doctorSummary}
-        <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
       {/if}
-    </div>
-    {#if !simple}
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.terminalsTip')}>{$t('settings.terminals')}</span>
-      <button class="settings-action-btn" on:click={openTerminalsManagerWindow} disabled={terminalsManagerOpening}>
-        {#if terminalsManagerOpening}
-          <span class="settings-action-spinner" aria-hidden="true"></span>
-          {$t('settings.opening')}
-        {:else}
-          {$t('settings.manager')}
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.versionTip')}>{$t('settings.version')}</span>
+        <span class="settings-value">{appVersion}</span>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.authorTip')}>{$t('settings.author')}</span>
+        <span class="settings-value" translate="no">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => openExternal('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
+      </div>
+    </section>
+    <section class="settings-section" aria-labelledby="settings-session-title">
+      <h3 class="settings-section-title" id="settings-session-title">{$t('settings.session')}</h3>
+      {#if !simple}
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.configTip')}>{$t('settings.config')}</span>
+        <button use:remoteOff={unavailableOff($remoteHost)} class="settings-action-btn" on:click={() => bridge.openFileInEditor(configPath)}>{$t('settings.openInEditor')}</button>
+        <span class="settings-value">{configPath}</span>
+      </div>
+      {/if}
+      {#if !$remoteWindow}<FleetRecipe {roots} onImported={onRecipeImported} />{/if}
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.rootsTip')}>{$t('settings.roots')}</span>
+        <button class="settings-action-btn" on:click={openRoots}>{$t('settings.change')}</button>
+        <span class="settings-value">{roots[0] || $t('settings.notSet')}{#if roots.length > 1}&nbsp;<span class="roots-more">{$t('settings.rootsMore', { n: roots.length - 1 })}</span>{/if}</span>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.periodicStatusTip')}>{simple ? $t('simple.checkChanges') : $t('settings.periodicStatus')}</span>
+        <div class="theme-toggle">
+          <button class="theme-btn" class:theme-active={fetchInterval === 'off'} on:click={() => setFetchInterval('off')}>{$t('common.off')}</button>
+          <button class="theme-btn" class:theme-active={fetchInterval === '5m'} on:click={() => setFetchInterval('5m')}>5m</button>
+          <button class="theme-btn" class:theme-active={fetchInterval === '15m'} on:click={() => setFetchInterval('15m')}>15m</button>
+          <button class="theme-btn" class:theme-active={fetchInterval === '30m'} on:click={() => setFetchInterval('30m')}>30m</button>
+        </div>
+        {#if lastFetchTime}
+          <span class="settings-value" style="font-size:10px; margin-left:4px">{$t('settings.lastFetch', { time: lastFetchTime })}</span>
         {/if}
-      </button>
-    </div>
-    {/if}
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.versionTip')}>{$t('settings.version')}</span>
-      <span class="settings-value">{appVersion}</span>
-    </div>
-    <div class="settings-row">
-      <span class="settings-label" use:tooltip={$t('settings.authorTip')}>{$t('settings.author')}</span>
-      <span class="settings-value" translate="no">Luis Palacios Derqui &mdash; <a href="https://github.com/LuisPalacios/gitbox" on:click|preventDefault={() => openExternal('https://github.com/LuisPalacios/gitbox')}>github.com/LuisPalacios/gitbox</a></span>
-    </div>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">{$t(simple ? 'settings.showUpdatePlan' : 'settings.showPullPlan')}</span>
+        <div class="theme-toggle">
+          {#each pullPlanChoices as choice}
+            <button class="theme-btn" class:theme-active={pullPlanChoice === choice} aria-pressed={pullPlanChoice === choice}
+              on:click={() => setShowPullPlan(choice)}>{$t(`pullPlan.preference.${choice}`)}</button>
+          {/each}
+        </div>
+      </div>
+      {#if !simple}
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.prReviewsTip')}>{$t('settings.prReviews')}</span>
+        <div class="theme-toggle">
+          <button use:ro={'setPRBadgesEnabled'} class="theme-btn" class:theme-active={!$prSettings.enabled} on:click={() => { if ($prSettings.enabled) setPRBadgesEnabled(false); }}>{$t('common.off')}</button>
+          <button use:ro={'setPRBadgesEnabled'} class="theme-btn" class:theme-active={$prSettings.enabled} on:click={() => { if (!$prSettings.enabled) setPRBadgesEnabled(true); }}>{$t('common.on')}</button>
+        </div>
+        {#if $prSettings.enabled}
+          <span class="settings-sublabel" use:tooltip={$t('settings.includeDraftsTip')}>{$t('settings.includeDrafts')}</span>
+          <div class="theme-toggle">
+            <button use:ro={'setPRIncludeDrafts'} class="theme-btn" class:theme-active={!$prSettings.includeDrafts} on:click={() => { if ($prSettings.includeDrafts) setPRIncludeDrafts(false); }}>{$t('common.off')}</button>
+            <button use:ro={'setPRIncludeDrafts'} class="theme-btn" class:theme-active={$prSettings.includeDrafts} on:click={() => { if (!$prSettings.includeDrafts) setPRIncludeDrafts(true); }}>{$t('common.on')}</button>
+          </div>
+        {/if}
+      </div>
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.globalGitignoreTip')}>{$t('settings.globalGitignore')}</span>
+        <div class="theme-toggle">
+          <button use:ro={'setCheckGlobalGitignore'} class="theme-btn" class:theme-active={!checkGitignorePref} on:click={() => { if (checkGitignorePref) setCheckGitignorePref(false); }}>{$t('common.off')}</button>
+          <button use:ro={'setCheckGlobalGitignore'} class="theme-btn" class:theme-active={checkGitignorePref} on:click={() => { if (!checkGitignorePref) setCheckGitignorePref(true); }}>{$t('common.on')}</button>
+        </div>
+      </div>
+      {/if}
+      <div class="settings-row">
+        <span class="settings-label" use:tooltip={$t('settings.systemCheckTip')}>{$t('settings.systemCheck')}</span>
+        <button class="settings-action-btn" on:click={openDoctorModal}>{$t('settings.run')}</button>
+        {#if doctorSummary}
+          <span class="settings-sublabel settings-doctor-summary">{doctorSummary}</span>
+        {/if}
+      </div>
+    </section>
   </div>
 {/if}
 
@@ -175,6 +181,14 @@
   .settings {
     padding: 14px 24px; border-bottom: 1px solid var(--border);
     background: var(--bg-card); display: flex; flex-direction: column; gap: 8px;
+  }
+  /* General holds the app's own preferences; Session, those of the
+     config this window manages. */
+  .settings-section { display: flex; flex-direction: column; gap: 8px; }
+  .settings-section + .settings-section { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 2px; }
+  .settings-section-title {
+    margin: 0; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text-muted);
   }
   .settings-row { display: flex; align-items: center; gap: 12px; }
   .settings-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 80px; flex-shrink: 0; }

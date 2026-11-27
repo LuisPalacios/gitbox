@@ -392,6 +392,20 @@ test('the Remote hosts window shows a host without a server as not installed', a
   assert.deepEqual(native.unexpected, [])
 })
 
+function settingsProps(extra = {}) {
+  const noop = () => {}
+  const later = async () => {}
+  return {
+    showSettings: true, onRecipeImported: noop, simple: true, configPath: '/fixture/gitbox.json', languageChoice: 'en',
+    themeChoice: 'system', fetchInterval: 'off', lastFetchTime: '', autostartSupported: false, autostartOn: false,
+    checkGitignorePref: false, doctorSummary: '', terminalsManagerOpening: false, appVersion: 'test',
+    openRoots: noop, setLanguage: later, setTheme: noop, setFetchInterval: noop, toggleAutostart: later,
+    setPRBadgesEnabled: later, setPRIncludeDrafts: later, setCheckGitignorePref: later, openDoctorModal: noop,
+    openTerminalsManagerWindow: later,
+    ...extra,
+  }
+}
+
 // The hosts are managed only from the switcher: Settings has no Remote hosts
 // row in either window, and does not even ask whether remote mode is on.
 for (const remote of [false, true]) {
@@ -400,22 +414,36 @@ for (const remote of [false, true]) {
     const { SettingsPanel, render, screen, remoteWindow } = ui
     const native = bridge(ui, { GetCheckGlobalGitignore: async () => false, GetPRSettings: async () => ({ enabled: false, includeDrafts: false }) })
     remoteWindow.set(remote)
-    const noop = () => {}
-    const later = async () => {}
-    render(SettingsPanel, {
-      props: {
-        showSettings: true, onRecipeImported: noop, simple: true, configPath: '/fixture/gitbox.json', languageChoice: 'en',
-        themeChoice: 'system', fetchInterval: 'off', lastFetchTime: '', autostartSupported: false, autostartOn: false,
-        checkGitignorePref: false, doctorSummary: '', terminalsManagerOpening: false, appVersion: 'test',
-        openRoots: noop, setLanguage: later, setTheme: noop, setFetchInterval: noop, toggleAutostart: later,
-        setPRBadgesEnabled: later, setPRIncludeDrafts: later, setCheckGitignorePref: later, openDoctorModal: noop,
-        openTerminalsManagerWindow: later,
-      },
-    })
+    render(SettingsPanel, { props: settingsProps() })
     assert.ok(screen.getByText('Version'), 'the panel rendered')
+    assert.ok(screen.getByRole('region', { name: 'General' }))
+    assert.ok(screen.getByRole('region', { name: 'Session' }))
     await new Promise((resolve) => setTimeout(resolve, 50))
     assert.equal(screen.queryByText('Remote hosts'), null)
     assert.equal(called(native, 'ListRemotes').length, 0)
     assert.equal(called(native, 'OpenRemotesWindow').length, 0)
   })
 }
+
+// Settings groups its rows under General, the app's own preferences, and
+// Session, those of the config the window manages (#384).
+test('Settings groups every Advanced row under General or Session', async (t) => {
+  const ui = await mount(t)
+  const { SettingsPanel, render, screen, within, remoteWindow } = ui
+  bridge(ui, { GetCheckGlobalGitignore: async () => false, GetPRSettings: async () => ({ enabled: false, includeDrafts: false }) })
+  remoteWindow.set(false)
+  render(SettingsPanel, { props: settingsProps({ simple: false, autostartSupported: true }) })
+  const sections = {
+    General: ['Language', 'Theme', 'Run at startup', 'Terminals', 'Version', 'Author'],
+    Session: ['Config', 'Fleet recipe', 'Clone roots', 'Periodic status check', 'Show plan before Pull all',
+      'PR / reviews', 'Global gitignore', 'System check'],
+  }
+  for (const [name, labels] of Object.entries(sections)) {
+    const section = within(screen.getByRole('region', { name }))
+    const other = within(screen.getByRole('region', { name: name === 'General' ? 'Session' : 'General' }))
+    for (const label of labels) {
+      assert.ok(section.getByText(label, { exact: true }), `${label} is in ${name}`)
+      assert.equal(other.queryByText(label, { exact: true }), null, `${label} is only in ${name}`)
+    }
+  }
+})
