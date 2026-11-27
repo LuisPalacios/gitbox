@@ -271,11 +271,11 @@ def go_cache_roots() -> list[str]:
 
 
 def codex_rules() -> list[str]:
-    hooks = posix(codex_home() / NO_HOOKS)
+    pattern = ", ".join(toml_string(part) for part in commit_prefix().split(" "))
     return [
         'prefix_rule(pattern=["git", "add"], decision="allow")',
         'prefix_rule(pattern=["git", "fetch", "origin"], decision="allow")',
-        f'prefix_rule(pattern=["git", "-c", "core.hooksPath={hooks}", "commit"], decision="allow")',
+        f'prefix_rule(pattern=[{pattern}], decision="allow")',
     ]
 
 
@@ -371,8 +371,14 @@ def atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def commit_prefix() -> str:
+    return f"git -c core.hooksPath={posix(codex_home() / NO_HOOKS)} commit"
+
+
 def cmd_check(harness: str) -> int:
     plan = plan_for(harness)
+    if harness == "codex":
+        print(f"commit with: {commit_prefix()}")
     if not plan.missing:
         print(f"{harness}: granted")
         return EXIT_OK

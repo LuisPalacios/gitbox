@@ -28,6 +28,13 @@ Follow "Agent capabilities" in `{{ENTRY}}`: use supported tools or a conversatio
 - **Never merge a PR whose head commit lacks a passing local gate, or whose GitHub check failed.** Report what is missing or failed and stop.
 - **Never remove a worktree with uncommitted or unpushed state** unless the user overrides.
 - **Derive the gh user from this clone's `remote.origin.url`** — never hardcode.
+- **Name the directory of every command.** `MAIN` is the first `worktree` entry of `git worktree list --porcelain`; the PR's worktree is the entry on its branch. Never rely on an earlier `cd`, and run path-sensitive commands one at a time.
+<!-- harness:claude -->
+- Start each Bash command with `cd "<dir>" && …`.
+<!-- /harness -->
+<!-- harness:codex -->
+- Set the shell tool's working directory to the directory for each command.
+<!-- /harness -->
 
 ## Universal gh-user detection
 
@@ -57,12 +64,12 @@ This repository and personal forks use the origin owner as the login. If the own
 
 - Report to the user: PR number, title, base branch, head branch, state, mergeable status.
 - If `state` is `MERGED`, the merge already happened: skip to Step 5 to finish the cleanup. If it is `CLOSED`, stop — nothing to do.
-- Locate the local worktree: `git worktree list` and match on branch name.
+- Locate the local worktree: `git worktree list --porcelain` and match on branch name. This finds worktrees under `~/.wt/<repo>/` and older sibling ones alike.
 
 ## Step 2: Freshness check
 
 - For a coordinated issue, inspect its reservation and arrange with its supervisor for the worker to stop. Confirm it cannot still modify the worktree before checking cleanliness, and keep it stopped through merge and cleanup. A stale heartbeat alone is insufficient. Do this before Step 4 because `--delete-branch` can remove the worktree during the merge command itself.
-- `cd` into the PR's worktree.
+- Run the rest of Steps 2 and 3 in the PR's worktree.
 - Check for uncommitted or unpushed state **now**, before the merge. `gh pr merge --delete-branch` also deletes the local branch and removes its worktree, so after the merge there is nothing left to check:
 
   ```bash
@@ -118,14 +125,13 @@ After successful merge:
 
 For a coordinated issue already merged externally, perform Step 2's worker-stop check before cleanup. After cleanup, confirm the PR merged and the linked issue is fully resolved; do not infer resolution from a `Closes` string alone. With current-session permission to update its work unit, follow `{{SKILLS}}/wu-coordinate-tasks/protocol.md` to mark only the optional matching task checkbox, including when this invocation resumes after an external merge. Merge permission alone does not authorize the issue-body edit. Record pending work-unit updates when permission is absent, and retain the report for later reconciliation. Release a resolved issue's claim only after confirming no active worker or unfinished work remains; a partial PR leaves it reserved. An issue claim can be released after resolution while a journal entry preserves a pending work-unit update.
 
-1. Leave the worktree: `cd` back to the main clone.
+1. Leave the worktree: run the rest of the cleanup in `MAIN`.
 2. Update main: `git fetch origin && git checkout main && git pull --ff-only origin main`.
 3. Check what `gh pr merge --delete-branch` left behind: `git worktree list` and `git branch --list <branch-name>`. If both are gone, skip to step 5.
 4. Otherwise remove what is left. The worktree was checked clean in Step 2; if it changed since, stop and ask. Do not run `git worktree remove --force` without explicit instruction.
 
    ```bash
-   cd <main-clone>
-   git worktree remove <worktree-path>
+   git worktree remove "<worktree-path>"
    git branch -D <branch-name>
    git worktree prune
    ```

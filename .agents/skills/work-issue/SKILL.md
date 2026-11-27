@@ -25,17 +25,29 @@ $work-issue <N> <path-or-url>        Adopt the plan from a local file or URL
 
 - **Never push, PR, merge, or comment on an issue/PR without explicit user go-ahead.** Local commits are free; publishing is not. An explicit authorization in the current session applies only to the actions and scope it names; do not ask again for an action it already covers.
 - **Never hardcode a GitHub username.** Derive the expected owner from this clone's `remote.origin.url` — the skill must work on any fork.
-- **Stay in the worktree** after Phase 2. Never edit files outside it, never check out a different branch in it.
+- **Work only inside the worktree** after Step 2. Record `MAIN` (the `main` line of `wt_access.py find`) and `WT` (the worktree's absolute path with forward slashes). Never edit, build, commit or check out a branch in `MAIN`: another session may be working there. Use absolute paths inside `WT` for every file read and edit. Run path-sensitive commands one at a time, never in parallel. Never write through `git -C`. Never check out a different branch in `WT`.
+- **Set the shell tool's working directory to `WT`** for every command instead of a `cd` prefix, so the allow rules match.
 - **Anonymise anything that lands on GitHub** (PR title/body, commit messages that will be pushed). No local paths, no private account keys, no org names unrelated to this repository. See "Anonymize before posting to GitHub" in `AGENTS.md`.
 - **Build the GUI** after any change under `cmd/` or `pkg/` — `go build ./...` alone does not exercise the Wails build tags, the embedded frontend, or the `git.HideWindow` Windows rule.
 
 ## Resumability
 
-Each phase begins by reading current git state (`git rev-parse --abbrev-ref HEAD`, `git worktree list`, `git log -1`, `gh pr view` if a PR exists). If `$work-issue <N>` is re-invoked mid-flow, jump to the right phase instead of restarting.
+Each phase begins by reading current git state (`wt_access.py find --issue <N>`, `git rev-parse --abbrev-ref HEAD`, `git log -1`, `gh pr view` if a PR exists). If `$work-issue <N>` is re-invoked mid-flow, from `MAIN` or from inside `WT`, Step 1 adopts the existing worktree, Step 2b runs again, and the skill jumps to the right phase instead of restarting. Worktrees created at the old sibling path `../gitbox-<N>-<slug>` are adopted the same way; never move them.
+
+## Access helper
+
+`.agents/skills/work-issue/scripts/wt_access.py` holds the fragile parts. It needs only `uv` and the Python standard library (no packages, no network), following the zero-footprint rule. Run it as `uv run -q .agents/skills/work-issue/scripts/wt_access.py <command>`:
+
+- `root --repo <repo> [--create]` prints the worktree root `~/.wt/<repo>` for this OS, with forward slashes.
+- `find --issue <N>` prints `main <MAIN>` and each worktree whose branch is `<type>/<N>-…`, including one stopped in a rebase. Exit 0 means one usable match, 4 none, 5 attention (several matches, prunable or locked).
+- `check --harness claude|codex` reports whether the one-time user-level grant is present (exit 0) or missing (exit 3).
+- `apply --harness claude|codex --dry-run` prints the exact diff of the grant; `apply --harness codex --yes` writes it.
+
+Exit 1 always means a condition to resolve by hand; show its message and stop.
 
 ## Delegated batch work
 
-When a supervisor assigns a reserved issue through `$wu-coordinate-tasks`, read that skill and follow its worker contract. The user's batch-start instruction delegates local issue selection and plan approval to the supervisor: send the preflight details and plan there instead of repeating the ordinary user gates below. Resume in the assigned worktree when it already exists; Step 1's main-clone check applies only to initial creation. Keep every command and edit in that worktree, report scope changes before editing, and return verified local commits to the supervisor. Workers stop before Steps 8–10; the supervisor owns sync, publication and CI.
+When a supervisor assigns a reserved issue through `$wu-coordinate-tasks`, read that skill and follow its worker contract. The user's batch-start instruction delegates local issue selection and plan approval to the supervisor: send the preflight details and plan there instead of repeating the ordinary user gates below. Resume in the assigned worktree when it already exists. Keep every command and edit in that worktree, report scope changes before editing, and return verified local commits to the supervisor. Workers stop before Steps 8–10; the supervisor owns sync, publication and CI.
 
 Only in this coordinated mode, evidence of an equivalent automated behavioral smoke can satisfy Step 7 under `wu-coordinate-tasks` criteria. Missing coverage still requires the user's check. This mode grants no worker publication authority and does not change the standalone workflow below.
 
@@ -60,7 +72,10 @@ This repository and personal forks use the origin owner as the login. If the own
 
 Read `.agents/skills/wu-container/issue-rules.md` to distinguish an independent issue from a work-unit task. Implement leaves only. A container goes through `$wu-tasks` and `$wu-coordinate-tasks <N>`; do not implement or close the container as one task. For a native child, read the parent specification and referenced AC, verify its prerequisites, and check the coordination registry for an existing claim before creating competing work.
 
-- Confirm we are in the main clone, not already inside a worktree: `git rev-parse --show-toplevel` and `git rev-parse --git-dir`. If the git dir is under `.git/worktrees/`, we're in a worktree — re-invoke in the main clone.
+- **Locate.** Run `wt_access.py find --issue <N>` from wherever the session started. Record `MAIN` from its `main` line.
+  - Exit 0: adopt the matched worktree as `WT`, tell the user, and go to Step 2b. A `rebasing` match resumes at Step 8.
+  - Exit 5: show the matches and ask which one to use. Never pick one, prune it or unlock it on your own.
+  - Exit 4: continue below. If the session sits inside another worktree (`git rev-parse --show-toplevel` differs from `MAIN`), stop: the new worktree is created from `MAIN` or from a fresh session there.
 - Run the gh-user detection snippet above.
 - `git fetch origin`.
 - Read the issue: `gh issue view <N> --json number,title,body,labels`.
@@ -69,7 +84,8 @@ Read `.agents/skills/wu-container/issue-rules.md` to distinguish an independent 
   - `fix` if the issue has label `bug`.
   - `feat` if label `enhancement`.
   - `chore` otherwise.
-- Propose worktree path `../gitbox-<N>-<slug>` (sibling of main clone).
+- Derive `<repo>` from the last segment of `remote.origin.url` without `.git`, and get the root with `wt_access.py root --repo <repo>`. Propose `WT` = `<root>/<N>-<slug>`.
+- **Grant check.** Run `wt_access.py check --harness <this harness>`. When it reports missing items, run `apply --dry-run` and show the diff with the offer below. The grant is optional: when the user declines, the per-session fallback in Step 2b applies.
 
 **Gate:** show the user the following block verbatim so they can confirm I fetched the right issue, then wait for explicit confirmation before touching the filesystem.
 
@@ -77,17 +93,36 @@ Read `.agents/skills/wu-container/issue-rules.md` to distinguish an independent 
 Issue #<N>: <exact title from gh>
 Labels:    <labels>
 Branch:    <type>/<N>-<slug>
-Worktree:  ../gitbox-<N>-<slug>
+Worktree:  <WT>
+Grant:     granted | missing (diff above)
 ```
 
-Ask: "Is this the right issue? Proceed?" Do not create the worktree until the user answers yes.
+Ask: "Is this the right issue? Proceed?" and, when the grant is missing, "Add the one-time grant for `~/.wt`?" Do not create the worktree until the user answers yes. Apply the grant only after an explicit yes to it.
+
+To apply the Codex grant, run `wt_access.py apply --harness codex --yes` and rerun `check`. Codex reads its configuration at startup: after a new grant, create the worktree (Step 2), then stop and ask the user to relaunch Codex in `MAIN` and run `$work-issue <N>` again, which adopts the worktree.
 
 ## Step 2: Create worktree
 
-- **Orphan heads-up:** if `~/.config/gitbox/gitbox.json` exists, read it and check whether the proposed worktree absolute path falls under any of the clone roots in `global.roots` (a leading `~` means the home folder). If it does, warn once: "Heads-up — this worktree will sit inside a gitbox-managed folder, so GitboxApp's status and discovery will list it as an orphan. Not actually orphaned — just unrecognised by the scanner. Safe to ignore." Proceed unless the user says otherwise.
-- Create: `git worktree add ../gitbox-<N>-<slug> -b <branch> origin/main`.
-- `cd` into the worktree for all subsequent steps.
-- Tell the user: "Worktree ready at `<path>` on branch `<branch>`. You can open a separate Claude Code or Codex session in that directory and continue there — I'll resume from Step 3 either way."
+- **Collisions.** Before creating anything:
+  - If `WT` already exists and `find` did not adopt it, stop. When `git rev-parse --path-format=absolute --git-common-dir` inside it differs from `MAIN`'s, it belongs to another clone: offer `<N>-<slug>-<owner>` as the folder name instead.
+  - If `git rev-parse --verify --quiet refs/heads/<branch>` succeeds, or `git ls-remote --heads origin <branch>` prints a line, stop and ask: earlier work exists without a worktree.
+- **Orphan heads-up:** if `~/.config/gitbox/gitbox.json` exists, read it and check whether `WT` falls under any of the clone roots in `global.roots` (a leading `~` means the home folder). If it does, warn once: "Heads-up — this worktree will sit inside a gitbox-managed folder, so GitboxApp's status and discovery will list it as an orphan. Not actually orphaned — just unrecognised by the scanner. Safe to ignore." Proceed unless the user says otherwise.
+- Create the root with `wt_access.py root --repo <repo> --create`, then the worktree, without tracking `origin/main` so a bare `git push` can never target `main`: `git worktree add --no-track -b <branch> "<WT>" origin/main`.
+- Tell the user: "Worktree ready at `<WT>` on branch `<branch>`. You can open a separate Claude Code or Codex session in that directory and continue there; `$work-issue <N>` adopts it from either place."
+
+## Step 2b: Access preflight
+
+Prove, before any implementation, that every capability Steps 3–6 need is available in `WT`. Run each probe from `WT`, one at a time, and show the result as a table of granted and missing items:
+
+- File write: write a probe file at `<WT>/cmd/gui/build/bin/.wt-probe` (git-ignored) with the file tool, then overwrite it once.
+- Git: `git status --porcelain`, `git add --dry-run .`, and the commit form with `--dry-run --allow-empty -m probe`.
+- Go: `go vet ./internal/...` and `gofmt -s -l pkg/git`.
+- Tools: `npm --version`, `wails version`, `uv --version`, and `test -x scripts/gate.sh`.
+- Location: `git rev-parse --show-toplevel` prints `WT`.
+
+Collect every missing item into one grouped request for the user and wait. When a probe cannot be proved, because access was denied or the result is ambiguous, stop before Step 3 and say what could not be proved. Never continue on the assumption that a capability exists. After the preflight passes, Steps 3–6 must not need a new permission.
+
+When file probes fail, ask the user to relaunch Codex with `--add-dir <WT>`, or to accept the grant. The commit form is the `commit with:` line printed by `check --harness codex`; always commit through it, so a commit never runs hooks from the worktree. Tell the user which prompts remain expected in Codex: `npm ci` (network), `./scripts/gate.sh` (SSH and the gate marker in the common git directory) and the Step 8 rebase.
 
 ## Step 3: Understand
 
@@ -117,17 +152,18 @@ Resolve the plan source:
 
 ## Step 5: Implement
 
+- Before the first commit, confirm that `git rev-parse --show-toplevel` prints `WT`; stop if it does not.
 - Edit + commit cycles. Keep commits focused and logical. Reference the issue in the body: `Closes #<N>` on the final commit (or the commit that completes the fix).
 - **Never** attribute authorship or co-authorship to any AI model, assistant, agent, or harness in commit messages or PR titles, descriptions, or comments. Remove AI `Co-Authored-By` trailers, signatures, and “generated by/with” footers before committing or publishing. Follow the shared rule in `AGENTS.md`.
 - All changes stay local. No pushes in this step.
 
 ## Step 6: Auto-verify
 
-Run in this order, stop on first failure and fix before continuing:
+Run in this order from `WT` (the commands below are relative to it), stop on first failure and fix before continuing:
 
 1. `go vet ./...`
 2. The focused test command from the table in `.codex/context/testing-patterns.md` under "Which tests to run" (match what changed: `pkg/`, `pkg/ops/`, `cmd/gui/`, etc.). When unsure, run `go test ./...`.
-3. Build the GUI (quick compile-check during iteration, full build before reporting done). `cmd/gui` embeds `frontend/dist`, so build the frontend once if it is missing (`cd cmd/gui/frontend && npm ci && npm run build`):
+3. Build the GUI (quick compile-check during iteration, full build before reporting done). `cmd/gui` embeds `frontend/dist`, so build the frontend once if it is missing (`(cd cmd/gui/frontend && npm ci && npm run build)`):
 
    ```bash
    # Quick iterative check

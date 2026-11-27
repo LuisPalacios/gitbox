@@ -285,6 +285,8 @@ class CodexGrantTest(IsolatedHome):
         hooks = (self.home / ".codex" / ".no-hooks").as_posix()
         self.assertIn(f'"core.hooksPath={hooks}"', commit)
         self.assertFalse(Path(hooks).exists())
+        _, out, _ = self.run_main("check", "--harness", "codex")
+        self.assertIn(f"commit with: git -c core.hooksPath={hooks} commit", out)
 
     def test_existing_rules_are_kept(self):
         self.rules().parent.mkdir(parents=True)
