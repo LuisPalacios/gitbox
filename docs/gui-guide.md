@@ -59,13 +59,13 @@ The app needs a desktop environment with a display server (X11 or Wayland).
 
 The first time you open Gitbox, a short guided setup walks you through three steps:
 
-1. **Where do you keep your projects?** — pick your first **clone root**, the folder where your projects live on disk, such as `~/00.git` or `C:\repos`. The preview shows the folder layout and counts nearby projects. Existing clones stay where they are. Choose **Download a project** or **Use an existing project**. You can add more roots later in Settings.
+1. **Where do you keep your projects?** — pick your first **clone root**, the folder where your projects live on disk, such as `~/00.git` or `C:\repos`. The preview shows the folder layout and counts nearby projects. Existing clones stay where they are. Choose **Guided setup** to go on with the next two steps, or **Skip and open gitbox** to go straight to the dashboard. Both save the folder. You can add more roots later in Settings.
 2. **Connect where your projects are stored** — pick GitHub, GitLab, Bitbucket, or the **Forgejo** and **Gitea** tile (then choose which one and type the server address). Type your username, your name and your email. The name and email are prefilled from your global git identity when it has one, and they appear on the changes you save. Gitbox suggests an account folder name, such as `github-alice`. Choose **Edit folder name** to change it before signing in. Click **Sign in with the browser** and log in. Gitbox uses Git Credential Manager (GCM) for this.
-3. **Choose your first project** — check the connected provider, server and username. Pick one project to download or one of the existing clones for that account. Check the exact project folder and confirm. Once the project is ready, open the dashboard. You can add more projects from the account view.
+3. **Choose your first project** — check the connected provider, server and username. Pick one project to download or one of the existing clones for that account. When the root already holds clones, the step starts on **Use an existing project**; **Download a project** switches to a download. Check the exact project folder and confirm. Once the project is ready, open the dashboard. You can add more projects from the account view.
 
 If GCM isn't installed, step 2 shows how to install it and offers **Use a token instead**, which links to the page where you create a token and asks you to paste it. If sign-in fails, you can **Try again**, switch to a token, or go back with **Change details**.
 
-You can **Skip for now** at steps 2 and 3 and add accounts later. New installs start in [Simple mode](#simple-and-advanced-modes). If you quit after the first step, the next launch opens the main screen; finish from **Connect an account** in the sidebar.
+You can also **Skip for now** at steps 2 and 3 and add accounts later. After a skip, **Needs attention** shows **Connect an account** (**Add account** in Advanced mode), which opens the same guided connection. New installs start in [Simple mode](#simple-and-advanced-modes). If you quit after the first step, the next launch opens the main screen; finish from **Connect an account** in the sidebar.
 
 On later launches, Gitbox shows your clones, preferences and container nesting right away, before the status checks finish. Spinners mark the clones it is still checking or fetching.
 
@@ -551,7 +551,7 @@ The Remote hosts window is a window of its own, which **Manage remote hosts…**
 
 In a remote window, Onboarding and **Roots** take a folder typed for the host instead of the folder dialog: the line under the field says what the host resolves it to.
 
-A host with no `gitbox.json` opens the first-run onboarding, titled **Set up gitbox on** and the alias. The folder, the account and the first project are set up on the host, and the host saves its own `gitbox.json`, creating `~/.config/gitbox/` when it is missing. Nothing is written there until I choose the folder, so disconnecting before then leaves the host as it was. When the connection drops during onboarding, the window shows the connection card; the next connection asks the host again and opens the dashboard if the folder was saved, or the onboarding otherwise.
+A host with no `gitbox.json` opens the first-run onboarding, titled **Set up gitbox on** and the alias. The folder, the account and the first project are set up on the host, or only the folder with **Skip and open gitbox**, and the host saves its own `gitbox.json`, creating `~/.config/gitbox/` when it is missing. Nothing is written there until I choose the folder, so disconnecting before then leaves the host as it was. When the connection drops during onboarding, the window shows the connection card; the next connection asks the host again and opens the dashboard if the folder was saved, or the onboarding otherwise.
 
 Once connected, the remote window is the full Gitbox window, showing and changing the host:
 

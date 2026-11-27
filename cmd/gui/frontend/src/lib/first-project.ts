@@ -28,3 +28,10 @@ export async function firstCloneOutcome(
   if (!verified) return 'failed';
   return event.warnings?.length ? 'attention' : 'ready';
 }
+
+// The route the first project starts on (#355): a root that already holds
+// clones, or may (a sampled count), offers one of them first. The guide can
+// still switch to a download.
+export function firstProjectRoute(preview: { exists: boolean; existingClones: number; sampled: boolean } | null): 'adopt' | 'download' {
+  return preview?.exists && (preview.existingClones > 0 || preview.sampled) ? 'adopt' : 'download';
+}
