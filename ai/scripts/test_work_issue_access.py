@@ -315,6 +315,16 @@ class ProjectAllowlistGuardTest(unittest.TestCase):
         "./scripts/gate.sh --report",
         "git rebase -i origin/main",
         "git branch -D main",
+        "gh release create v9.9.9 --draft",
+        "gh release edit v9.9.9 --draft=false",
+        "gh release upload v9.9.9 dist/app.zip",
+        "gh release delete v9.9.9 --yes",
+        "gh api -X DELETE repos/o/r/git/refs/heads/feat/1-x",
+    )
+    READ_ONLY = (
+        "gh release view v9.9.9",
+        "gh release list",
+        "gh release download v9.9.9 --pattern checksums.sha256",
     )
 
     @staticmethod
@@ -340,8 +350,16 @@ class ProjectAllowlistGuardTest(unittest.TestCase):
             for command in self.PUBLISH:
                 self.assertIsNone(compiled.fullmatch(command), f"{rule} would allow: {command}")
 
+    def test_read_only_release_commands_stay_allowed(self):
+        settings = json.loads((REPO / ".claude/settings.json").read_text(encoding="utf-8"))
+        compiled = [p for p in map(self.pattern, settings["permissions"]["allow"]) if p]
+        for command in self.READ_ONLY:
+            self.assertTrue(any(p.fullmatch(command) for p in compiled), command)
+
     def test_guard_catches_a_broad_rule(self):
-        for rule in ("Bash(git *)", "Bash(gh pr:*)", "Bash(./scripts/gate.sh *)", "Bash(git -C *)"):
+        broad = ("Bash(git *)", "Bash(gh pr:*)", "Bash(./scripts/gate.sh *)", "Bash(git -C *)",
+                 "Bash(gh release:*)", "Bash(gh release *)", "Bash(gh api *)")
+        for rule in broad:
             compiled = self.pattern(rule)
             self.assertTrue(any(compiled.fullmatch(c) for c in self.PUBLISH), rule)
 

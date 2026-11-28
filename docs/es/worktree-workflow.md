@@ -162,11 +162,12 @@ Cuando estoy listo:
 Se ejecuta en cualquier sesión, la que creó el worktree o una nueva. El skill:
 
 1. Lee el PR y encuentra su worktree por el nombre de la rama.
-2. Comprueba que el worktree no tiene cambios sin commit ni sin push, y se detiene si los tiene, salvo que yo lo fuerce. Esta comprobación se hace antes del merge porque `gh pr merge --delete-branch` también borra la rama local y su worktree.
+2. Comprueba que el worktree no tiene cambios sin commit ni sin push, y se detiene si los tiene, salvo que yo lo fuerce. Esta comprobación se hace antes del merge porque el trabajo que solo está en el worktree no entraría en el merge, y la limpieza elimina el worktree.
 3. Hace fetch y, si la rama base se movió, ofrece un rebase y vuelve a hacer push con `--force-with-lease`.
 4. Pone una puerta sobre el gate local: el commit head necesita un marcador del gate correcto o un estado `local-gate`, y ofrece ejecutar el gate cuando no lo hay. Un check de GitHub fallido también lo detiene e informa de su log; un check que sigue en ejecución no.
-5. Me muestra `gh pr merge <PR#> --squash --delete-branch` y espera mi autorización.
-6. Después del merge, vuelve al clon principal, avanza `main` en fast-forward, elimina cualquier worktree y rama local que `gh` haya dejado y poda los metadatos obsoletos de worktrees.
+5. Me muestra `gh pr merge <PR#> --squash` y espera mi autorización. Después borra la rama remota con la API de GitHub si el repositorio no lo hizo ya. Nunca usa `--delete-branch`, porque entonces `gh` haría checkout y pull de la rama base en el checkout desde el que se ejecute.
+6. Después del merge, hace fetch de `origin` en el clon principal, elimina el worktree y la rama local del PR y poda los metadatos obsoletos de worktrees. Nunca hace checkout, pull, merge ni reset en el clon principal, así que una sesión que trabaja allí conserva sus archivos.
+7. Informa de cuántos commits va el `main` del clon principal por detrás de `origin/main` y muestra el comando para actualizarlo. Ese comando lo ejecuto yo cuando el clon principal está libre.
 
 Si el cuerpo del PR dice `Closes #N`, GitHub cierra el issue al hacer el merge.
 
