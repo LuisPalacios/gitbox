@@ -50,7 +50,7 @@ func TestAppConstructorsAllocateLocalSession(t *testing.T) {
 
 // sessionFiles are the files whose session state moved into localSession
 // (#353). Each later move adds its files here.
-var sessionFiles = []string{"pr.go"}
+var sessionFiles = []string{"pr.go", "reconcile.go", "roots.go", "containers.go"}
 
 // sessionFieldNames is the set of localSession field names.
 func sessionFieldNames() map[string]bool {

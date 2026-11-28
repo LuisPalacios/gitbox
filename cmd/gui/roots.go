@@ -8,8 +8,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -86,37 +88,38 @@ func (a *App) InitRoot(folder string) error {
 	})
 }
 
-// initRootLocal is the local backend's InitRoot.
-func (a *App) initRootLocal(folder string) error {
+// initRootLocal is the local backend's InitRoot. save and merge are
+// App.saveConfig and App.mergeDiskPrefs, called under s.mu.
+func (s *localSession) initRootLocal(folder string, save func() error, merge func(*config.Config) error) error {
 	folder = strings.TrimSpace(folder)
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// A new install (no root yet) starts in Simple mode. A config that
 	// already chose a mode keeps it, also one another window saved.
-	if onDisk, err := config.Load(a.cfgPath); err == nil {
-		_ = a.mergeDiskPrefs(onDisk)
+	if onDisk, err := config.Load(s.cfgPath); err == nil {
+		_ = merge(onDisk)
 	}
-	first := len(a.cfg.Global.Roots) == 0
-	if _, err := ensureListedRoot(a.cfg, folder); err != nil {
+	first := len(s.cfg.Global.Roots) == 0
+	if _, err := ensureListedRoot(s.cfg, folder); err != nil {
 		return err
 	}
-	if first && a.cfg.Global.UIMode == "" {
-		a.cfg.Global.UIMode = uiModeSimple
+	if first && s.cfg.Global.UIMode == "" {
+		s.cfg.Global.UIMode = uiModeSimple
 	}
-	a.cfg.SetDefaultRoot(folder)
+	s.cfg.SetDefaultRoot(folder)
 	// Onboarding completes here: promote the in-memory config to "loaded"
 	// before the first save so saveConfig() accepts it. Only reachable on
 	// the os.ErrNotExist branch of startup — if the config file existed but
 	// failed to parse, cfgLoadError is non-empty and onboarding is blocked
 	// by the frontend until the user repairs or replaces it.
-	if a.cfgLoadError != "" {
-		return fmt.Errorf("cannot complete onboarding while a config load error is pending: %s", a.cfgLoadError)
+	if s.cfgLoadError != "" {
+		return fmt.Errorf("cannot complete onboarding while a config load error is pending: %s", s.cfgLoadError)
 	}
-	a.cfgLoaded = true
-	if err := a.saveConfig(); err != nil {
+	s.cfgLoaded = true
+	if err := save(); err != nil {
 		if !isConfigChanged(err) {
-			a.cfgLoaded = false
+			s.cfgLoaded = false
 		}
 		return err
 	}
@@ -128,13 +131,13 @@ func (a *App) initRootLocal(folder string) error {
 func (a *App) ListRoots() []RootDTO { return a.be().ListRoots() }
 
 // listRootsLocal is the local backend's ListRoots.
-func (a *App) listRootsLocal() []RootDTO {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([]RootDTO, 0, len(a.cfg.Global.Roots))
-	for i, r := range a.cfg.Global.Roots {
+func (s *localSession) listRootsLocal() []RootDTO {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]RootDTO, 0, len(s.cfg.Global.Roots))
+	for i, r := range s.cfg.Global.Roots {
 		info, err := os.Stat(config.ExpandTilde(r))
-		out = append(out, RootDTO{Path: r, IsDefault: i == 0, Exists: err == nil && info.IsDir(), Repos: len(a.cfg.RootRefs(r))})
+		out = append(out, RootDTO{Path: r, IsDefault: i == 0, Exists: err == nil && info.IsDir(), Repos: len(s.cfg.RootRefs(r))})
 	}
 	return out
 }
@@ -143,16 +146,16 @@ func (a *App) listRootsLocal() []RootDTO {
 func (a *App) AddRoot(path string) error { return a.be().AddRoot(path) }
 
 // addRootLocal is the local backend's AddRoot.
-func (a *App) addRootLocal(path string) error {
+func (s *localSession) addRootLocal(path string, save func() error) error {
 	path = strings.TrimSpace(path)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	changed, err := ensureListedRoot(a.cfg, path)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed, err := ensureListedRoot(s.cfg, path)
 	if err != nil {
 		return err
 	}
 	if changed {
-		return a.saveConfig()
+		return save()
 	}
 	return nil
 }
@@ -165,21 +168,21 @@ func (a *App) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {
 }
 
 // removeRootLocal is the local backend's RemoveRoot.
-func (a *App) removeRootLocal(path string, forget bool) (RemoveRootDTO, error) {
+func (s *localSession) removeRootLocal(path string, forget bool, save func() error) (RemoveRootDTO, error) {
 	path, err := hostPath(path)
 	if err != nil {
 		return RemoveRootDTO{}, err
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	refs, err := a.cfg.RemoveRoot(path, forget)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	refs, err := s.cfg.RemoveRoot(path, forget)
 	if errors.Is(err, config.ErrRootInUse) {
 		return RemoveRootDTO{InUse: len(refs)}, nil
 	}
 	if err != nil {
 		return RemoveRootDTO{}, err
 	}
-	if err := a.saveConfig(); err != nil {
+	if err := save(); err != nil {
 		return RemoveRootDTO{}, err
 	}
 	return RemoveRootDTO{Forgotten: append([]string{}, refs...)}, nil
@@ -190,18 +193,39 @@ func (a *App) removeRootLocal(path string, forget bool) (RemoveRootDTO, error) {
 func (a *App) SetDefaultRoot(path string) error { return a.be().SetDefaultRoot(path) }
 
 // setDefaultRootLocal is the local backend's SetDefaultRoot.
-func (a *App) setDefaultRootLocal(path string) error {
+func (s *localSession) setDefaultRootLocal(path string, save func() error) error {
 	path, err := hostPath(path)
 	if err != nil {
 		return err
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.cfg.HasRoot(path) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.cfg.HasRoot(path) {
 		return fmt.Errorf("%s is not a clone root", path)
 	}
-	a.cfg.SetDefaultRoot(path)
-	return a.saveConfig()
+	s.cfg.SetDefaultRoot(path)
+	return save()
+}
+
+// auditClonePathsLocked returns the folder collisions shown in Needs
+// attention, auditing again when the config changed since the last audit.
+// A new set of collisions is logged to log, or to stderr when log is nil.
+// The caller holds s.mu.
+func (s *localSession) auditClonePathsLocked(log io.Writer) []config.PathConflict {
+	if s.pathsAudited && s.pathAuditBase == s.cfgBase {
+		return s.pathConflicts
+	}
+	conflicts := s.cfg.PathConflicts()
+	if len(conflicts) > 0 && !slices.Equal(conflicts, s.pathConflicts) {
+		if log == nil {
+			log = os.Stderr
+		}
+		for _, conflict := range conflicts {
+			fmt.Fprintf(log, "warning: folder collision between %q and %q; see Needs attention\n", userText(conflict.First), userText(conflict.Second))
+		}
+	}
+	s.pathConflicts, s.pathAuditBase, s.pathsAudited = conflicts, s.cfgBase, true
+	return s.pathConflicts
 }
 
 // accountFolder returns <root>/<source folder> for an account's source: the

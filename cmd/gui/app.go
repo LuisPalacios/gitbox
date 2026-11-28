@@ -31,11 +31,9 @@ import (
 	"github.com/LuisPalacios/gitbox/pkg/mirror"
 	"github.com/LuisPalacios/gitbox/pkg/ops"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
-	"github.com/LuisPalacios/gitbox/pkg/reconcile"
 	"github.com/LuisPalacios/gitbox/pkg/status"
 	"github.com/LuisPalacios/gitbox/pkg/terminals"
 	"github.com/LuisPalacios/gitbox/pkg/update"
-	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
 // App is the Wails application struct. All exported methods become
@@ -108,16 +106,9 @@ type App struct {
 
 	toolsOnce sync.Once
 	toolsWG   sync.WaitGroup
-	// reconcileMu serializes reconcile passes and manual adoptions (#149);
-	// reconcileScan replaces reconcile.Plan in tests.
-	reconcileMu    sync.Mutex
-	reconcileScan  func(*config.Config) (reconcile.Result, error)
-	reconcileClone func(*config.Config) (*config.Config, error)
 	// discoverMirrors replaces mirror.DiscoverMirrors in tests.
-	discoverMirrors  func(context.Context, *config.Config, func(mirror.DiscoverProgress)) ([]mirror.DiscoveryResult, error)
-	workspaceSync    workspace.SyncState // guarded by reconcileMu
-	workspaceUnknown []string            // guarded by reconcileMu
-	savedWindowPos   *config.WindowState // window state pre-loaded from config
+	discoverMirrors func(context.Context, *config.Config, func(mirror.DiscoverProgress)) ([]mirror.DiscoveryResult, error)
+	savedWindowPos  *config.WindowState // window state pre-loaded from config
 
 	proofChecks map[string]proofVerification // guarded by refreshMu
 
@@ -562,16 +553,14 @@ func (a *App) getConfigLocal() (ConfigDTO, error) {
 // configDTO detaches the response from mutable config before Wails serializes it.
 // Caller holds a.mu.
 func (a *App) configDTO() (ConfigDTO, error) {
-	if !a.pathsAudited || a.pathAuditBase != a.cfgBase {
-		a.auditClonePaths()
-	}
+	conflicts := a.localSession.auditClonePathsLocked(a.hostLog)
 	sources := make(map[string]SourceDTO, len(a.cfg.Sources))
 	for key, src := range a.cfg.Sources {
 		sources[key] = SourceDTO{Account: src.Account, Folder: src.Folder, Repos: src.Repos, RepoOrder: src.OrderedRepoKeys()}
 	}
 	dto := ConfigDTO{Revision: a.configRevision, Version: a.cfg.Version, Global: a.cfg.Global, Accounts: a.cfg.Accounts,
 		Sources: sources, Mirrors: buildMirrorsDTO(a.cfg)}
-	dto.PathConflicts = a.pathConflicts
+	dto.PathConflicts = conflicts
 	data, err := json.Marshal(dto)
 	if err != nil {
 		return ConfigDTO{}, fmt.Errorf("copying config: %w", err)
@@ -676,21 +665,6 @@ func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	a.pathsAudited = false
 
 	return a.configDTO()
-}
-
-// auditClonePaths records changes to the collisions visible in Needs attention.
-func (a *App) auditClonePaths() {
-	conflicts := a.cfg.PathConflicts()
-	if len(conflicts) > 0 && !slices.Equal(conflicts, a.pathConflicts) {
-		out := a.hostLog
-		if out == nil {
-			out = os.Stderr
-		}
-		for _, conflict := range conflicts {
-			fmt.Fprintf(out, "warning: folder collision between %q and %q; see Needs attention\n", userText(conflict.First), userText(conflict.Second))
-		}
-	}
-	a.pathConflicts, a.pathAuditBase, a.pathsAudited = conflicts, a.cfgBase, true
 }
 
 func buildMirrorsDTO(cfg *config.Config) map[string]MirrorDTO {

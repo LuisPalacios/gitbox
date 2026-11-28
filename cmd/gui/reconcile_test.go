@@ -355,7 +355,7 @@ func TestScanConfig_RejectsStalePlanAfterTwoAttempts(t *testing.T) {
 		a.mu.Unlock()
 		return reconcile.Result{Relink: []reconcile.Relink{{Source: "github-alice", Repo: "team/frontend", Path: "stale"}}}, nil
 	}
-	res, _, err := a.scanConfig()
+	res, _, err := a.localSession.scanConfig(a.refreshContext)
 	defer a.mu.Unlock()
 	if !errors.Is(err, ErrStalePlan) || calls != 2 || len(res.Relink) != 0 {
 		t.Fatalf("scans=%d result=%+v error=%v", calls, res, err)
@@ -382,7 +382,7 @@ func TestScanConfig_CloneFailureReturnsWithLock(t *testing.T) {
 			a.reconcileScan = func(*config.Config) (reconcile.Result, error) { return reconcile.Result{}, nil }
 			done := make(chan error, 1)
 			go func() {
-				_, _, err := a.scanConfig()
+				_, _, err := a.localSession.scanConfig(a.refreshContext)
 				if a.mu.TryLock() {
 					err = errors.New("scanConfig returned without the config lock")
 				}
@@ -413,7 +413,7 @@ func TestScanConfig_IgnoresOnlyUIState(t *testing.T) {
 		a.mu.Unlock()
 		return reconcile.Result{}, nil
 	}
-	_, _, err := a.scanConfig()
+	_, _, err := a.localSession.scanConfig(a.refreshContext)
 	a.mu.Unlock()
 	if err != nil || calls != 1 {
 		t.Fatalf("scans=%d error=%v", calls, err)

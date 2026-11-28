@@ -10,6 +10,7 @@ package main
 // just gained one has its nested clones adopted in the same pass.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -181,19 +182,49 @@ type RepairDTO struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// The caller holds a.mu. Capture the inputs for heal only after a successful
+// reconcileServices are the App services a reconcile pass still calls,
+// passed in until refresh (#369), clone repair (#370) and events (#371)
+// move to the session. Each one runs where the code on *App called it.
+type reconcileServices struct {
+	// refreshContext is App.refreshContext, read when a scan starts.
+	refreshContext func() context.Context
+	// retry is App.retryReconcileAfterRefresh.
+	retry func()
+	// save is App.saveConfig and snapshot App.refreshConfigLocked, both
+	// called under s.mu.
+	save     func() error
+	snapshot func() *config.Config
+	// repair is App.repairAdoptions, called without s.mu.
+	repair func(*config.Config, []reconcile.Placed) []RepairDTO
+	// publish emits "reconcile:done".
+	publish func(ReconcileDTO)
+}
+
+// reconcileServices binds the services a reconcile pass needs to a.
+func (a *App) reconcileServices() reconcileServices {
+	return reconcileServices{
+		refreshContext: a.refreshContext,
+		retry:          a.retryReconcileAfterRefresh,
+		save:           a.saveConfig,
+		snapshot:       a.refreshConfigLocked,
+		repair:         a.repairAdoptions,
+		publish:        func(out ReconcileDTO) { emit(a.newOperation(), "reconcile:done", out) },
+	}
+}
+
+// The caller holds s.mu. Capture the inputs for heal only after a successful
 // save and only when there are new clones to repair.
-func (a *App) savePlacements(before *config.Config, placed []reconcile.Placed) (*config.Config, error) {
-	if err := a.saveConfig(); err != nil {
+func (s *localSession) savePlacementsLocked(before *config.Config, placed []reconcile.Placed, svc reconcileServices) (*config.Config, error) {
+	if err := svc.save(); err != nil {
 		if !isConfigChanged(err) {
-			*a.cfg = *before
+			*s.cfg = *before
 		}
 		return nil, err
 	}
 	if len(placed) == 0 {
 		return nil, nil
 	}
-	return a.refreshConfigLocked(), nil
+	return svc.snapshot(), nil
 }
 
 func (a *App) repairAdoptions(snap *config.Config, placed []reconcile.Placed) []RepairDTO {
@@ -216,37 +247,38 @@ var ErrStalePlan = errors.New("reconcile plan is stale")
 
 // scanConfig snapshots the config and runs the reconcile scan without the
 // lock. Changes to the scan scope require a fresh scan. Other edits are
-// validated per entry by Apply under a.mu, which the caller releases. It
+// validated per entry by Apply under s.mu, which the caller releases. It
 // also returns the live pre-apply snapshot for rollback if persistence fails.
-func (a *App) scanConfig() (reconcile.Result, *config.Config, error) {
-	scan := a.reconcileScan
+// refreshContext is App.refreshContext.
+func (s *localSession) scanConfig(refreshContext func() context.Context) (reconcile.Result, *config.Config, error) {
+	scan := s.reconcileScan
 	if scan == nil {
 		scan = func(cfg *config.Config) (reconcile.Result, error) {
-			return reconcile.PlanContext(a.refreshContext(), cfg)
+			return reconcile.PlanContext(refreshContext(), cfg)
 		}
 	}
-	return a.scanConfigWith(scan, true)
+	return s.scanConfigWith(scan, true)
 }
 
-func (a *App) scanConfigWith(scan func(*config.Config) (reconcile.Result, error), perEntry bool) (reconcile.Result, *config.Config, error) {
-	clone := a.reconcileClone
+func (s *localSession) scanConfigWith(scan func(*config.Config) (reconcile.Result, error), perEntry bool) (reconcile.Result, *config.Config, error) {
+	clone := s.reconcileClone
 	if clone == nil {
 		clone = (*config.Config).Clone
 	}
 	for attempt := range 2 {
-		a.mu.Lock()
-		snap, err := clone(a.cfg)
-		a.mu.Unlock()
+		s.mu.Lock()
+		snap, err := clone(s.cfg)
+		s.mu.Unlock()
 		if err != nil {
-			a.mu.Lock()
+			s.mu.Lock()
 			return reconcile.Result{}, nil, err
 		}
 		res, err := scan(snap)
-		a.mu.Lock()
+		s.mu.Lock()
 		if err != nil {
 			return reconcile.Result{}, nil, err
 		}
-		cur, err := clone(a.cfg)
+		cur, err := clone(s.cfg)
 		if err != nil {
 			return reconcile.Result{}, nil, err
 		}
@@ -254,7 +286,7 @@ func (a *App) scanConfigWith(scan func(*config.Config) (reconcile.Result, error)
 			return res, cur, nil
 		}
 		if attempt == 0 {
-			a.mu.Unlock()
+			s.mu.Unlock()
 		}
 	}
 	return reconcile.Result{}, nil, ErrStalePlan
@@ -266,73 +298,79 @@ func (a *App) scanConfigWith(scan func(*config.Config) (reconcile.Result, error)
 func (a *App) Reconcile() ReconcileDTO { return a.be().Reconcile() }
 
 // reconcileLocal is the local backend's Reconcile.
-func (a *App) reconcileLocal() ReconcileDTO {
-	return a.reconcilePass(true)
+func (s *localSession) reconcileLocal(svc reconcileServices) ReconcileDTO {
+	return s.runReconcilePass(true, svc)
 }
 
+// reconcilePass drives one pass of the session with this App's services;
+// the refresh retry calls it.
 func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
-	a.reconcileMu.Lock()
-	defer a.reconcileMu.Unlock()
-	if !retryStale && a.refreshContext().Err() != nil {
+	return a.localSession.runReconcilePass(retryStale, a.reconcileServices())
+}
+
+func (s *localSession) runReconcilePass(retryStale bool, svc reconcileServices) ReconcileDTO {
+	s.reconcileMu.Lock()
+	defer s.reconcileMu.Unlock()
+	if !retryStale && svc.refreshContext().Err() != nil {
 		return emptyReconcile("")
 	}
 
-	a.mu.Lock()
-	ready := a.cfg != nil && a.cfgLoaded
-	a.mu.Unlock()
+	s.mu.Lock()
+	ready := s.cfg != nil && s.cfgLoaded
+	s.mu.Unlock()
 	if !ready {
 		return emptyReconcile("")
 	}
 
-	choices, unknown, wsChanged, wsSkipped, wsErr := a.syncWorkspaces()
-	unknownChanged := unknown != nil && !slices.Equal(a.workspaceUnknown, unknown)
+	choices, unknown, wsChanged, wsSkipped, wsErr := s.syncWorkspaces(svc.save)
+	unknownChanged := unknown != nil && !slices.Equal(s.workspaceUnknown, unknown)
 	if unknownChanged {
-		a.workspaceUnknown = unknown
+		s.workspaceUnknown = unknown
 	}
 	if retryStale && wsSkipped {
-		a.retryReconcileAfterRefresh()
+		svc.retry()
 	}
-	res, before, err := a.scanConfig()
+	res, before, err := s.scanConfig(svc.refreshContext)
 	if err != nil {
-		a.mu.Unlock()
+		s.mu.Unlock()
 		if retryStale && errors.Is(err, ErrStalePlan) {
-			a.retryReconcileAfterRefresh()
+			svc.retry()
 		}
 		out := emptyReconcile(userMsg(err))
 		out.WorkspaceUnknown = unknown
 		if unknownChanged {
-			emit(a.newOperation(), "reconcile:done", out)
+			svc.publish(out)
 		}
 		return out
 	}
-	applied := reconcile.Apply(a.cfg, res)
+	applied := reconcile.Apply(s.cfg, res)
 	placed := applied.Adopted
 	changed := len(placed)+applied.Relinked > 0
 	var snap *config.Config
 	saveErr := wsErr
 	if changed {
-		snap, err = a.savePlacements(before, placed)
+		snap, err = s.savePlacementsLocked(before, placed, svc)
 		if err != nil {
 			saveErr = err
 			placed, applied.Relinked, changed = nil, 0, false
 		}
 	}
-	a.mu.Unlock()
+	s.mu.Unlock()
 
 	out := emptyReconcile("")
-	out.Repairs = a.repairAdoptions(snap, placed)
+	out.Repairs = svc.repair(snap, placed)
 	out.Adopted, out.Relinked, out.WorkspacesChanged = len(placed), applied.Relinked, wsChanged
 	out.SkippedFolders = len(res.SkippedFolders)
 	out.SkippedScans = groupSkipped(res.SkippedFolders)
 	out.Skipped, out.Background = applied.Skipped, !retryStale
 	if retryStale && len(applied.Skipped) > 0 {
-		a.retryReconcileAfterRefresh()
+		svc.retry()
 	}
 	out.WorkspaceUnknown = unknown
 	for _, c := range choices {
 		out.WorkspaceChoices = append(out.WorkspaceChoices, WorkspaceChoiceDTO{Source: c.Source, Repo: c.Repo, Files: c.Files})
 	}
-	out.Placeholders, out.WorkspaceMembers, out.WorkspaceDiagnostics = a.workspaceTree()
+	out.Placeholders, out.WorkspaceMembers, out.WorkspaceDiagnostics = s.workspaceTree()
 	for _, u := range res.Unmatched {
 		out.Unmatched = append(out.Unmatched, toUnmatchedDTO(u))
 	}
@@ -346,29 +384,30 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 		out.Error = userMsg(saveErr)
 	}
 	if changed || wsChanged || unknownChanged || out.Background || len(out.Skipped) > 0 {
-		emit(a.newOperation(), "reconcile:done", out)
+		svc.publish(out)
 	}
 	return out
 }
 
 // syncWorkspaces runs workspace.Sync on a snapshot without the lock, then
-// applies its changes to the live config and saves.
-func (a *App) syncWorkspaces() (choices []workspace.Choice, unknown []string, changed, skipped bool, err error) {
-	a.mu.Lock()
-	snap, err := a.cfg.Clone()
-	a.mu.Unlock()
+// applies its changes to the live config and saves with save, under s.mu.
+// The caller holds s.reconcileMu.
+func (s *localSession) syncWorkspaces(save func() error) (choices []workspace.Choice, unknown []string, changed, skipped bool, err error) {
+	s.mu.Lock()
+	snap, err := s.cfg.Clone()
+	s.mu.Unlock()
 	if err != nil {
 		return nil, nil, false, false, err
 	}
 	ws := workspace.Sync(snap)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	changed, stale := a.workspaceSync.Apply(a.cfg, ws.Changes)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed, stale := s.workspaceSync.Apply(s.cfg, ws.Changes)
 	unknown = []string{}
 	for _, u := range ws.Unknown {
-		repo, ok := a.cfg.Sources[u.Source].Repos[u.Repo]
+		repo, ok := s.cfg.Sources[u.Source].Repos[u.Repo]
 		if ok && (repo.Workspace != "" || repo.WorkspacePreferred != "") &&
-			status.RepoPath(a.cfg, u.Source, u.Repo, repo) == u.Path {
+			status.RepoPath(s.cfg, u.Source, u.Repo, repo) == u.Path {
 			unknown = append(unknown, u.Source+"/"+u.Repo)
 		}
 	}
@@ -378,17 +417,17 @@ func (a *App) syncWorkspaces() (choices []workspace.Choice, unknown []string, ch
 		}
 	}
 	if changed {
-		err = a.saveConfig()
+		err = save()
 	}
 	return choices, unknown, changed, len(stale) > 0, err
 }
 
-// workspaceTree inspects selected workspaces without holding the app lock.
-func (a *App) workspaceTree() ([]WorkspaceFolderDTO, []string, []WorkspaceDiagnosticDTO) {
+// workspaceTree inspects selected workspaces without holding the session lock.
+func (s *localSession) workspaceTree() ([]WorkspaceFolderDTO, []string, []WorkspaceDiagnosticDTO) {
 	placeholders, members := []WorkspaceFolderDTO{}, []string{}
-	a.mu.Lock()
-	snap, err := a.cfg.Clone()
-	a.mu.Unlock()
+	s.mu.Lock()
+	snap, err := s.cfg.Clone()
+	s.mu.Unlock()
 	if err != nil {
 		return placeholders, members, nil
 	}
@@ -411,8 +450,9 @@ func (a *App) workspaceTree() ([]WorkspaceFolderDTO, []string, []WorkspaceDiagno
 // pass and returns it.
 func (a *App) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO { return a.be().AdoptClones(reqs) }
 
-// adoptClonesLocal is the local backend's AdoptClones.
-func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
+// adoptClonesLocal is the local backend's AdoptClones. Its fresh pass is the
+// local backend's Reconcile.
+func (s *localSession) adoptClonesLocal(reqs []AdoptRequestDTO, svc reconcileServices) ReconcileDTO {
 	reqs = slices.Clone(reqs)
 	for i, req := range reqs {
 		path, err := hostPath(req.Path)
@@ -428,11 +468,11 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 			reqs[i].WorkspaceRoot = root
 		}
 	}
-	a.reconcileMu.Lock()
-	res, workspaceRows, before, err := a.scanAdoptionRequests(reqs)
+	s.reconcileMu.Lock()
+	res, workspaceRows, before, err := s.scanAdoptionRequests(reqs)
 	if err != nil {
-		a.mu.Unlock()
-		a.reconcileMu.Unlock()
+		s.mu.Unlock()
+		s.reconcileMu.Unlock()
 		return emptyReconcile(userMsg(err))
 	}
 	var placed []reconcile.Placed
@@ -452,12 +492,12 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 				continue
 			}
 			found = true
-			source, err := reconcile.Adopt(a.cfg, u.OrphanRepo, req.Account)
+			source, err := reconcile.Adopt(s.cfg, u.OrphanRepo, req.Account)
 			if err != nil {
 				errs = append(errs, userMsg(err))
 				break
 			}
-			a.cfg.IgnoreClone(u.Path, false)
+			s.cfg.IgnoreClone(u.Path, false)
 			placed = append(placed, reconcile.Placed{Account: req.Account, Source: source, Repo: u.RepoKey, Path: u.Path})
 			break
 		}
@@ -471,16 +511,16 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 	}
 	var snap *config.Config
 	if len(placed) > 0 {
-		snap, err = a.savePlacements(before, placed)
+		snap, err = s.savePlacementsLocked(before, placed, svc)
 	}
-	a.mu.Unlock()
-	a.reconcileMu.Unlock()
+	s.mu.Unlock()
+	s.reconcileMu.Unlock()
 	if err != nil {
 		return emptyReconcile(userMsg(err))
 	}
 
-	repairs := a.repairAdoptions(snap, placed)
-	out := a.Reconcile()
+	repairs := svc.repair(snap, placed)
+	out := s.reconcileLocal(svc)
 	out.Adopted += len(placed)
 	out.Repairs = append(repairs, out.Repairs...)
 	if len(errs) > 0 && out.Error == "" {
@@ -491,7 +531,7 @@ func (a *App) adoptClonesLocal(reqs []AdoptRequestDTO) ReconcileDTO {
 
 // scanAdoptionRequests revalidates deliberate workspace searches outside the
 // config lock, under the same snapshot check as ordinary adoption.
-func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, map[string][]reconcile.Unmatched, *config.Config, error) {
+func (s *localSession) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, map[string][]reconcile.Unmatched, *config.Config, error) {
 	roots := map[string]bool{}
 	ordinary := len(reqs) == 0
 	for _, req := range reqs {
@@ -502,11 +542,11 @@ func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, ma
 		}
 	}
 	if len(roots) == 0 {
-		res, before, err := a.scanConfigWith(reconcile.Plan, false)
+		res, before, err := s.scanConfigWith(reconcile.Plan, false)
 		return res, nil, before, err
 	}
 	var external map[string][]reconcile.Unmatched
-	res, before, err := a.scanConfigWith(func(cfg *config.Config) (reconcile.Result, error) {
+	res, before, err := s.scanConfigWith(func(cfg *config.Config) (reconcile.Result, error) {
 		tree := workspace.Inspect(cfg)
 		external = make(map[string][]reconcile.Unmatched, len(roots))
 		for root := range roots {
@@ -529,15 +569,15 @@ func (a *App) scanAdoptionRequests(reqs []AdoptRequestDTO) (reconcile.Result, ma
 func (a *App) IgnoreClone(path string, ignore bool) error { return a.be().IgnoreClone(path, ignore) }
 
 // ignoreCloneLocal is the local backend's IgnoreClone.
-func (a *App) ignoreCloneLocal(path string, ignore bool) error {
+func (s *localSession) ignoreCloneLocal(path string, ignore bool, save func() error) error {
 	path, err := hostPath(path)
 	if err != nil {
 		return err
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg.IgnoreClone(path, ignore) {
-		return a.saveConfig()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cfg.IgnoreClone(path, ignore) {
+		return save()
 	}
 	return nil
 }

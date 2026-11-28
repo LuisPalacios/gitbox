@@ -159,7 +159,7 @@ func (b localBackend) AddDiscoveredRepos(key string, repoNames []string) error {
 	return b.a.addDiscoveredReposLocal(key, repoNames)
 }
 func (b localBackend) AddDiscoveredReposToFolder(key string, repoNames []string, cloneFolder string) error {
-	return b.a.addDiscoveredReposToFolderLocal(key, repoNames, cloneFolder)
+	return b.a.localSession.addDiscoveredReposToFolderLocal(key, repoNames, cloneFolder, b.a.saveConfig)
 }
 func (b localBackend) AddMirrorGroup(key, accountSrc, accountDst string) error {
 	return b.a.addMirrorGroupLocal(key, accountSrc, accountDst)
@@ -167,9 +167,11 @@ func (b localBackend) AddMirrorGroup(key, accountSrc, accountDst string) error {
 func (b localBackend) AddMirrorRepo(mirrorKey, repoKey, direction, origin string) error {
 	return b.a.addMirrorRepoLocal(mirrorKey, repoKey, direction, origin)
 }
-func (b localBackend) AddRoot(path string) error { return b.a.addRootLocal(path) }
+func (b localBackend) AddRoot(path string) error {
+	return b.a.localSession.addRootLocal(path, b.a.saveConfig)
+}
 func (b localBackend) AdoptClones(reqs []AdoptRequestDTO) ReconcileDTO {
-	return b.a.adoptClonesLocal(reqs)
+	return b.a.localSession.adoptClonesLocal(reqs, b.a.reconcileServices())
 }
 func (b localBackend) ApplyDiscoveredMirrors() error { return b.a.applyDiscoveredMirrorsLocal() }
 func (b localBackend) ChangeCredentialType(accountKey, newType, token string) (ops.StepReport, error) {
@@ -253,7 +255,7 @@ func (b localBackend) GetConfig() (ConfigDTO, error)       { return b.a.getConfi
 func (b localBackend) GetConfigLoadError() string          { return b.a.getConfigLoadErrorLocal() }
 func (b localBackend) GetConfigPath() string               { return b.a.getConfigPathLocal() }
 func (b localBackend) GetMirrorStatus(mirrorKey string)    { b.a.getMirrorStatusLocal(mirrorKey) }
-func (b localBackend) GetNestedScanDepth() int             { return b.a.getNestedScanDepthLocal() }
+func (b localBackend) GetNestedScanDepth() int             { return b.a.localSession.getNestedScanDepthLocal() }
 func (b localBackend) GetOS() string                       { return b.a.getOSLocal() }
 func (b localBackend) GetPRSettings() PRSettingsDTO        { return b.a.localSession.getPRSettingsLocal() }
 func (b localBackend) GetPRsForRepo(sourceKey, repoKey string) PRSummaryDTO {
@@ -270,9 +272,11 @@ func (b localBackend) GetTokenGuide(accountKey string) TokenGuideInfo {
 	return b.a.getTokenGuideLocal(accountKey)
 }
 func (b localBackend) IgnoreClone(path string, ignore bool) error {
-	return b.a.ignoreCloneLocal(path, ignore)
+	return b.a.localSession.ignoreCloneLocal(path, ignore, b.a.saveConfig)
 }
-func (b localBackend) InitRoot(folder string) error { return b.a.initRootLocal(folder) }
+func (b localBackend) InitRoot(folder string) error {
+	return b.a.localSession.initRootLocal(folder, b.a.saveConfig, b.a.mergeDiskPrefs)
+}
 func (b localBackend) InstallGlobalGitignore() (gitignore.InstallResult, error) {
 	return b.a.installGlobalGitignoreLocal()
 }
@@ -286,7 +290,7 @@ func (b localBackend) ValidateRemotePath(p string) RemotePathDTO { return valida
 func (b localBackend) ListRemoteRepos(accountKey string) []DiscoverResult {
 	return b.a.listRemoteReposLocal(accountKey)
 }
-func (b localBackend) ListRoots() []RootDTO { return b.a.listRootsLocal() }
+func (b localBackend) ListRoots() []RootDTO { return b.a.localSession.listRootsLocal() }
 func (b localBackend) AccountFolder(accountKey string) (string, error) {
 	return b.a.accountFolderLocal(accountKey)
 }
@@ -317,7 +321,9 @@ func (b localBackend) PullRepo(sourceKey, repoKey string)   { b.a.pullRepoLocal(
 func (b localBackend) RecommendedGlobalGitignoreBody() string {
 	return b.a.recommendedGlobalGitignoreBodyLocal()
 }
-func (b localBackend) Reconcile() ReconcileDTO              { return b.a.reconcileLocal() }
+func (b localBackend) Reconcile() ReconcileDTO {
+	return b.a.localSession.reconcileLocal(b.a.reconcileServices())
+}
 func (b localBackend) RedetectProfiles() (ConfigDTO, error) { return b.a.redetectProfilesLocal() }
 func (b localBackend) RefreshAIHarnesses()                  { b.a.refreshAIHarnessesLocal() }
 func (b localBackend) RefreshAllPRs()                       { b.a.refreshAllPRsLocal() }
@@ -325,21 +331,21 @@ func (b localBackend) RefreshStatus()                       { b.a.refreshStatusL
 func (b localBackend) ReloadConfig() (ConfigDTO, error)     { return b.a.reloadConfigLocal() }
 func (b localBackend) RemoveGlobalIdentity() error          { return b.a.removeGlobalIdentityLocal() }
 func (b localBackend) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {
-	return b.a.removeRootLocal(path, forget)
+	return b.a.localSession.removeRootLocal(path, forget, b.a.saveConfig)
 }
 func (b localBackend) RenameAccount(oldKey, newKey string) (ops.StepReport, error) {
 	return b.a.renameAccountLocal(oldKey, newKey)
 }
 func (b localBackend) RepairConfig() ConfigRepairResult { return b.a.repairConfigLocal() }
-func (b localBackend) RepoNesting() map[string]string   { return b.a.repoNestingLocal() }
+func (b localBackend) RepoNesting() map[string]string   { return b.a.localSession.repoNestingLocal() }
 func (b localBackend) RepoWorkspaceFiles(sourceKey, repoKey string) []string {
-	return b.a.repoWorkspaceFilesLocal(sourceKey, repoKey)
+	return b.a.localSession.repoWorkspaceFilesLocal(sourceKey, repoKey)
 }
 func (b localBackend) RestoreFromBackup(backupPath string) ConfigRepairResult {
 	return b.a.restoreFromBackupLocal(backupPath)
 }
 func (b localBackend) ScanFolderForClones(path string) []OrphanRepoDTO {
-	return b.a.scanFolderForClonesLocal(path)
+	return b.a.localSession.scanFolderForClonesLocal(path)
 }
 func (b localBackend) SetCheckGlobalGitignore(enabled bool) error {
 	return b.a.setCheckGlobalGitignoreLocal(enabled)
@@ -347,8 +353,12 @@ func (b localBackend) SetCheckGlobalGitignore(enabled bool) error {
 func (b localBackend) SetCollapsed(state config.CollapsedState) error {
 	return b.a.setCollapsedLocal(state)
 }
-func (b localBackend) SetDefaultRoot(path string) error   { return b.a.setDefaultRootLocal(path) }
-func (b localBackend) SetNestedScanDepth(depth int) error { return b.a.setNestedScanDepthLocal(depth) }
+func (b localBackend) SetDefaultRoot(path string) error {
+	return b.a.localSession.setDefaultRootLocal(path, b.a.saveConfig)
+}
+func (b localBackend) SetNestedScanDepth(depth int) error {
+	return b.a.localSession.setNestedScanDepthLocal(depth, b.a.saveConfig)
+}
 func (b localBackend) SetPRBadgesEnabled(enabled bool) error {
 	return b.a.localSession.setPRBadgesEnabledLocal(enabled, b.a.saveConfig)
 }
@@ -359,10 +369,10 @@ func (b localBackend) SetPeriodicSync(interval string) error {
 	return b.a.setPeriodicSyncLocal(interval)
 }
 func (b localBackend) SetRepoContainer(sourceKey, repoKey string, container bool) error {
-	return b.a.setRepoContainerLocal(sourceKey, repoKey, container)
+	return b.a.localSession.setRepoContainerLocal(sourceKey, repoKey, container, b.a.saveConfig)
 }
 func (b localBackend) SetRepoWorkspace(sourceKey, repoKey, file string) error {
-	return b.a.setRepoWorkspaceLocal(sourceKey, repoKey, file)
+	return b.a.localSession.setRepoWorkspaceLocal(sourceKey, repoKey, file, b.a.saveConfig)
 }
 func (b localBackend) SetupMirrorRepo(mirrorKey, repoKey string) {
 	b.a.setupMirrorRepoLocal(mirrorKey, repoKey)
