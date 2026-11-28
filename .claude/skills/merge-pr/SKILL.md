@@ -144,6 +144,19 @@ For a coordinated issue already merged externally, perform Step 2's worker-stop 
    - `MAIN` on another branch: `git -C "<MAIN>" fetch origin main:main`, which fast-forwards `main` without touching the checkout.
    - A count of `0`: say `main` is up to date and show no command.
 
+## Multi-PR mode
+
+Merging K PRs one by one gates K times, because each merge moves `main`, the next PR is rebased and its SHA changes. Multi-PR mode gates the whole stack once. It applies only when the user gives several PR numbers in one request, every PR has the same base and belongs to the origin repository, and the user's authorization names all of them and their order.
+
+1. **Preflight each PR** as in Step 1, and stop on any PR that is not `OPEN`, has a failed GitHub check, or has a worktree with uncommitted or unpushed state. Record every `headRefOid` and the base SHA (`origin/main`) as the stack's inputs.
+2. **Stack in a scratch worktree** created from `origin/main`, never in `MAIN` or a PR's worktree. For each PR in order, `git cherry-pick` its commits (`git merge-base origin/main <head>..<head>`). After each PR, note the stack commit as that PR's position. A conflict ends the mode for that PR and everything after it: report it and fall back to the one-by-one flow for the rest.
+3. **Gate the tip once**: run `./scripts/gate.sh --auto` in the scratch worktree at the tip. A failure ends the mode: report the lane log, remove the stack and fall back to the one-by-one flow, or fix and restart with fresh inputs.
+4. **Publish each PR at its stack position.** With explicit authorization, `git push --force-with-lease origin <position>:<headRefName>` for each PR in order. PR k's branch now holds PRs 1 to k, so a squash merge of it lands exactly the tested tree of that prefix. Post `./scripts/gate.sh --report` for the tip.
+5. **Check the inputs did not move**, then merge in order with `gh pr merge <PR#> --squash`, one at a time. Before each merge re-read the PR: its `headRefOid` must be the position pushed in step 4, and `origin/main` must be the previous PR's merge commit (the base SHA for the first). Any difference ends the mode at that point: stop, report which PRs are merged, and gate the rest one by one.
+6. **Clean up** each merged PR as in Step 5, and remove the scratch worktree.
+
+The single gate stays valid only while nothing changes under it. These invalidate it: a PR head that moved since the inputs were recorded (a new push by anyone), `main` that moved for any reason other than this stack's own merges, a conflict while stacking, a failed lane on the tip, and any merge that did not land as a squash of the pushed position. Never merge a PR in this mode on a gate that one of those invalidated.
+
 ## Behavior notes
 
 - The skill is resumable — if the merge succeeded but cleanup failed, re-invoking it from the main clone will notice the PR is `MERGED` and skip to Step 5.

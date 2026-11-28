@@ -319,23 +319,26 @@ func TestResumeInFlightClone(t *testing.T) {
 	}
 }
 
-// TestPeriodicSyncWhileDisconnected sets the daemon's interval to one
-// minute (the e2e build accepts it), leaves for three minutes and comes
-// back: the daemon fetched on its own, at least twice, and kept the runs.
+// TestPeriodicSyncWhileDisconnected sets the daemon's interval to 15
+// seconds (the e2e build accepts 10 seconds or more), leaves until the
+// daemon has fetched on its own twice, and comes back: it kept the runs.
 func TestPeriodicSyncWhileDisconnected(t *testing.T) {
 	t.Parallel()
 	c := startContainer(t, ctOpts{gitDaemon: true})
 	seedFleetHost(t, c, 2)
 	s := c.daemonClient(t, "client-periodic")
 	conn := s.connectDaemon(t, daemonDial{})
-	if err := conn.client.Call(testCtx(t), "SetFleetSchedule", []any{"1m"}, nil); err != nil {
+	if err := conn.client.Call(testCtx(t), "SetFleetSchedule", []any{"15s"}, nil); err != nil {
 		t.Fatalf("SetFleetSchedule: %v", err)
 	}
 	point := conn.client.ResumePoint()
 	conn.close()
 
-	time.Sleep(3*time.Minute + 15*time.Second)
-	runs := c.sh("grep -c '\"name\":\"fetch:alldone\"' " + s.stateDir() + "/" + remote.EventsLogName + " || true")
+	countRuns := func() string {
+		return c.sh("grep -c '\"name\":\"fetch:alldone\"' " + s.stateDir() + "/" + remote.EventsLogName + " || true")
+	}
+	waitFor(2*time.Minute, func() bool { n, _ := strconv.Atoi(countRuns()); return n >= 2 })
+	runs := countRuns()
 	if n, _ := strconv.Atoi(runs); n < 2 {
 		t.Fatalf("events.log holds %s fetch-all runs, want at least 2:\n%s", runs, c.sh("tail -n 20 "+s.root+"/logs/"+s.build+".log || true"))
 	}

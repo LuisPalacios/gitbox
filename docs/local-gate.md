@@ -30,7 +30,7 @@ The build is the one a release makes. Each of those lanes compiles the six `gitb
 - **mac:** `HEALTH_FUZZ=1 ./scripts/health.sh` (every checker, including vet and staticcheck for linux, darwin and windows, the unit tests, bootstrap fixtures, Markdown lint and the harness mirror check), plus both coordination suites. The build targets macOS 13 like the release.
 - **linux:** `go vet ./...`, `go test -short ./...` and `bash scripts/test-bootstrap.sh`, then the build with `-tags webkit2_41`.
 - **win:** both coordination suites, `go test -short ./...` and `bash scripts/test-bootstrap.sh`, then the build. The lane sets `core.autocrlf=false` and `core.longpaths=true` through `GIT_CONFIG_COUNT` for its own processes, so the host user's global Git config never changes.
-- **remote-it:** `bash scripts/remote-it.sh` on the linux lane's host, at the same time as the linux lane. It builds the `gitbox-sshd` image from `test/sshd`, builds a `linux/amd64` server with the `e2e_sentinel` tag, and runs `go test -race -tags sshd_integration ./pkg/remote/`: the bootstrap scenarios of remote mode, each against a fresh container on an internal Docker network. It builds no GUI. See [Testing › Remote mode tests](testing.md#remote-mode-tests).
+- **remote-it:** `bash scripts/remote-it.sh` on the linux lane's host, at the same time as the linux lane. It builds the `gitbox-sshd` image from `test/sshd`, builds a `linux/amd64` server with the `e2e_sentinel` tag, and runs the `go test -race -tags sshd_integration ./pkg/remote/` battery in `GITBOX_SHARDS` test processes at once (default 3): the bootstrap scenarios of remote mode, each against a fresh container on an internal Docker network. The script lists the tests, deals them round-robin to the shards, fails when the shards do not cover the whole list, and prints each shard's log in order. It builds no GUI. See [Testing › Remote mode tests](testing.md#remote-mode-tests).
 
 The real-host tests of macOS hosts (`scripts/remote-host-it.sh`, #245) are not a lane. They need a disposable account on a Mac with Remote Login, which a clean clone on a lane host cannot assume, and the remote-it lane already proves the protocol on every commit. I run them by hand when a change touches the host side of remote mode (the probe, the install and start scripts, the server or its doctor), and the pull request says so.
 
@@ -84,6 +84,10 @@ The marker is a small text file at `$(git rev-parse --git-common-dir)/gitbox-gat
 - A push that updates `main` needs a `pass` marker for the pushed commit. A `partial` marker passes only with `GATE_ALLOW_PARTIAL=1`, and no marker blocks the push.
 - A push to another branch skips the hook's light checks (`gofmt`, `go vet`, `go test -short`) when the commit already has a marker, and runs them otherwise.
 - Tag pushes and branch deletions skip every check.
+
+### Merging several PRs on one gate
+
+`/merge-pr 12 13 14` stacks the PRs in that order in a scratch worktree, runs one `gate.sh --auto` on the tip, pushes each PR branch at its stack position and squash-merges them in order. Because PR k's branch then holds PRs 1 to k, each squash lands exactly the tree the gate tested. The single gate stops counting when a PR head moved, when `main` moved for a reason other than the stack's own merges, when stacking conflicts, or when a lane fails on the tip; the skill then falls back to one gate per PR for the rest.
 
 `/merge-pr` merges only when the PR's head commit has a `pass` marker or a successful `local-gate` status, and when the informational GitHub check has not failed. A rebase gives the head a new SHA, so the gate runs again after it. A squash merge lands the head commit's tree, and `/merge-pr` first makes sure the head contains the latest `main`.
 
