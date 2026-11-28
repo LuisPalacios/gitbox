@@ -14,6 +14,7 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/provider"
+	"github.com/LuisPalacios/gitbox/pkg/remote"
 )
 
 func TestToUserErrorScrubsSecrets(t *testing.T) {
@@ -168,6 +169,9 @@ func TestHintKeysInCatalog(t *testing.T) {
 	for _, c := range []remoteCode{remoteUnstampedBuild, remoteServerTargetMissing, remoteServerBuildMismatch,
 		remoteNotConnected, remoteNotImplemented, remoteServerCrashed, remoteUnknownAlias, remoteReadOnly, remoteWindowClosed, remoteTintUnsupported} {
 		keys = append(keys, toUserError(&remoteError{Code: c}).Hint)
+	}
+	for _, c := range []remote.Code{remote.CodeUnsupportedOS, remote.CodeUnsupportedArch, remote.CodeUnsupportedIntelMac} {
+		keys = append(keys, toUserError(&remote.Error{Code: c}).Hint)
 	}
 	for _, c := range []externalCode{externalNeedsConfirmation, externalRejected} {
 		keys = append(keys, toUserError(&externalError{Code: c}).Hint)

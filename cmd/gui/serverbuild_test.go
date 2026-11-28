@@ -21,7 +21,7 @@ func stampedBuild() serverBuild {
 		EmbeddedVersion: buildVersion, EmbeddedCommit: buildCommit,
 		Targets: []serverbin.Target{
 			{OS: "linux", Arch: "amd64", Size: 9732258, SHA256: strings.Repeat("ab", 32)},
-			{OS: "windows", Arch: "arm64", Size: 9218048, SHA256: strings.Repeat("cd", 32)},
+			{OS: "darwin", Arch: "arm64", Size: 9218048, SHA256: strings.Repeat("cd", 32)},
 		},
 	}
 }
@@ -74,7 +74,7 @@ func TestListServerTargets(t *testing.T) {
 	stampedBuild().list(&out)
 	want := "commit " + buildCommit + " version " + buildVersion + "\n" +
 		"linux/amd64\t9732258\t" + strings.Repeat("ab", 32) + "\n" +
-		"windows/arm64\t9218048\t" + strings.Repeat("cd", 32) + "\n"
+		"darwin/arm64\t9218048\t" + strings.Repeat("cd", 32) + "\n"
 	if out.String() != want {
 		t.Errorf("list printed\n%q\nwant\n%q", out.String(), want)
 	}
@@ -97,12 +97,12 @@ func TestServerBuildVerify(t *testing.T) {
 	if err := build.verify(whole); err != nil {
 		t.Errorf("verify = %v", err)
 	}
-	if strings.Join(asked, " ") != "linux/amd64 windows/arm64" {
+	if strings.Join(asked, " ") != "linux/amd64 darwin/arm64" {
 		t.Errorf("verify read %v, want every target", asked)
 	}
 
 	corrupt := func(target serverbin.Target) ([]byte, error) {
-		if target.OS == "windows" {
+		if target.OS == "darwin" {
 			return nil, fmt.Errorf("%w: %s", serverbin.ErrCorrupt, target.Name())
 		}
 		return make([]byte, target.Size), nil

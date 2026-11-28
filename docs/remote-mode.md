@@ -2,7 +2,7 @@
 
 Remote mode lets GitboxApp on my laptop manage the repositories of another computer over SSH, such as a headless Linux server or a Mac. GitboxApp installs a matching `gitbox-server` on that host by itself: no root, no internet on the host, no listening port. The design follows VS Code Remote-SSH.
 
-This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config and its clones, sets up token and SSH credentials on it, opens its folders in my local editor, terminal and AI harnesses, and carries on through a dropped link: a daemon on the host keeps the work going, and the window connects to it again. Linux and macOS hosts are supported (see [macOS hosts](#macos-hosts)); Windows hosts follow.
+This version connects, installs, verifies and uninstalls the server, shows the repositories of the host, changes its config and its clones, sets up token and SSH credentials on it, opens its folders in my local editor, terminal and AI harnesses, and carries on through a dropped link: a daemon on the host keeps the work going, and the window connects to it again. Linux hosts and Macs with Apple silicon are supported (see [macOS hosts](#macos-hosts)); Windows hosts follow.
 
 ## Before I start: an alias that needs no prompt
 
@@ -258,7 +258,8 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 - `banner_overflow`: the login shell printed more than 1 MiB before the answer. Quiet the shell startup files for non-interactive sessions.
 - `unsupported_os`: the host is neither Linux nor macOS. Windows hosts come in a later version.
 - `unsupported_arch`: the host is neither amd64 nor arm64.
-- `server_target_missing`: this GitboxApp carries no server for that host. A development build carries only the Linux ones and the Apple silicon one; rebuild with the six targets.
+- `unsupported_intel_mac`: the host is a Mac with an Intel processor. Remote mode supports Macs with Apple silicon only.
+- `server_target_missing`: this GitboxApp carries no server for that host. A build made with a shorter `GITBOX_SERVER_TARGETS` list lacks some; rebuild with the three targets.
 - `server_build_mismatch` and `unstamped_build`: this GitboxApp was built without a matching stamp. Rebuild it as the developer guide says.
 - `hash_mismatch`: the server on the host does not match the pin, or cannot be read to check it, and did not run. Use **Reinstall server**.
 - `version_mismatch`: the server that answered is another build. Connect again.
@@ -278,7 +279,7 @@ Simple mode shows a plain sentence; the code itself appears in the log.
 
 ## macOS hosts
 
-A Mac works as a host too, such as a Mac mini without a screen. I test it on Apple silicon.
+A Mac with Apple silicon works as a host too, such as a Mac mini without a screen. A Mac with an Intel processor stops at the probe with `unsupported_intel_mac`.
 
 - **Remote Login.** I turn it on in System Settings › General › Sharing › Remote Login and allow my user there. When the list of allowed users is restricted, macOS lets in only the members of the `com.apple.access_ssh` group.
 - **zsh reads `~/.zshenv`.** For a command over SSH, zsh reads `~/.zshenv`, not `~/.zshrc`. Whatever that file prints counts as banner, so I keep it quiet (see `banner_overflow`).

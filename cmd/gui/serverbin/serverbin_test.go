@@ -6,7 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -71,11 +75,27 @@ func TestFileNameAndSupported(t *testing.T) {
 	if got := FileName("windows", "amd64"); got != "gitbox-server-windows-amd64.exe.gz" {
 		t.Errorf("FileName(windows, amd64) = %q", got)
 	}
-	want := []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64", "windows/arm64"}
+	want := []string{"linux/amd64", "linux/arm64", "darwin/arm64"}
 	if !slices.Equal(Supported, want) {
 		t.Errorf("Supported = %v, want %v", Supported, want)
 	}
 	if got := (Target{OS: "darwin", Arch: "arm64"}).Name(); got != "darwin/arm64" {
 		t.Errorf("Name = %q", got)
+	}
+}
+
+// build-server.sh keeps its own copy of the list, so that a shell script can
+// check a target before Go runs. It must be the same list.
+func TestBuildServerScriptListsSupported(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "scripts", "build-server.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^ALL_TARGETS="([^"]*)"$`).FindSubmatch(data)
+	if m == nil {
+		t.Fatal("build-server.sh has no ALL_TARGETS line")
+	}
+	if got := strings.Split(string(m[1]), ","); !slices.Equal(got, Supported) {
+		t.Errorf("build-server.sh ALL_TARGETS = %v, want Supported %v", got, Supported)
 	}
 }

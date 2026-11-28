@@ -17,10 +17,9 @@
 #   scripts/build-server.sh --targets   # print the resolved targets and exit
 #
 # Environment:
-#   GITBOX_SERVER_TARGETS   "all" (the six below) or a comma-separated list of
-#                           <os>/<arch>. Default: linux/amd64,linux/arm64,
-#                           darwin/arm64, enough for development against Linux
-#                           hosts and Apple silicon Macs.
+#   GITBOX_SERVER_TARGETS   "all" (the three below, the hosts remote mode
+#                           supports: Linux and Apple silicon Macs) or a
+#                           comma-separated list of <os>/<arch>. Default: all.
 #   GITBOX_VERSION          see stamp.sh
 #
 # Output, ignored by git: cmd/gui/serverbin/gitbox-server-<os>-<arch>[.exe].gz
@@ -30,9 +29,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-ALL_TARGETS="linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64,windows/arm64"
+# The same list as serverbin.Supported, in the same order.
+ALL_TARGETS="linux/amd64,linux/arm64,darwin/arm64"
 
-targets="${GITBOX_SERVER_TARGETS:-linux/amd64,linux/arm64,darwin/arm64}"
+targets="${GITBOX_SERVER_TARGETS:-all}"
 [[ "$targets" == "all" ]] && targets="$ALL_TARGETS"
 IFS=',' read -r -a list <<<"$targets"
 [[ ${#list[@]} -gt 0 ]] || { echo "build-server.sh: no targets" >&2; exit 2; }
