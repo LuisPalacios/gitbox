@@ -47,7 +47,11 @@ type RemoteBackend struct {
 
 	// relayMu serializes relaying with the end of a connection: connect
 	// and detach take it before mu when they move gen, so once they return
-	// no event of the old connection is in flight or still to come.
+	// no event of the old connection is in flight or still to come. The
+	// client relays an event while it holds its delivery lock, so the order
+	// is: delivery lock, relayMu, mu. A call into the client that takes
+	// that lock (Resumed, ResumePoint, EndDelivery) never runs under
+	// relayMu or mu (#409).
 	relayMu sync.Mutex
 	mu      sync.Mutex
 	client  *rpc.Client // nil while not connected
@@ -139,11 +143,12 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 		_ = client.Close()
 		return &rpc.Error{Code: rpc.CodeApplication, Data: usererr.UserError{Code: rpc.ErrCodeVersionMismatch}}
 	}
+	resumed := client.Resumed() // takes the delivery lock, so before mu
 	r.mu.Lock()
 	old := r.client
 	r.client, r.dead = client, dead
 	r.persistent = client.Server().Daemon != nil
-	r.resumed, r.hadResume = client.Resumed(), resume != nil
+	r.resumed, r.hadResume = resumed, resume != nil
 	if !r.persistent {
 		r.resume = rpc.ResumePoint{}
 	}
@@ -161,19 +166,34 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 // daemon keeps running them, and nothing here asks it to cancel them
 // (#247): their outcomes come with the next connection.
 func (r *RemoteBackend) detach() {
-	r.relayMu.Lock()
-	r.mu.Lock()
-	c := r.client
-	r.client = nil
-	r.gen++
-	if c != nil && r.persistent {
-		r.resume = c.ResumePoint()
-	}
-	r.signalLocked()
-	r.mu.Unlock()
-	r.relayMu.Unlock()
-	if c != nil {
-		_ = c.Close()
+	for {
+		c, _ := r.link()
+		// The client relays under its delivery lock, so its delivery ends
+		// before relayMu is taken (see relayMu).
+		var point rpc.ResumePoint
+		if c != nil {
+			point = c.EndDelivery()
+		}
+		r.relayMu.Lock()
+		r.mu.Lock()
+		if r.client != c {
+			// A connection came meanwhile: detach that one instead.
+			r.mu.Unlock()
+			r.relayMu.Unlock()
+			continue
+		}
+		r.client = nil
+		r.gen++
+		if c != nil && r.persistent {
+			r.resume = point
+		}
+		r.signalLocked()
+		r.mu.Unlock()
+		r.relayMu.Unlock()
+		if c != nil {
+			_ = c.Close()
+		}
+		return
 	}
 }
 

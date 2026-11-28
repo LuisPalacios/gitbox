@@ -206,6 +206,44 @@ func TestResume_ReplaysTheMissedDoneEvents(t *testing.T) {
 	}
 }
 
+// TestResume_EndDeliveryCountsWhatWasDelivered: after EndDelivery the
+// client hands OnEvent nothing more, and its point counts exactly what
+// OnEvent got, so the next connection replays the rest (#409).
+func TestResume_EndDeliveryCountsWhatWasDelivered(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	journal, err := NewJournal(MaxJournalEvents, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := persistentServer(t, map[string]Handler{
+		"Ping": Func(func(context.Context) (int, error) { return 1, nil }),
+	}, journal)
+	peer := Peer{ClientID: "client-a", Started: true}
+	first := connectPeer(t, ctx, srv, peer, ClientOptions{})
+	srv.Emit("fetch:done", "seen")
+	waitEvents(t, first.link, 1)
+	point := first.Client.EndDelivery()
+	srv.Emit("fetch:done", "after the end")
+	// The reply follows the event on the wire: once it is back, the
+	// reader has passed the event.
+	if err := first.call("Ping", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := first.Events(); len(got) != 1 {
+		t.Errorf("OnEvent got %d events, want only the one before EndDelivery", len(got))
+	}
+	if again := first.Client.ResumePoint(); again != point {
+		t.Errorf("the point moved after EndDelivery: %+v, then %+v", point, again)
+	}
+	first.cut()
+
+	second := connectPeer(t, ctx, srv, peer, ClientOptions{Resume: &point})
+	if got := waitEvents(t, second.link, 1); got[0].Payload != `["after the end"]` {
+		t.Errorf("the next connection replayed %s, want the event held back", got[0].Payload)
+	}
+}
+
 func TestResume_AnotherInstanceReplaysNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
