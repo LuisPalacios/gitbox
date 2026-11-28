@@ -19,6 +19,8 @@ The local gate keeps the verification on hardware I control and never runs code 
 
 A lane deletes its clone after a pass (`GATE_KEEP=1` keeps it) and keeps it after a failure for inspection. Clones older than a day are removed on the next run.
 
+Each lane also sends every temporary file (Go build and test folders, npm, Node's compile cache) to its own folder, `~/.cache/gitbox-gate/t-<lane>-<sha>`, instead of the host's `/tmp`, and deletes that folder when it ends, whether it passes or fails. A small `/tmp`, such as a tmpfs, no longer fills up across runs. A folder that an interrupted run left behind is removed after a day.
+
 ## What each lane runs
 
 Every lane but remote-it builds the embedded frontend with `npm ci && npm run build`, builds the GUI with the Wails CLI version that CI pins (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`), checks that the bindings that build regenerated match the committed ones, and checks the built executable.

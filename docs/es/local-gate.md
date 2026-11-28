@@ -19,6 +19,8 @@ El gate local mantiene la verificación en hardware que controlo y nunca ejecuta
 
 Un carril borra su clon tras pasar (`GATE_KEEP=1` lo conserva) y lo conserva tras un fallo para inspeccionarlo. Los clones de más de un día se eliminan en la siguiente ejecución.
 
+Cada carril envía además todos sus archivos temporales (carpetas de compilación y de pruebas de Go, npm, la caché de compilación de Node) a su propia carpeta, `~/.cache/gitbox-gate/t-<lane>-<sha>`, en lugar del `/tmp` del host, y borra esa carpeta al terminar, tanto si pasa como si falla. Un `/tmp` pequeño, como un tmpfs, ya no se llena entre ejecuciones. Una carpeta que dejó una ejecución interrumpida se elimina pasado un día.
+
 ## Qué ejecuta cada carril
 
 Cada carril salvo remote-it construye el frontend embebido con `npm ci && npm run build`, construye la GUI con la versión de la CLI de Wails que fija CI (`go run github.com/wailsapp/wails/v2/cmd/wails@v2.16.0 build`) comprueba que los bindings que ese build regeneró coinciden con los del commit, y comprueba el ejecutable construido.
