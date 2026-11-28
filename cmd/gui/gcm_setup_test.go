@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -86,7 +85,7 @@ esac
 	}
 	// An account exists only once the config loaded or onboarding created it,
 	// so the config counts as loaded: saveConfig refuses otherwise (#173).
-	return &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), cfgLoaded: true, mu: sync.Mutex{}}
+	return newTestApp(withCfg(cfg), withCfgPath(filepath.Join(dir, "gitbox.json")), withCfgLoaded())
 }
 
 // GCM writing to stderr must not fail the sign-in when the GUI has no stderr.

@@ -50,25 +50,29 @@ func refreshTestApp(t *testing.T, count int) (*App, *refreshTestEvents) {
 		SourceOrder: []string{"source-a"},
 	}
 	events := &refreshTestEvents{}
-	a := &App{cfg: cfg, events: events, refreshHooks: &refreshHooks{
-		status: func(cfg *config.Config) []status.RepoStatus {
-			var results []status.RepoStatus
-			for source, src := range cfg.Sources {
-				for repo := range src.Repos {
-					results = append(results, status.RepoStatus{Source: source, Repo: repo, State: status.Clean})
+	a := newTestApp(
+		withCfg(cfg),
+		withEvents(events),
+		withRefreshHooks(&refreshHooks{
+			status: func(cfg *config.Config) []status.RepoStatus {
+				var results []status.RepoStatus
+				for source, src := range cfg.Sources {
+					for repo := range src.Repos {
+						results = append(results, status.RepoStatus{Source: source, Repo: repo, State: status.Clean})
+					}
 				}
-			}
-			return results
-		},
-		fetch: func(context.Context, string) (string, error) { return "", nil },
-		pullCheck: func(context.Context, string) (git.PullSkipReason, git.RepoStatus, error) {
-			return "", git.RepoStatus{Behind: 1}, nil
-		},
-		heal: func(*config.Config, string, string) heal.Report { return heal.Report{} },
-		credential: func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
-			return refreshCredentialOK()
-		},
-	}}
+				return results
+			},
+			fetch: func(context.Context, string) (string, error) { return "", nil },
+			pullCheck: func(context.Context, string) (git.PullSkipReason, git.RepoStatus, error) {
+				return "", git.RepoStatus{Behind: 1}, nil
+			},
+			heal: func(*config.Config, string, string) heal.Report { return heal.Report{} },
+			credential: func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+				return refreshCredentialOK()
+			},
+		}),
+	)
 	return a, events
 }
 

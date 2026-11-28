@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -23,7 +22,7 @@ func TestResolveAccountFolder(t *testing.T) {
 		},
 		Sources: map[string]config.Source{},
 	}
-	a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
+	a := newTestApp(withCfg(cfg), withCfgPath(filepath.Join(dir, "gitbox.json")))
 
 	t.Run("unknown account errors", func(t *testing.T) {
 		if _, err := a.resolveAccountFolder("nope"); err == nil || !strings.Contains(err.Error(), "not found") {
@@ -74,7 +73,7 @@ func TestOpenAccountInBrowser_UnknownAccount(t *testing.T) {
 		Global:   config.GlobalConfig{Roots: []string{t.TempDir()}},
 		Accounts: map[string]config.Account{},
 	}
-	a := &App{cfg: cfg, cfgPath: "", mu: sync.Mutex{}}
+	a := newTestApp(withCfg(cfg), withCfgPath(""))
 	_, err := a.OpenAccountInBrowser("nope", false)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected 'not found' error, got %v", err)

@@ -82,7 +82,7 @@ func TestCredentialStoreToken_UsesAccountFormatWithoutClones(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", root)
 	t.Setenv("GIT_TOKEN", "unrelated-environment-token")
 	acct := config.Account{Provider: "gitlab", URL: "https://example.org", Username: "test-user", DefaultCredentialType: "token"}
-	a := &App{cfg: &config.Config{Accounts: map[string]config.Account{"test": acct}, Sources: map[string]config.Source{}}}
+	a := newTestApp(withCfg(&config.Config{Accounts: map[string]config.Account{"test": acct}, Sources: map[string]config.Source{}}))
 	if result := a.CredentialStoreToken("test", "  supplied-token\n"); !result.OK {
 		t.Fatal(result.Message)
 	}

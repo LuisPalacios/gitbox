@@ -167,7 +167,7 @@ func TestEventNamesRegistered(t *testing.T) {
 // TestLocalOnlyWithoutRemoteSession pins that a window without a remote
 // session gets the local backend, and that a bare App falls back to it.
 func TestLocalOnlyWithoutRemoteSession(t *testing.T) {
-	a := &App{}
+	a := newTestApp()
 	if _, ok := a.be().(localBackend); !ok {
 		t.Fatalf("bare App backend = %T, want localBackend", a.be())
 	}

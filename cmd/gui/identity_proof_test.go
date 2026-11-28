@@ -57,12 +57,17 @@ func TestIdentityProofVerificationAndRepair(t *testing.T) {
 	}
 	beforeGit, beforeApp := read(gitPath), read(cfgPath)
 
-	a := &App{cfg: cfg, cfgPath: cfgPath, cfgLoaded: true, refreshHooks: &refreshHooks{
-		credential: func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
-			checks++
-			return refreshCredentialOK()
-		},
-	}}
+	a := newTestApp(
+		withCfg(cfg),
+		withCfgPath(cfgPath),
+		withCfgLoaded(),
+		withRefreshHooks(&refreshHooks{
+			credential: func(context.Context, config.Account, string, *config.Config) credential.StatusResult {
+				checks++
+				return refreshCredentialOK()
+			},
+		}),
+	)
 	defer a.stopRefresh()
 	proof := func() IdentityProofDTO {
 		t.Helper()

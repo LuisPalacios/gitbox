@@ -140,7 +140,7 @@ func TestSchedulerBootWithSavedInterval(t *testing.T) {
 	for name, earlySnapshot := range map[string]bool{"snapshot first": true, "registry first": false} {
 		t.Run(name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				a := &App{cfg: &config.Config{Global: config.GlobalConfig{PeriodicSync: "5m"}}}
+				a := newTestApp(withCfg(&config.Config{Global: config.GlobalConfig{PeriodicSync: "5m"}}))
 				runs := 0
 				start := func() {
 					a.tasks.start(t.Context(), []*scheduledTask{{name: taskFetch, run: func(context.Context) error { runs++; return nil }}})
@@ -201,7 +201,7 @@ func TestScheduledPRCheckWaitsForProviderResult(t *testing.T) {
 }
 
 func TestScheduledRemoteChecksStayOnConnectedHost(t *testing.T) {
-	a := &App{ctx: t.Context(), windowMode: "remote"}
+	a := newTestApp(withCtx(t.Context()), withWindowMode("remote"))
 	a.remote = newRemoteSession(a, "fixture")
 	a.backend = a.remote.backend
 	a.ensureWindowTasks()

@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -36,7 +35,7 @@ func TestSyncEditorsPrunesHarnessClaimedNames(t *testing.T) {
 		},
 		Sources: map[string]config.Source{},
 	}
-	a := &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
+	a := newTestApp(withCfg(cfg), withCfgPath(filepath.Join(dir, "gitbox.json")))
 	a.syncEditors()
 
 	for _, e := range cfg.Global.Editors {
@@ -128,7 +127,7 @@ func harnessTestApp(t *testing.T, entries []config.AIHarnessEntry) *App {
 		},
 		Sources: map[string]config.Source{},
 	}
-	return &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
+	return newTestApp(withCfg(cfg), withCfgPath(filepath.Join(dir, "gitbox.json")))
 }
 
 func TestSyncAIHarnessesReordersToMatchKnownList(t *testing.T) {
@@ -385,7 +384,7 @@ func appWithProfilesAndHarnesses(t *testing.T, apps []config.TerminalApp, shells
 		},
 		Sources: map[string]config.Source{},
 	}
-	return &App{cfg: cfg, cfgPath: filepath.Join(dir, "gitbox.json"), mu: sync.Mutex{}}
+	return newTestApp(withCfg(cfg), withCfgPath(filepath.Join(dir, "gitbox.json")))
 }
 
 // warpOnlyProfiles is a profile set whose only (default) terminal is a macOS

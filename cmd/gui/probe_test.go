@@ -61,7 +61,7 @@ func TestUpstreamProbe_BoundedConcurrencyAndSharedAccount(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	finished := make(chan []upstreamProbeResult, 1)
-	go func() { finished <- (&App{}).runUpstreamProbe(ctx, cfg, resolve, time.Second) }()
+	go func() { finished <- newTestApp().runUpstreamProbe(ctx, cfg, resolve, time.Second) }()
 	for range probeConcurrency {
 		select {
 		case <-started:
@@ -81,7 +81,7 @@ func TestUpstreamProbe_BoundedConcurrencyAndSharedAccount(t *testing.T) {
 		t.Fatalf("peak concurrency=%d, want %d", maximum.Load(), probeConcurrency)
 	}
 	t.Logf("12 upstreams in two sources: requests=%d credential lookups=%d peak requests=%d", calls.Load(), tokenCalls, maximum.Load())
-	app := &App{cfg: cfg}
+	app := newTestApp(withCfg(cfg))
 	for i := range results {
 		results[i].exists = false
 	}
@@ -105,7 +105,7 @@ func TestUpstreamProbe_SharedFlightAndThrottle(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	app := &App{cfg: probeTestConfig(srv.URL, 1)}
+	app := newTestApp(withCfg(probeTestConfig(srv.URL, 1)))
 	app.probeUpstreamExistenceAsync()
 	select {
 	case <-started:
@@ -159,7 +159,7 @@ func TestUpstreamProbe_CancellationAndErrorsPreserveGoneState(t *testing.T) {
 				baseURL += "/404"
 			}
 			cfg := probeTestConfig(baseURL, 12)
-			app := &App{cfg: cfg, upstreamGone: map[string]bool{"source-a/org/repo-0": true}}
+			app := newTestApp(withCfg(cfg), withUpstreamGone(map[string]bool{"source-a/org/repo-0": true}))
 			budget, requestTimeout := time.Second, 20*time.Millisecond
 			if scenario == "sweep timeout" {
 				budget, requestTimeout = 20*time.Millisecond, time.Second
@@ -167,7 +167,7 @@ func TestUpstreamProbe_CancellationAndErrorsPreserveGoneState(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), budget)
 			defer cancel()
 			start := time.Now()
-			results := (&App{}).runUpstreamProbe(ctx, cfg, probeTestToken, requestTimeout)
+			results := newTestApp().runUpstreamProbe(ctx, cfg, probeTestToken, requestTimeout)
 			t.Logf("12 upstreams: elapsed=%s requests=%d request timeout=%s sweep budget=%s", time.Since(start), requests.Load(), requestTimeout, budget)
 			if len(results) != 0 || app.applyUpstreamProbe(cfg, results, nil) {
 				t.Fatalf("unconfirmed response changed state: %+v", results)
@@ -195,7 +195,7 @@ func TestUpstreamProbe_CredentialLookupSharesSweepDeadline(t *testing.T) {
 		<-ctx.Done()
 		return "", "", ctx.Err()
 	}
-	results := (&App{}).runUpstreamProbe(ctx, probeTestConfig(srv.URL, 4), resolve, time.Second)
+	results := newTestApp().runUpstreamProbe(ctx, probeTestConfig(srv.URL, 4), resolve, time.Second)
 	if len(results) != 0 || requests.Load() != 0 || ctx.Err() == nil {
 		t.Fatalf("credential cancellation should stop HTTP: results=%d requests=%d error=%v", len(results), requests.Load(), ctx.Err())
 	}
@@ -204,7 +204,7 @@ func TestUpstreamProbe_CredentialLookupSharesSweepDeadline(t *testing.T) {
 func TestUpstreamProbe_DiscardsStaleConfig(t *testing.T) {
 	for _, change := range []string{"account removed", "provider", "credential", "repo removed", "repo config", "source account", "source folder", "global folder", "global credential"} {
 		t.Run(change, func(t *testing.T) {
-			app := &App{cfg: probeTestConfig("https://example.invalid", 1)}
+			app := newTestApp(withCfg(probeTestConfig("https://example.invalid", 1)))
 			snapshot := app.snapshotRefreshConfig()
 			acct := app.cfg.Accounts["account-a"]
 			src := app.cfg.Sources["source-a"]
@@ -250,8 +250,8 @@ func TestUpstreamProbe_DefinitiveResultsRestoreAndMark(t *testing.T) {
 	}))
 	defer srv.Close()
 	cfg := probeTestConfig(srv.URL, 2)
-	app := &App{cfg: cfg, upstreamGone: map[string]bool{"source-a/org/repo-1": true}}
-	results := (&App{}).runUpstreamProbe(context.Background(), cfg, probeTestToken, time.Second)
+	app := newTestApp(withCfg(cfg), withUpstreamGone(map[string]bool{"source-a/org/repo-1": true}))
+	results := newTestApp().runUpstreamProbe(context.Background(), cfg, probeTestToken, time.Second)
 	if !app.applyUpstreamProbe(cfg, results, nil) {
 		t.Fatal("confirmed provider results did not change marks")
 	}
@@ -267,7 +267,7 @@ func TestUpstreamProbe_NewerFetchObservationWins(t *testing.T) {
 	for _, fetchGone := range []bool{false, true} {
 		t.Run(fmt.Sprint(fetchGone), func(t *testing.T) {
 			cfg := probeTestConfig("https://example.invalid", 1)
-			app := &App{cfg: cfg}
+			app := newTestApp(withCfg(cfg))
 			revisions := app.snapshotProbeRevisions()
 			// A successful fetch is a fresh observation even when no mark flips.
 			app.recordFetchStatus(cfg, "source-a", "org/repo-0", fetchGone, time.Now())
@@ -284,7 +284,7 @@ func TestUpstreamProbe_NewerFetchObservationWins(t *testing.T) {
 
 func TestUpstreamProbe_RotatedTokenDiscardsOldResult(t *testing.T) {
 	cfg := probeTestConfig("https://example.invalid", 1)
-	app := &App{cfg: cfg}
+	app := newTestApp(withCfg(cfg))
 	revisions := app.snapshotProbeRevisions()
 	// Token contents live outside config; their revision catches same-type rotation.
 	app.credentialRevision = map[string]uint64{"account-a": 1}
@@ -304,7 +304,7 @@ func TestUpstreamProbe_ShutdownCancelsAndJoinsWorker(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
-	app := &App{cfg: probeTestConfig(srv.URL, 1)}
+	app := newTestApp(withCfg(probeTestConfig(srv.URL, 1)))
 	app.probeUpstreamExistenceAsync()
 	select {
 	case <-started:
@@ -343,7 +343,7 @@ func TestUpstreamProbe_CredentialChangeRetainsThrottleInvalidation(t *testing.T)
 		}
 	}))
 	defer srv.Close()
-	app := &App{cfg: probeTestConfig(srv.URL, 1)}
+	app := newTestApp(withCfg(probeTestConfig(srv.URL, 1)))
 	app.probeUpstreamExistenceAsync()
 	select {
 	case <-started:

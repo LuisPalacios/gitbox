@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -27,7 +26,7 @@ func TestStartupSyncNeverWritesLegacyTerminals(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a := &App{cfg: cfg, cfgPath: cfgPath, mu: sync.Mutex{}}
+	a := newTestApp(withCfg(cfg), withCfgPath(cfgPath))
 	a.syncDetected()
 
 	if len(cfg.Global.Terminals) != 0 {

@@ -385,7 +385,7 @@ func TestBackendContract(t *testing.T) {
 	// Both sides run read-only: this table holds the reads, and a read
 	// must never save nor repair a clone. The mutations have their tables
 	// (contract_mutations_test.go, contract_repo_test.go).
-	local := &App{cfgPath: path, events: localSink, upstreamGone: map[string]bool{}, readOnly: true}
+	local := newTestApp(withCfgPath(path), withEvents(localSink), withUpstreamGone(map[string]bool{}), withReadOnly())
 	local.be().Init(context.Background())
 	t.Cleanup(local.closeLocal)
 	direct := Backend(hostBackend{localBackend{local}})
@@ -1076,7 +1076,7 @@ func TestStartupSnapshotCarriesTheServerVersion(t *testing.T) {
 			return snap, err
 		}),
 	})
-	a := &App{backend: link.Remote, prefs: newFilePrefs(seedConfig(t, "client.json", nil))}
+	a := newTestApp(withBackend(link.Remote), withPrefs(newFilePrefs(seedConfig(t, "client.json", nil))))
 	remoteSnap, err := a.GetStartupSnapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -1095,7 +1095,7 @@ func TestStartupSnapshotCarriesTheServerVersion(t *testing.T) {
 	}
 
 	// A local window says nothing about a server.
-	local := &App{cfgPath: contractConfig(t)}
+	local := newTestApp(withCfgPath(contractConfig(t)))
 	local.be().Init(context.Background())
 	snap, err := local.GetStartupSnapshot()
 	if snap.ServerOS != snap.OS || snap.OS != runtime.GOOS {

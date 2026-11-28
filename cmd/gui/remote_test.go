@@ -325,7 +325,7 @@ func TestRemoteWindowArgs(t *testing.T) {
 
 func TestRemotesSettings(t *testing.T) {
 	path := seedConfig(t, "gitbox.json", nil)
-	a := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}
+	a := newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded())
 	var checked []string
 	a.checkAlias = func(_ context.Context, alias string) error {
 		checked = append(checked, alias)

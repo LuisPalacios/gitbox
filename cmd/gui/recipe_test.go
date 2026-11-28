@@ -84,7 +84,7 @@ func TestRecipeBindings_ReviewFileAndImport(t *testing.T) {
 }
 
 func TestRecipeBindings_RefuseRemote(t *testing.T) {
-	a := &App{backend: &RemoteBackend{}}
+	a := newTestApp(withBackend(&RemoteBackend{}))
 	if _, err := a.PreviewRecipeExport(); err == nil {
 		t.Fatal("export preview allowed")
 	}

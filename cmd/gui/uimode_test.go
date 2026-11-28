@@ -2,7 +2,6 @@ package main
 
 import (
 	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -76,11 +75,10 @@ func TestSetTheme_PersistsAndValidates(t *testing.T) {
 func TestInitRoot_NewInstallStartsSimple(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "gitbox.json")
-	a := &App{
-		cfg:     &config.Config{Version: config.CurrentVersion, Accounts: map[string]config.Account{}, Sources: map[string]config.Source{}},
-		cfgPath: cfgPath,
-		mu:      sync.Mutex{},
-	}
+	a := newTestApp(
+		withCfg(&config.Config{Version: config.CurrentVersion, Accounts: map[string]config.Account{}, Sources: map[string]config.Source{}}),
+		withCfgPath(cfgPath),
+	)
 
 	if err := a.InitRoot(filepath.Join(dir, "projects")); err != nil {
 		t.Fatalf("InitRoot: %v", err)

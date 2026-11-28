@@ -42,13 +42,13 @@ func TestGetRepoDetail_IncomingAndLocalFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "pending.txt"), []byte("local work\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	a := &App{
-		cfg: &config.Config{Sources: map[string]config.Source{
+	a := newTestApp(
+		withCfg(&config.Config{Sources: map[string]config.Source{
 			"account-a": {Repos: map[string]config.Repo{"org/repo": {CloneFolder: dir}}},
-		}},
+		}}),
 		// I disable provider probing so this binding test uses local Git only.
-		refreshClosed: true,
-	}
+		withRefreshClosed(),
+	)
 	detail := a.GetRepoDetail("account-a", "org/repo")
 	if detail.Error != "" || detail.IncomingError != "" || detail.Behind != 1 {
 		t.Fatalf("detail = %#v", detail)

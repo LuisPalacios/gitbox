@@ -16,7 +16,7 @@ func remoteEditorApp(t *testing.T, editor string) (*App, string) {
 	path := seedConfig(t, "gitbox.json", func(c *config.Config) {
 		c.Global.Remotes = []config.RemoteEntry{{Alias: "my-server", Editor: editor}}
 	})
-	return &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}, path
+	return newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded()), path
 }
 
 // TestRemoteEditorSetting: the editor of a remote is saved in this
@@ -36,7 +36,7 @@ func TestRemoteEditorSetting(t *testing.T) {
 	if got := loadConfig(t, path).Global.Remotes[0].Editor; got != "code-insiders" {
 		t.Errorf("editor on disk = %q", got)
 	}
-	again := &App{cfg: loadConfig(t, path), cfgPath: path, cfgLoaded: true}
+	again := newTestApp(withCfg(loadConfig(t, path)), withCfgPath(path), withCfgLoaded())
 	if got := again.ListRemotes().Remotes[0].Editor; got != "code-insiders" {
 		t.Errorf("a new process reads editor %q", got)
 	}
