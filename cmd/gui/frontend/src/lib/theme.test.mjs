@@ -20,3 +20,14 @@ test('I leave an unknown or missing provider in the text colour', () => {
   assert.equal(th.providerColor('sourcehut', 'dark'), '');
   assert.equal(th.providerColor(undefined, 'light'), '');
 });
+
+test('I prefill a new account from an unmatched clone\'s server', () => {
+  assert.deepEqual(th.accountPrefill('github.com'), { provider: 'github', url: 'https://github.com' });
+  assert.deepEqual(th.accountPrefill('GitLab.com'), { provider: 'gitlab', url: 'https://gitlab.com' });
+  assert.deepEqual(th.accountPrefill('bitbucket.org'), { provider: 'bitbucket', url: 'https://bitbucket.org' });
+  assert.deepEqual(th.accountPrefill('git.example.org'), { url: 'https://git.example.org' });
+  assert.deepEqual(th.accountPrefill('git.example.org:2222'), { url: 'https://git.example.org' });
+  assert.deepEqual(th.accountPrefill('gh-work'), {}, 'an SSH alias names no server');
+  assert.deepEqual(th.accountPrefill(''), {});
+  assert.deepEqual(th.accountPrefill(undefined), {});
+});

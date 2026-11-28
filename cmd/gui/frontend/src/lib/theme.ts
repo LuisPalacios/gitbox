@@ -29,6 +29,19 @@ export const providerURLs: Record<string, string> = {
   bitbucket: 'https://bitbucket.org',
 };
 
+// accountPrefill turns the server of an unmatched clone's remote into the
+// start of a new account: a known provider and its URL, or the server's
+// https URL. An SSH alias (no dot) says nothing about the server, so it
+// prefills nothing; a port belongs to the remote's protocol and is dropped.
+export function accountPrefill(host: string | undefined): { provider?: string; url?: string } {
+  const name = (host || '').trim().toLowerCase().replace(/:\d+$/, '');
+  if (!name || (!name.includes('.') && name !== 'localhost')) return {};
+  for (const [provider, url] of Object.entries(providerURLs)) {
+    if (url && new URL(url).hostname === name) return { provider, url };
+  }
+  return { url: `https://${name}` };
+}
+
 // Account names in the account groups take their provider's brand colour
 // (the logo's main hue), darker in the light theme and lighter in the dark
 // one so it reads on the card. An unknown provider keeps the text colour.

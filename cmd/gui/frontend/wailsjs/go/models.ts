@@ -1233,6 +1233,9 @@ export namespace main {
 	    candidates?: string[];
 	    nested: boolean;
 	    workspaceRoot?: string;
+	    host?: string;
+	    mainClone?: string;
+	    trackedPath?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new OrphanRepoDTO(source);
@@ -1249,6 +1252,9 @@ export namespace main {
 	        this.candidates = source["candidates"];
 	        this.nested = source["nested"];
 	        this.workspaceRoot = source["workspaceRoot"];
+	        this.host = source["host"];
+	        this.mainClone = source["mainClone"];
+	        this.trackedPath = source["trackedPath"];
 	    }
 	}
 	export class PRSettingsDTO {

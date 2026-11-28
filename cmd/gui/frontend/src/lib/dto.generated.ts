@@ -246,6 +246,9 @@ export interface OrphanRepoDTO {
   candidates?: string[];
   nested: boolean;
   workspaceRoot?: string;
+  host?: string;
+  mainClone?: string;
+  trackedPath?: string;
 }
 
 export interface Skip {

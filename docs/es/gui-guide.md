@@ -275,17 +275,19 @@ Gitbox mantiene `gitbox.json` al día con los clones bajo tus raíces de clonado
 
 Para cada clon añadido, Gitbox configura el aislamiento de credenciales por repo, fija `user.name` y `user.email` a partir de la cuenta y reescribe la URL remota para que coincida con el tipo de credencial.
 
-Todo lo demás espera en **Clones sin ubicar**, que se abre desde **Encontrados en disco** en la barra lateral. Cada fila dice por qué Gitbox no ha podido ubicarlo:
+Todo lo demás espera en **Clones sin ubicar**, que se abre desde **Encontrados en disco** en la barra lateral. Cada fila dice por qué Gitbox no ha podido ubicarlo, y una fila que no puedes adoptar dice qué hacer a continuación:
 
 - **solo coincide el servidor** — una cuenta en ese servidor, pero nada más vincula el clon a ella, como el proyecto de otra persona clonado para leerlo.
 - **coinciden varias cuentas** — dos o más cuentas en el mismo servidor empatan.
-- **ninguna cuenta en este servidor**
-- **sin remoto** — sin `origin`.
-- **ya gestionado en otra ruta** — un segundo checkout de un repo que Gitbox ya sigue.
-- **un worktree de git de otro clon**
+- **ninguna cuenta en este servidor** — la fila nombra el servidor y ofrece **Añadir cuenta**, con el formulario iniciado a partir de ese servidor cuando Gitbox puede deducirlo. Una vez creada la cuenta, la fila ofrece **Adoptar** sin cerrar la lista.
+- **sin remoto** — sin `origin`, así que el clon no se puede adoptar. Añade uno en una terminal con `git remote add origin <url>`; Gitbox vuelve a escanear cuando regresas.
+- **ya gestionado en otra ruta** — un segundo checkout de un repo que Gitbox ya sigue. La fila nombra la ruta gestionada; ignora la copia adicional.
+- **un worktree de git de otro clon** — un worktree sigue a su clon principal y no se adopta por separado. La fila nombra el clon principal cuando Gitbox puede leerlo; adopta ese.
 - **Este clon cambió durante el escaneo.** Gitbox conservó la configuración más reciente y programó otro escaneo. Pulsa **Volver a escanear** para actualizar la lista.
 
-Donde una cuenta puede aplicarse, elígela y haz clic en **Adoptar**; el clon se une a esa cuenta en su sitio. **Ignorar** oculta un clon para siempre, y **Mostrar ignorados** lista los ignorados, donde todavía puedes **Adoptar** uno o usar **Dejar de ignorar**. Las rutas ignoradas se guardan en `global.ignored_clones`. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
+Donde una cuenta puede aplicarse, elígela y haz clic en **Adoptar**; el clon se une a esa cuenta en su sitio. **Ignorar** oculta un clon para siempre, y **Mostrar ignorados** lista los ignorados, donde todavía puedes **Adoptar** uno o usar **Dejar de ignorar**. Las rutas ignoradas se guardan en `global.ignored_clones`. La introducción menciona la adopción solo cuando alguna fila visible se puede adoptar. Las reglas de puntuación detrás del emparejamiento de cuenta están en [Arquitectura › pkg/adopt](architecture.md#pkgadopt--discovery-de-repos-huérfanos).
+
+Para revisar un clon antes de decidir, cada fila, incluidas las ignoradas, tiene los botones de carpeta y terminal de una fila de clon: uno muestra la carpeta en el gestor de archivos y el otro la abre con el perfil de terminal predeterminado. En una ventana remota el botón de carpeta queda desactivado y la terminal se abre en el host.
 
 Si Gitbox adopta un clon pero no puede reparar su configuración de Git, conserva el clon en la cuenta. Abre **Requiere atención** para ver qué clon necesita una reparación y qué ha fallado. Una vez resuelta la causa, pulsa **Reintentar reparación** en la fila del clon. Gitbox comprueba los ajustes antes de hacer fetch.
 

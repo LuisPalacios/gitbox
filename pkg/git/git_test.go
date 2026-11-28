@@ -849,3 +849,45 @@ func TestIsIncompleteClone(t *testing.T) {
 		}
 	}
 }
+
+// TestWorktreeMain: a linked worktree names its main clone, whether git
+// wrote the link as an absolute or a relative path; anything else has none.
+func TestWorktreeMain(t *testing.T) {
+	clonePath, barePath := initTestRepo(t)
+	real := func(p string) string {
+		t.Helper()
+		r, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	tree := filepath.Join(t.TempDir(), "feature")
+	runGit(t, clonePath, "worktree", "add", "-q", tree)
+	if got := WorktreeMain(tree); got == "" || real(got) != real(clonePath) {
+		t.Errorf("WorktreeMain(absolute link) = %q, want %q", got, clonePath)
+	}
+
+	// The relative form `git worktree add --relative-paths` writes, built by
+	// hand so the test needs no recent git.
+	rel := filepath.Join(filepath.Dir(clonePath), "rel")
+	if err := os.MkdirAll(rel, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(rel, ".git"), "gitdir: ../clone/.git/worktrees/rel\n")
+	admin := filepath.Join(clonePath, ".git", "worktrees", "rel")
+	if err := os.MkdirAll(admin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(admin, "commondir"), "../..\n")
+	if got := WorktreeMain(rel); got == "" || real(got) != real(clonePath) {
+		t.Errorf("WorktreeMain(relative link) = %q, want %q", got, clonePath)
+	}
+
+	for name, p := range map[string]string{"main clone": clonePath, "bare repo": barePath, "plain folder": t.TempDir()} {
+		if got := WorktreeMain(p); got != "" {
+			t.Errorf("WorktreeMain(%s) = %q, want \"\"", name, got)
+		}
+	}
+}

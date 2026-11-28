@@ -65,7 +65,7 @@
   import CreateRepoModal from './lib/modals/CreateRepoModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
   import type { Placeholder } from './lib/repo-tree';
-  import { themeChoiceOf } from './lib/theme';
+  import { themeChoiceOf, accountPrefill } from './lib/theme';
   import { applyTint } from './lib/tint';
   import type { ThemeChoice } from './lib/theme';
 
@@ -932,6 +932,10 @@
 
   // ── Add account ──
   let addAccountDialog: AddAccountModal;
+  // An unmatched clone's server has no account (#351): the form starts
+  // from that server, and a scan once the account exists turns the row
+  // adoptable while the Unmatched list stays open.
+  const addAccountForClone = (host: string) => addAccountDialog.open(accountPrefill(host), () => void runReconcile());
 
   // Shared credential operation state — used by BOTH add-account and change-credential flows.
   // Only one modal can be active at a time, so sharing is safe.
@@ -1929,7 +1933,7 @@
   <SweepModal bind:this={sweepDialog} {closeActionMenu} />
 
   <!-- ── ORPHAN ADOPTION MODAL ── -->
-  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} skipped={skippedClones} {skippedFolders} {applyReconcile} />
+  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} skipped={skippedClones} {skippedFolders} {applyReconcile} {revealLabel} profiles={configProfiles} addAccountFor={addAccountForClone} />
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if connectModal}
