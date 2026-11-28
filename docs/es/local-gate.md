@@ -57,10 +57,21 @@ La primera ejecución en un host descarga los módulos de Go, los paquetes npm y
 ./scripts/gate.sh --only linux     # one lane (repeatable)
 ./scripts/gate.sh --skip win       # every lane but one (repeatable)
 ./scripts/gate.sh --only remote-it # the sshd integration tests only
+./scripts/gate.sh --auto           # skip remote-it when the diff cannot affect it
 ./scripts/gate.sh --report         # publish the HEAD marker as a commit status
 ```
 
 `--only` y `--skip` registran un marcador **parcial**. Los uso cuando un host está caído, y lo indico en el PR.
+
+`--auto` pregunta a `scripts/gate-scope.sh` si el diff de `HEAD` contra `origin/main` puede cambiar el carril remote-it. Cuando no puede, el gate se salta ese carril, con lo que `win` pasa a ser el más lento, y registra un marcador parcial con `skipped=remote-it` y `auto_skip=remote-it`. `/merge-pr` acepta ese marcador sin preguntar, después de volver a ejecutar `gate-scope.sh` por su cuenta. Cualquier otro marcador parcial sigue necesitando mi aceptación explícita.
+
+El carril es **necesario** cuando el diff toca alguno de estos elementos, y **no afectado** en cualquier otro caso:
+
+- Cualquier cosa bajo `pkg/remote/`, `test/sshd/` o `test/fakeforge/`.
+- `go.mod`, `go.sum`, `scripts/remote-it.sh`, `scripts/gate.sh`, `scripts/gate-lane.sh`, `scripts/gate-scope.sh`, `scripts/stamp.sh` o `scripts/_common.sh`.
+- Un fichero fuente Go que no sea de prueba, o un fichero embebido, de cualquier paquete que compile el carril: la compilación `gitboxserver,e2e_sentinel` de `cmd/gui`, el falso forge y la compilación `sshd_integration` de `pkg/remote`, con sus dependencias. `go list -deps` deriva ese conjunto para linux/amd64, así que un cambio en un paquete compartido como `pkg/git` ejecuta el carril y un cambio en un fichero solo de Windows no.
+
+Cualquier duda, como una llamada fallida a `git` o `go`, cuenta como necesario. `scripts/test-gate-scope.sh` cubre la regla y se ejecuta en el `selftest` del health check.
 
 `--report` publica el marcador como un estado de commit `local-gate` en GitHub: `success` para un paso completo, `pending` para uno parcial. El commit tiene que estar ya subido. Selecciona la cuenta de `gh` a partir del propietario de `remote.origin.url`.
 

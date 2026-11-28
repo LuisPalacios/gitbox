@@ -57,10 +57,21 @@ The first run on a host downloads Go modules, npm packages and the Wails CLI. La
 ./scripts/gate.sh --only linux     # one lane (repeatable)
 ./scripts/gate.sh --skip win       # every lane but one (repeatable)
 ./scripts/gate.sh --only remote-it # the sshd integration tests only
+./scripts/gate.sh --auto           # skip remote-it when the diff cannot affect it
 ./scripts/gate.sh --report         # publish the HEAD marker as a commit status
 ```
 
 `--only` and `--skip` record a **partial** marker. I use them when a host is down, and say so in the PR.
+
+`--auto` asks `scripts/gate-scope.sh` whether the diff of `HEAD` against `origin/main` can change the remote-it lane. When it cannot, the gate skips that lane, which leaves `win` as the slowest, and records a partial marker with `skipped=remote-it` and `auto_skip=remote-it`. `/merge-pr` accepts that marker without asking, after it re-runs `gate-scope.sh` itself. Any other partial marker still needs my explicit acceptance.
+
+The lane is **needed** when the diff touches one of these, and **unaffected** otherwise:
+
+- Anything under `pkg/remote/`, `test/sshd/` or `test/fakeforge/`.
+- `go.mod`, `go.sum`, `scripts/remote-it.sh`, `scripts/gate.sh`, `scripts/gate-lane.sh`, `scripts/gate-scope.sh`, `scripts/stamp.sh` or `scripts/_common.sh`.
+- A non-test Go source or embedded file of any package the lane compiles: the `gitboxserver,e2e_sentinel` build of `cmd/gui`, the fake forge and the `sshd_integration` build of `pkg/remote`, with their dependencies. `go list -deps` derives that set for linux/amd64, so a change in a shared package such as `pkg/git` runs the lane and a change in a Windows-only file does not.
+
+Any doubt, such as a failed `git` or `go` call, counts as needed. `scripts/test-gate-scope.sh` covers the rule and runs in the health check's `selftest`.
 
 `--report` posts the marker as a `local-gate` commit status on GitHub: `success` for a full pass, `pending` for a partial one. The commit must already be pushed. It selects the `gh` account from the owner in `remote.origin.url`.
 
