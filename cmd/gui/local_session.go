@@ -5,6 +5,8 @@ import (
 
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/credential"
+	"github.com/LuisPalacios/gitbox/pkg/reconcile"
+	"github.com/LuisPalacios/gitbox/pkg/workspace"
 )
 
 // localSession holds the state of the machine this process runs on: the
@@ -46,4 +48,14 @@ type localSession struct {
 	pathAuditBase config.FileRevision
 	pathConflicts []config.PathConflict
 	pathsAudited  bool
+
+	// reconcileMu serializes reconcile passes and manual adoptions (#149)
+	// and guards the workspace state below. Take it before mu.
+	// reconcileScan and reconcileClone replace reconcile.Plan and
+	// Config.Clone in tests.
+	reconcileMu      sync.Mutex
+	reconcileScan    func(*config.Config) (reconcile.Result, error)
+	reconcileClone   func(*config.Config) (*config.Config, error)
+	workspaceSync    workspace.SyncState // guarded by reconcileMu
+	workspaceUnknown []string            // guarded by reconcileMu
 }
