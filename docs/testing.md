@@ -54,7 +54,7 @@ I keep small Go seed corpora under each package's `testdata/fuzz/<target>/`. Ord
 go test ./pkg/config/ ./pkg/workspace/ ./pkg/status/ ./pkg/rpc/
 ```
 
-I opt into mutation passes with `HEALTH_FUZZ=1`; the default health check keeps running only the seeds. Each target gets a fixed number of executions, about 10 seconds, and two workers. The Linux PR health job enables this flag. I can run just these passes or include them in the full gate:
+I opt into mutation passes with `HEALTH_FUZZ=1`; the default health check keeps running only the seeds. Each target gets a fixed number of executions, about 10 seconds, and two workers, and the four targets run at the same time. The Linux PR health job enables this flag. I can run just these passes or include them in the full gate:
 
 ```bash
 HEALTH_FUZZ=1 ./scripts/health.sh fuzz
@@ -258,7 +258,7 @@ The suite checks Needs attention, startup event ordering, late completion after 
 - **Renderer API** — `go test ./cmd/gui/ -run TestBoundSurface` checks the documented method set against `*App` and the generated JavaScript and TypeScript bindings.
 - **Startup snapshot** — `go test ./cmd/gui/ -run TestStartupSnapshot` checks nesting before clones exist and detached snapshot data. `go test ./cmd/gui/ -run '^$' -bench BenchmarkStartupSnapshot -benchmem` measures snapshot construction, which is backend work, not visible startup time.
 - **Refresh and credential maintenance** — `go test -race ./cmd/gui/ ./pkg/credential/ ./pkg/heal/ ./pkg/git/` covers refresh coordination, cancellation, stale results, upstream probes and pre-fetch maintenance.
-- **Failure schedules** — `go test -race -short ./cmd/gui/ ./pkg/config/ ./pkg/git/...` checks overlapping config changes, partial save failures and stalled Git credential helpers in isolated fixtures. The health check runs this race pass on macOS and Linux.
+- **Failure schedules** — `go test -race -short ./cmd/gui/ ./pkg/config/ ./pkg/git/...` checks overlapping config changes, partial save failures and stalled Git credential helpers in isolated fixtures. The health check runs this race pass on macOS and Linux, at the same time as the plain `go test -short` pass over every other package; there, the race pass replaces the plain run of these packages, because it executes the same tests. Windows keeps one plain pass over every package.
 - **Diagnostics export** — `go test -short ./pkg/diag/ ./cmd/gui/ -run "Test(Collect|Activity|Redact|ExportDiagnostics|Diagnostics_)"` checks the allowlist, privacy canaries, retention and saving the reviewed bytes. On the native desktop I use a synthetic fixture, open **Settings → System check → Run → Export diagnostics**, save the file to a temporary folder, and compare it byte for byte with the preview.
 
 For visible startup time I measure on the native desktop: process launch to window, window to the first configured rows with container nesting, and time to complete status. I record the platform, clone count, container layout and number of runs. A browser navigation against a running `wails dev` backend measures a different path, and SSH timings can't show WebView2 row paint, so a Windows startup target stays open until I measure it on an interactive Windows desktop.
