@@ -249,7 +249,7 @@ func (a *App) reloadAfterConflict() {
 		return
 	}
 	a.cfgLoaded, a.cfgLoadError = true, ""
-	a.refreshPRConfigLocked(fresh)
+	a.localSession.refreshPRConfigLocked(fresh, a.bumpCredentialRevisionLocked)
 	*a.cfg = *fresh
 }
 
@@ -669,7 +669,7 @@ func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	if err != nil {
 		return ConfigDTO{}, fmt.Errorf("reloading config: %w", err)
 	}
-	a.refreshPRConfigLocked(cfg)
+	a.localSession.refreshPRConfigLocked(cfg, a.bumpCredentialRevisionLocked)
 	a.cfg = cfg
 	a.setRevision(base)
 	a.cfgLoaded, a.cfgLoadError = true, ""
@@ -1570,7 +1570,7 @@ func (a *App) saveReplacement(cfg *config.Config, base config.FileRevision) erro
 		}
 		return err
 	}
-	a.refreshPRConfigLocked(cfg)
+	a.localSession.refreshPRConfigLocked(cfg, a.bumpCredentialRevisionLocked)
 	a.setRevision(next)
 	a.cfg, a.cfgLoaded, a.cfgLoadError = cfg, true, ""
 	return nil
@@ -2092,7 +2092,7 @@ func (a *App) discardAccountLocal(accountKey string) error {
 		return err
 	}
 	a.bumpCredentialRevisionLocked(accountKey)
-	delete(a.prs.cache, accountKey)
+	a.localSession.forgetPRAccountLocked(accountKey)
 	return a.saveConfig()
 }
 
@@ -2870,7 +2870,7 @@ func (a *App) deleteAccountLocal(accountKey string, removeFolders bool) ([]strin
 	if err != nil {
 		return nil, err
 	}
-	delete(a.prs.cache, accountKey)
+	a.localSession.forgetPRAccountLocked(accountKey)
 	return []string{}, nil
 }
 

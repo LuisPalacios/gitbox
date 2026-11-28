@@ -79,7 +79,7 @@ type prPass struct {
 	err       error
 }
 
-// prRefreshState belongs to one App. The App mutex guards its queue,
+// prRefreshState belongs to one localSession. Its mu guards the queue,
 // in-flight requests, cache and settings revision.
 type prRefreshState struct {
 	pass             *prPass
@@ -96,12 +96,12 @@ type prRefreshState struct {
 func (a *App) GetPRSettings() PRSettingsDTO { return a.be().GetPRSettings() }
 
 // getPRSettingsLocal is the local backend's GetPRSettings.
-func (a *App) getPRSettingsLocal() PRSettingsDTO {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (s *localSession) getPRSettingsLocal() PRSettingsDTO {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return PRSettingsDTO{
-		Enabled:       a.cfg.Global.PRBadgesOn(),
-		IncludeDrafts: a.cfg.Global.PRDraftsIncluded(),
+		Enabled:       s.cfg.Global.PRBadgesOn(),
+		IncludeDrafts: s.cfg.Global.PRDraftsIncluded(),
 	}
 }
 
@@ -109,53 +109,56 @@ func (a *App) getPRSettingsLocal() PRSettingsDTO {
 // When disabled the frontend clears its store and in-flight results are dropped.
 func (a *App) SetPRBadgesEnabled(enabled bool) error { return a.be().SetPRBadgesEnabled(enabled) }
 
-// setPRBadgesEnabledLocal is the local backend's SetPRBadgesEnabled.
-func (a *App) setPRBadgesEnabledLocal(enabled bool) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if enabled != a.cfg.Global.PRBadgesOn() {
-		a.prs.settingsRevision++
+// setPRBadgesEnabledLocal is the local backend's SetPRBadgesEnabled. save
+// persists the config under s.mu; it is App.saveConfig until the save moves
+// into the session.
+func (s *localSession) setPRBadgesEnabledLocal(enabled bool, save func() error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if enabled != s.cfg.Global.PRBadgesOn() {
+		s.prs.settingsRevision++
 	}
 	v := enabled
-	a.cfg.Global.PRBadgesEnabled = &v
-	if enabled && a.prs.pass != nil && a.prs.pass.scheduled {
-		a.queuePRAccountsLocked()
+	s.cfg.Global.PRBadgesEnabled = &v
+	if enabled && s.prs.pass != nil && s.prs.pass.scheduled {
+		s.queuePRAccountsLocked()
 	}
-	return a.saveConfig()
+	return save()
 }
 
 // SetPRIncludeDrafts toggles counting draft PRs as "authored" and persists.
 func (a *App) SetPRIncludeDrafts(enabled bool) error { return a.be().SetPRIncludeDrafts(enabled) }
 
-// setPRIncludeDraftsLocal is the local backend's SetPRIncludeDrafts.
-func (a *App) setPRIncludeDraftsLocal(enabled bool) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if enabled != a.cfg.Global.PRDraftsIncluded() {
-		a.prs.settingsRevision++
+// setPRIncludeDraftsLocal is the local backend's SetPRIncludeDrafts; save
+// works as in setPRBadgesEnabledLocal.
+func (s *localSession) setPRIncludeDraftsLocal(enabled bool, save func() error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if enabled != s.cfg.Global.PRDraftsIncluded() {
+		s.prs.settingsRevision++
 	}
 	v := enabled
-	a.cfg.Global.PRIncludeDrafts = &v
-	if a.cfg.Global.PRBadgesOn() && a.prs.pass != nil && a.prs.pass.scheduled {
-		a.queuePRAccountsLocked()
+	s.cfg.Global.PRIncludeDrafts = &v
+	if s.cfg.Global.PRBadgesOn() && s.prs.pass != nil && s.prs.pass.scheduled {
+		s.queuePRAccountsLocked()
 	}
-	return a.saveConfig()
+	return save()
 }
 
 // getPRsForRepoLocal returns the cached PR summary for a clone.
-func (a *App) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDTO {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.cfg.Global.PRBadgesOn() {
+func (s *localSession) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDTO {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.cfg.Global.PRBadgesOn() {
 		return PRSummaryDTO{}
 	}
-	src, ok := a.cfg.Sources[sourceKey]
+	src, ok := s.cfg.Sources[sourceKey]
 	if !ok {
 		return PRSummaryDTO{}
 	}
-	account, ok := a.cfg.Accounts[src.Account]
-	entry, cached := a.prs.cache[src.Account]
-	if !ok || !cached || entry.account != prAccountFor(account) || entry.includeDrafts != a.cfg.Global.PRDraftsIncluded() {
+	account, ok := s.cfg.Accounts[src.Account]
+	entry, cached := s.prs.cache[src.Account]
+	if !ok || !cached || entry.account != prAccountFor(account) || entry.includeDrafts != s.cfg.Global.PRDraftsIncluded() {
 		return PRSummaryDTO{}
 	}
 	return lookupRepoSummary(entry.data, repoKey)
@@ -164,6 +167,8 @@ func (a *App) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDTO {
 // refreshAllPRsLocal is the local backend's RefreshAllPRs.
 func (a *App) refreshAllPRsLocal() { a.queuePRs(false) }
 
+// queuePRs starts a PR pass on the refresh flight, which stays on App until
+// refresh moves into the session (#369). It reads no session state itself.
 func (a *App) queuePRs(scheduled bool) *prPass {
 	a.refreshMu.Lock()
 	defer a.refreshMu.Unlock()
@@ -171,115 +176,136 @@ func (a *App) queuePRs(scheduled bool) *prPass {
 		return nil
 	}
 	ctx := a.refreshContextLocked()
+	return a.localSession.startPRPass(scheduled, func() {
+		a.refreshWG.Go(func() { a.refreshPRAccounts(ctx) })
+	})
+}
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.cfg.Global.PRBadgesOn() {
+// startPRPass queues every account and calls startWorker, under s.mu, once
+// for each worker the pass still needs. The caller holds the refresh lock.
+func (s *localSession) startPRPass(scheduled bool, startWorker func()) *prPass {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.cfg.Global.PRBadgesOn() {
 		return nil
 	}
-	if a.prs.pending == nil {
-		a.prs.pending = make(map[string]prRefresh)
-		a.prs.active = make(map[string]prRefresh)
+	if s.prs.pending == nil {
+		s.prs.pending = make(map[string]prRefresh)
+		s.prs.active = make(map[string]prRefresh)
 	}
-	a.queuePRAccountsLocked()
-	if len(a.prs.pending) > 0 && a.prs.pass == nil {
-		a.prs.pass = &prPass{done: make(chan struct{})}
+	s.queuePRAccountsLocked()
+	if len(s.prs.pending) > 0 && s.prs.pass == nil {
+		s.prs.pass = &prPass{done: make(chan struct{})}
 	}
-	if scheduled && a.prs.pass != nil {
-		a.prs.pass.scheduled = true
+	if scheduled && s.prs.pass != nil {
+		s.prs.pass.scheduled = true
 	}
-	for a.prs.workers < min(prRefreshConcurrency, len(a.prs.pending)+len(a.prs.active)) {
-		a.prs.workers++
-		a.refreshWG.Go(func() { a.refreshPRAccounts(ctx) })
+	for s.prs.workers < min(prRefreshConcurrency, len(s.prs.pending)+len(s.prs.active)) {
+		s.prs.workers++
+		startWorker()
 	}
-	return a.prs.pass
+	return s.prs.pass
 }
 
 // A settings change during a fleet check supersedes each old request in its
 // existing queue. The busy check stays one pass, including the new settings.
-func (a *App) queuePRAccountsLocked() {
-	for key, account := range a.cfg.Accounts {
-		req := a.prRefreshLocked(key, account)
-		if active, ok := a.prs.active[key]; ok && active == req {
+func (s *localSession) queuePRAccountsLocked() {
+	for key, account := range s.cfg.Accounts {
+		req := s.prRefreshLocked(key, account)
+		if active, ok := s.prs.active[key]; ok && active == req {
 			continue
 		}
-		a.prs.pending[key] = req
+		s.prs.pending[key] = req
 	}
 }
 
-func (a *App) prRefreshLocked(key string, account config.Account) prRefresh {
+func (s *localSession) prRefreshLocked(key string, account config.Account) prRefresh {
 	return prRefresh{
 		account:            prAccountFor(account),
-		credentialRevision: a.credentialRevision[key],
-		settingsRevision:   a.prs.settingsRevision,
-		includeDrafts:      a.cfg.Global.PRDraftsIncluded(),
+		credentialRevision: s.credentialRevision[key],
+		settingsRevision:   s.prs.settingsRevision,
+		includeDrafts:      s.cfg.Global.PRDraftsIncluded(),
 	}
 }
 
-func (a *App) prRefreshIsCurrentLocked(key string, req prRefresh) bool {
-	account, ok := a.cfg.Accounts[key]
-	return ok && a.cfg.Global.PRBadgesOn() && a.prRefreshLocked(key, account) == req
+func (s *localSession) prRefreshIsCurrentLocked(key string, req prRefresh) bool {
+	account, ok := s.cfg.Accounts[key]
+	return ok && s.cfg.Global.PRBadgesOn() && s.prRefreshLocked(key, account) == req
 }
 
-func (a *App) nextPRRefresh(ctx context.Context) (string, prRefresh, bool) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (s *localSession) nextPRRefresh(ctx context.Context) (string, prRefresh, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if ctx.Err() != nil {
-		clear(a.prs.pending)
+		clear(s.prs.pending)
 	} else {
-		for key, req := range a.prs.pending {
-			if !a.prRefreshIsCurrentLocked(key, req) {
-				delete(a.prs.pending, key)
+		for key, req := range s.prs.pending {
+			if !s.prRefreshIsCurrentLocked(key, req) {
+				delete(s.prs.pending, key)
 				continue
 			}
-			if _, busy := a.prs.active[key]; !busy {
-				delete(a.prs.pending, key)
-				a.prs.active[key] = req
+			if _, busy := s.prs.active[key]; !busy {
+				delete(s.prs.pending, key)
+				s.prs.active[key] = req
 				return key, req, true
 			}
 		}
 	}
-	a.prs.workers--
-	if a.prs.workers == 0 && a.prs.pass != nil {
-		close(a.prs.pass.done)
-		a.prs.pass = nil
+	s.prs.workers--
+	if s.prs.workers == 0 && s.prs.pass != nil {
+		close(s.prs.pass.done)
+		s.prs.pass = nil
 	}
 	return "", prRefresh{}, false
 }
 
+// refreshPRAccounts is one PR worker. The network check, the maintenance
+// lock and the event stream stay on App until they move into the session
+// (#369, #370, #371); the worker reads no session state itself.
 func (a *App) refreshPRAccounts(ctx context.Context) {
+	s := a.localSession
 	for {
-		key, req, ok := a.nextPRRefresh(ctx)
+		key, req, ok := s.nextPRRefresh(ctx)
 		if !ok {
 			return
 		}
-		data, upd, publish := a.fetchPRsForAccount(ctx, key, req)
+		data, upd, publish := s.fetchPRsForAccount(ctx, key, req, a.reachable)
 		// Credential changes bracket their work with revision bumps under the
 		// maintenance lock. Wait for the last bump before checking the result.
 		a.maintenanceMu.RLock()
-		a.mu.Lock()
-		current := a.prRefreshIsCurrentLocked(key, req)
-		_, retry := a.prs.pending[key]
-		if !retry && (!publish || upd.Error != "" || !data.Complete || !current) && a.prs.pass != nil {
-			a.prs.pass.err = errTaskPartial
-		}
-		if publish && ctx.Err() == nil && current {
-			if upd.Error == "" {
-				if a.prs.cache == nil {
-					a.prs.cache = make(map[string]prEntry)
-				}
-				a.prs.cache[key] = prEntry{req.account, req.includeDrafts, data}
-			}
+		s.completePRRefresh(ctx, key, req, data, upd, publish, func(upd PRAccountUpdateDTO) {
 			emit(a.newOperation(), "pr:refreshed", upd)
-		}
-		delete(a.prs.active, key)
-		a.mu.Unlock()
+		})
 		a.maintenanceMu.RUnlock()
 	}
 }
 
-// fetchPRsForAccount does network and credential work outside the App lock.
-func (a *App) fetchPRsForAccount(ctx context.Context, key string, req prRefresh) (data provider.AccountPRs, upd PRAccountUpdateDTO, publish bool) {
+// completePRRefresh records one account's result and calls publish, under
+// s.mu, when the result is still current. The caller holds the maintenance
+// lock for reading.
+func (s *localSession) completePRRefresh(ctx context.Context, key string, req prRefresh, data provider.AccountPRs, upd PRAccountUpdateDTO, fetched bool, publish func(PRAccountUpdateDTO)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current := s.prRefreshIsCurrentLocked(key, req)
+	_, retry := s.prs.pending[key]
+	if !retry && (!fetched || upd.Error != "" || !data.Complete || !current) && s.prs.pass != nil {
+		s.prs.pass.err = errTaskPartial
+	}
+	if fetched && ctx.Err() == nil && current {
+		if upd.Error == "" {
+			if s.prs.cache == nil {
+				s.prs.cache = make(map[string]prEntry)
+			}
+			s.prs.cache[key] = prEntry{req.account, req.includeDrafts, data}
+		}
+		publish(upd)
+	}
+	delete(s.prs.active, key)
+}
+
+// fetchPRsForAccount does network and credential work outside s.mu.
+// reachable is App.reachable until the network guard moves into the session.
+func (s *localSession) fetchPRsForAccount(ctx context.Context, key string, req prRefresh, reachable func(context.Context, string) bool) (data provider.AccountPRs, upd PRAccountUpdateDTO, publish bool) {
 	acct := config.Account{
 		Provider: req.account.provider, URL: req.account.url, Username: req.account.username,
 		DefaultCredentialType: req.account.credentialType,
@@ -288,11 +314,11 @@ func (a *App) fetchPRsForAccount(ctx context.Context, key string, req prRefresh)
 	defer cancel()
 
 	// Unreachable accounts retain their last known PRs.
-	if !a.reachable(ctx, serverAddr(acct)) {
+	if !reachable(ctx, serverAddr(acct)) {
 		return data, upd, false
 	}
 	upd = PRAccountUpdateDTO{AccountKey: key, ByRepo: map[string]PRSummaryDTO{}}
-	lister := a.prs.lister
+	lister := s.prs.lister
 	if lister == nil {
 		prov, err := provider.ByName(acct.Provider)
 		if err != nil {
@@ -340,22 +366,30 @@ func samePRCredentialFile(before, after os.FileInfo) bool {
 }
 
 // refreshPRConfigLocked applies changes loaded from disk to PR state before
-// replacing a.cfg. Unrelated changes leave active requests in place.
-func (a *App) refreshPRConfigLocked(next *config.Config) {
-	if a.cfg == nil {
+// replacing s.cfg. Unrelated changes leave active requests in place. bump
+// is App.bumpCredentialRevisionLocked until refresh moves into the session
+// (#369). Caller holds s.mu.
+func (s *localSession) refreshPRConfigLocked(next *config.Config, bump func(key string)) {
+	if s.cfg == nil {
 		return
 	}
-	if a.cfg.Global.PRBadgesOn() != next.Global.PRBadgesOn() ||
-		a.cfg.Global.PRDraftsIncluded() != next.Global.PRDraftsIncluded() {
-		a.prs.settingsRevision++
+	if s.cfg.Global.PRBadgesOn() != next.Global.PRBadgesOn() ||
+		s.cfg.Global.PRDraftsIncluded() != next.Global.PRDraftsIncluded() {
+		s.prs.settingsRevision++
 	}
-	for key, old := range a.cfg.Accounts {
+	for key, old := range s.cfg.Accounts {
 		account, exists := next.Accounts[key]
 		if !exists || prAccountFor(old) != prAccountFor(account) {
-			a.bumpCredentialRevisionLocked(key)
-			delete(a.prs.cache, key)
+			bump(key)
+			delete(s.prs.cache, key)
 		}
 	}
+}
+
+// forgetPRAccountLocked drops the cached PRs of an account that is gone.
+// Caller holds s.mu.
+func (s *localSession) forgetPRAccountLocked(key string) {
+	delete(s.prs.cache, key)
 }
 
 // lookupRepoSummary case-insensitively finds a repo inside an AccountPRs.

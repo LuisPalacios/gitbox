@@ -255,9 +255,9 @@ func (b localBackend) GetConfigPath() string               { return b.a.getConfi
 func (b localBackend) GetMirrorStatus(mirrorKey string)    { b.a.getMirrorStatusLocal(mirrorKey) }
 func (b localBackend) GetNestedScanDepth() int             { return b.a.getNestedScanDepthLocal() }
 func (b localBackend) GetOS() string                       { return b.a.getOSLocal() }
-func (b localBackend) GetPRSettings() PRSettingsDTO        { return b.a.getPRSettingsLocal() }
+func (b localBackend) GetPRSettings() PRSettingsDTO        { return b.a.localSession.getPRSettingsLocal() }
 func (b localBackend) GetPRsForRepo(sourceKey, repoKey string) PRSummaryDTO {
-	return b.a.getPRsForRepoLocal(sourceKey, repoKey)
+	return b.a.localSession.getPRsForRepoLocal(sourceKey, repoKey)
 }
 func (b localBackend) GetPeriodicSync() string { return b.a.getPeriodicSyncLocal() }
 func (b localBackend) GetRepoDetail(sourceKey, repoKey string) RepoDetail {
@@ -350,10 +350,10 @@ func (b localBackend) SetCollapsed(state config.CollapsedState) error {
 func (b localBackend) SetDefaultRoot(path string) error   { return b.a.setDefaultRootLocal(path) }
 func (b localBackend) SetNestedScanDepth(depth int) error { return b.a.setNestedScanDepthLocal(depth) }
 func (b localBackend) SetPRBadgesEnabled(enabled bool) error {
-	return b.a.setPRBadgesEnabledLocal(enabled)
+	return b.a.localSession.setPRBadgesEnabledLocal(enabled, b.a.saveConfig)
 }
 func (b localBackend) SetPRIncludeDrafts(enabled bool) error {
-	return b.a.setPRIncludeDraftsLocal(enabled)
+	return b.a.localSession.setPRIncludeDraftsLocal(enabled, b.a.saveConfig)
 }
 func (b localBackend) SetPeriodicSync(interval string) error {
 	return b.a.setPeriodicSyncLocal(interval)
