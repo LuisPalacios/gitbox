@@ -68,9 +68,24 @@ bundle="$(cd "$(dirname "$bundle")" && pwd)/$(basename "$bundle")"
 inbox="$(dirname "$bundle")"
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
+# Every temporary file of the lane (go build and go test work folders, npm,
+# Node's compile cache, mktemp) goes to a private folder on the cache disk
+# instead of the host's /tmp, which can be a small tmpfs shared with other
+# work. The name stays short: tests build socket paths under it.
+tmp="$cache/t-$lane-${sha:0:7}"
+rm -rf "$tmp"
+mkdir -p "$tmp"
+if [[ "$lane" == "win" ]]; then
+    # Go and Node read TMP and TEMP on Windows, in Windows form.
+    TMP="$(cygpath -m "$tmp")" TEMP="$(cygpath -m "$tmp")"
+    export TMP TEMP
+fi
+export TMPDIR="$tmp"
+
 # gate.sh copies this script and the bundle into the inbox for one run.
-# Remove both however the lane ends; the subshells of step() do not run it.
-trap 'rm -f "$bundle" "$self"' EXIT
+# Remove both and the temporary folder however the lane ends, pass or fail;
+# the subshells of step() do not run it.
+trap 'rm -f "$bundle" "$self"; cd "$cache" 2>/dev/null; rm -rf "$tmp" 2>/dev/null || true' EXIT
 
 # Each step runs in a subshell outside any condition: bash ignores set -e
 # inside a function called from an `if`, which would let a failed command
@@ -95,6 +110,8 @@ checkout() {
     mkdir -p "$cache"
     # Clones from a failed or abandoned run older than a day.
     find "$cache" -maxdepth 1 -name 'work-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+    # Temporary folders of a run killed before its exit trap, older than a day.
+    find "$cache" -maxdepth 1 -name 't-*' -mtime +1 -exec rm -rf {} + 2>/dev/null || true
     # Inbox files of a run killed before its exit trap, older than a day.
     find "$inbox" -maxdepth 1 -type f -name 'gate-*' -mtime +1 -delete 2>/dev/null || true
     [[ -d "$repo" ]] || git init -q --bare "$repo"
