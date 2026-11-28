@@ -1,13 +1,15 @@
-// SessionController (#353, #379, #380): one window's session. It owns the
-// event subscriptions, the run bookkeeping they update (status passes,
+// SessionController (#353, #379, #380, #381): one window's session. It owns
+// the event subscriptions, the run bookkeeping they update (status passes,
 // Fetch all, Pull all, clones, mirrors, credentials, reconcile, updates)
 // and the lifecycle: the config load, the dashboard snapshot, the startup
-// status pass and a remote window's connection. App.svelte creates one,
-// starts it, renders from its stores and keeps layout, modals and
-// navigation, which the session reaches through SessionHost.
+// status pass and a remote window's connection. It reads and writes only
+// its own store bundle (lib/session/bundle.ts), notices and texts included.
+// App.svelte creates one, starts it, renders from its stores and keeps
+// layout, modals and navigation, which the session reaches through
+// SessionHost.
 import { tick } from 'svelte';
 import { get, readonly, writable } from 'svelte/store';
-import { accounts, applyMirrorStatusResults, applyPRUpdate, applyStatusResults, configStore, mirrors, repoStates, sources, workspaceDiagnostics, workspaceMembers, workspacePlaceholders, workspaceUnknown } from '../stores';
+import type { StoreBundle } from './bundle';
 import { acceptStatusBatch, applyRepairReports, statusPaintQueue } from '../status';
 import { completionStatuses, hasConfiguredRepo } from '../events';
 import type { createEventRouter } from '../events';
@@ -15,11 +17,12 @@ import type { bridge as appBridge, RemoteState } from '../bridge';
 import type { EventMetadata, EventPayloads } from '../dto.generated';
 import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from '../activity';
 import type { Run, Completion, FetchSummary, Unsafe } from '../activity';
-import { pushNotice, dismissNotice, errorText } from '../notices';
+import { errorText } from '../notice-list';
 import { backgroundAllowed, clearsOnReconnect, reloadErrorShown } from '../readonly';
-import { t } from '../i18n';
+import { createTexts } from '../i18n';
 import type { Vars } from '../i18n';
 import { tintOf } from '../tint';
+import { hostFromState } from '../remotehost';
 import type { Placeholder } from '../repo-tree';
 import type { ConfigBackupInfo, CredentialFinding, CredentialStatus, MirrorSetupResult, OrphanRepoDTO, PullSkipReason, ReconcileDTO, RepoState, StartupSnapshot, UpdateInfo, WorkspaceChoiceDTO } from '../types';
 
@@ -52,7 +55,7 @@ export interface SessionHost {
   /** The window's checks once the first status is in: global git config, autostart, PR badges. */
   startupChecks(): Promise<void>;
   askWorkspaceChoices(choices: WorkspaceChoiceDTO[]): void;
-  /** Marks the window as the remote one of alias, before its data loads. */
+  /** Marks the window as the remote one of alias, before its data loads; the session has already marked its own bundle. */
   markRemote(alias: string): void;
   refreshDetail(): void;
   discoverDone(data: EventPayloads['discover:done']): void;
@@ -63,12 +66,20 @@ export interface SessionDeps {
   bridge: SessionBridge;
   events: EventRouter;
   host: SessionHost;
+  /** The session's own stores (createStoreBundle); the only ones it writes. */
+  stores: StoreBundle;
 }
 
 export type SessionController = ReturnType<typeof createSessionController>;
 
-export function createSessionController({ bridge, events, host }: SessionDeps) {
-  const $t = (key: string, vars?: Vars) => get(t)(key, vars);
+export function createSessionController({ bridge, events, host, stores }: SessionDeps) {
+  const {
+    configStore, accounts, sources, repoStates, mirrors, workspacePlaceholders, workspaceMembers, workspaceUnknown,
+    workspaceDiagnostics, applyStatusResults, applyMirrorStatusResults, applyPRUpdate, pushNotice, dismissNotice,
+  } = stores;
+  // The session's texts name its own host (#295).
+  const texts = createTexts(stores.remoteTextHost);
+  const $t = (key: string, vars?: Vars) => get(texts.t)(key, vars);
   const subscriptions: (() => void)[] = [];
   const onEvent: EventRouter['on'] = (name, handler, stale) => {
     const off = events.on(name, handler, stale);
@@ -1114,6 +1125,9 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
     // A new connection clears what the disconnection left behind.
     if (clearsOnReconnect(previous?.state, s.state)) reloadError.set('');
     remoteState.set(s);
+    // The launchers learn from the remote state which editors open the
+    // host's folders (#243).
+    stores.remoteHost.set(hostFromState(s));
     if (s.state !== 'connected') {
       // The window keeps what it shows until it knows whether the next
       // connection resumes the host's daemon (#247): the events it missed
@@ -1156,6 +1170,8 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
       if (get(firstRun)) remoteLoaded.set(false);
     }
     try {
+      stores.remoteWindow.set(true);
+      stores.remoteTextHost.set(s.alias);
       host.markRemote(s.alias);
       // What the host did meanwhile is not all known: its rows come back
       // from the host's status.
@@ -1209,6 +1225,8 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
   }
 
   return {
+    /** The session's own store bundle. */
+    stores,
     syncing: readonly(syncing),
     fetchRun: readonly(fetchRun),
     pullRun: readonly(pullRun),

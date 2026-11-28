@@ -235,19 +235,54 @@ test('I name the host, not this computer, in a remote window', async () => {
     }
   }
 
-  const code = await readFile(join(libDir, 'i18n.ts'), 'utf8');
-  const { outputText } = ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-  const store = import.meta.resolve('svelte/store');
-  const i18n = await import(`data:text/javascript;base64,${Buffer.from(outputText.replace("'svelte/store'", `'${store}'`)).toString('base64')}`);
-  const { get } = await import(store);
+  // The texts follow the host of the active session (#381), and each
+  // session's own texts follow its host, so the translator is bundled with
+  // the session modules it imports.
+  const i18n = await bundleI18n();
+  const { get } = i18n;
   const say = (key, vars) => get(i18n.t)(key, vars);
+  const local = i18n.defaultBundle;
+  const remote = i18n.createStoreBundle();
 
   assert.equal(say('menu.delete'), 'Delete clone folder…');
-  i18n.remoteTextHost.set('my-server');
+  remote.remoteTextHost.set('my-server');
+  assert.equal(say('menu.delete'), 'Delete clone folder…', 'an inactive session does not rename the shell');
+  i18n.activeSession.set(remote);
   assert.equal(say('menu.delete'), 'Delete clone folder on my-server…');
   assert.equal(say('repo.pullTip'), en.get('repo.pullTip'), 'a key without a variant reads as before');
   i18n.languageStore.set('es');
   assert.equal(say('menu.delete'), 'Eliminar carpeta del clon en my-server…');
-  i18n.remoteTextHost.set(null);
+  i18n.activeSession.set(local);
   assert.equal(say('menu.delete'), 'Eliminar carpeta del clon…');
+  const own = i18n.createTexts(remote.remoteTextHost);
+  assert.equal(get(own.t)('menu.delete'), 'Eliminar carpeta del clon en my-server…', 'a session keeps its own texts while another one shows');
+  remote.remoteTextHost.set(null);
+  assert.equal(get(own.t)('menu.delete'), 'Eliminar carpeta del clon…');
 });
+
+async function bundleI18n() {
+  const { build } = await import('vite');
+  const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
+  const { pathToFileURL } = await import('node:url');
+  const root = join(srcDir, '..');
+  const scratch = await mkdtemp(join(root, 'node_modules', '.i18n-test-'));
+  try {
+    const entry = join(scratch, 'entry.ts');
+    await writeFile(entry, [
+      `export { createTexts, languageStore, t } from ${JSON.stringify(join(libDir, 'i18n.ts'))}`,
+      `export { activeSession, defaultBundle } from ${JSON.stringify(join(libDir, 'session/active.ts'))}`,
+      `export { createStoreBundle } from ${JSON.stringify(join(libDir, 'session/bundle.ts'))}`,
+      `export { get } from 'svelte/store'`,
+    ].join('\n'));
+    const bundle = await build({
+      configFile: false, root, logLevel: 'error',
+      build: { write: false, minify: false, lib: { entry, formats: ['es'] }, rolldownOptions: { output: { codeSplitting: false } } },
+    });
+    const { output } = Array.isArray(bundle) ? bundle[0] : bundle;
+    const bundled = join(scratch, 'i18n.mjs');
+    await writeFile(bundled, output.find((file) => file.type === 'chunk').code);
+    return await import(pathToFileURL(bundled).href);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}

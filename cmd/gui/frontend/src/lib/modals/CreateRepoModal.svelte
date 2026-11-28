@@ -2,11 +2,11 @@
   // Create a new repository on the provider, optionally cloning it.
   import { fade, slide } from 'svelte/transition';
   import { bridge } from '../bridge';
-  import { accounts, configStore, repoStates } from '../stores';
+  import { accounts, activeSession, configStore } from '../stores';
+  import { get } from 'svelte/store';
   import { dismiss } from '../dismiss';
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
-
   let restoring = false;
   let createRepoModal: string | null = null;
   let createRepoOrgs: string[] = [];
@@ -66,6 +66,8 @@
   }
 
   async function submitCreateRepo() {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     if (!createRepoModal || !createRepoOwner || !createRepoName) return;
     createRepoBusy = true;
     createRepoError = '';
@@ -74,11 +76,11 @@
       const repoKey = createRepoOwner + '/' + createRepoName;
       const willClone = createRepoClone;
       await bridge.createNewRepo(acctKey, createRepoOwner, createRepoName, createRepoDesc, createRepoPrivate, willClone, rootChoices.length > 1 ? createRepoRoot : '');
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
       // Pre-set status to 'cloning' so the repo doesn't flash as 'error'
       // before the async clone finishes.
       if (willClone) {
-        repoStates.update((s) => ({
+        session.repoStates.update((s) => ({
           ...s,
           [`${acctKey}/${repoKey}`]: { status: 'cloning', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 },
         }));

@@ -22,7 +22,10 @@ test('I show pending review text in Simple and both PR counts in Advanced', asyn
     const { default: RepoRow } = await server.ssrLoadModule('/src/lib/components/RepoRow.svelte');
     const { render } = await server.ssrLoadModule('svelte/server');
     const { languageStore } = await server.ssrLoadModule('/src/lib/i18n.ts');
-    const { applyPRUpdate, prsByAccount, prSettings } = await server.ssrLoadModule('/src/lib/stores.ts');
+    // The row reads the active session's stores; the fixture writes to its bundle (#381).
+    const { activeSession } = await server.ssrLoadModule('/src/lib/stores.ts');
+    const { get } = await server.ssrLoadModule('svelte/store');
+    const { applyPRUpdate, prsByAccount, prSettings } = get(activeSession);
 
     const repoName = 'owner/project';
     const repoKey = 'source/' + repoName;

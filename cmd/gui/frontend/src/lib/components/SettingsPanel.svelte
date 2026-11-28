@@ -2,7 +2,8 @@
   // The Settings panel under the top bar (gear button).
   import { slide } from 'svelte/transition';
   import { bridge, settingsSaveFailed } from '../bridge';
-  import { configStore, prSettings } from '../stores';
+  import { activeSession, configStore, prSettings } from '../stores';
+  import { get } from 'svelte/store';
   import { t } from '../i18n';
   import { ro, remoteOff } from '../ro';
   import { remoteHost, remoteWindow } from '../stores';
@@ -19,10 +20,12 @@
     : $configStore.global.show_pull_plan ? 'on' : 'off';
 
   async function setShowPullPlan(choice: typeof pullPlanChoices[number]) {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     if (choice === pullPlanChoice) return;
     try {
       await bridge.setShowPullPlan(choice);
-      configStore.update(cfg => cfg && {
+      session.configStore.update(cfg => cfg && {
         ...cfg, global: { ...cfg.global, show_pull_plan: choice === 'auto' ? undefined : choice === 'on' },
       });
     } catch (error) {

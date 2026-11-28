@@ -5,7 +5,8 @@
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import { dismiss } from '../dismiss';
-  import { accounts, configStore } from '../stores';
+  import { accounts, activeSession } from '../stores';
+  import { get } from 'svelte/store';
 
   let addMirrorGroupModal = false;
   // Add mirror group form
@@ -18,10 +19,12 @@
   }
 
   async function submitAddMirrorGroup() {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     if (!newMirrorKey || !newMirrorSrc || !newMirrorDst) return;
     try {
       await bridge.addMirrorGroup(newMirrorKey, newMirrorSrc, newMirrorDst);
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
       addMirrorGroupModal = false;
       newMirrorKey = ''; newMirrorSrc = ''; newMirrorDst = '';
     } catch (e: any) {

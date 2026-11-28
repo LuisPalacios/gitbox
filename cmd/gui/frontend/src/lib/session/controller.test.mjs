@@ -5,10 +5,11 @@ import { after, test } from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'vite'
 
-// The controller imports the shared stores, the translator and Svelte, so
-// it is bundled with vite like the DOM tests, and each test imports its own
-// copy: fresh stores, notices and router per case. The fixtures are fake:
-// no host, no account, no token.
+// The controller imports the translator and Svelte, so it is bundled with
+// vite like the DOM tests, and each test imports its own copy: a fresh
+// router and a store bundle of its own per case, notices included, which
+// is not the active one. The fixtures are fake: no host, no account, no
+// token.
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const lib = fileURLToPath(new URL('../', import.meta.url))
 const scratch = await mkdtemp(join(root, 'node_modules', '.session-test-'))
@@ -17,8 +18,8 @@ const entry = join(scratch, 'entry.ts')
 await writeFile(entry, [
   `export { createSessionController } from ${JSON.stringify(join(lib, 'session/controller.ts'))}`,
   `export { createEventRouter } from ${JSON.stringify(join(lib, 'events.ts'))}`,
-  `export { configStore, repoStates, mirrorStates, workspaceUnknown, prsByAccount } from ${JSON.stringify(join(lib, 'stores.ts'))}`,
-  `export { notices, dismissNotice } from ${JSON.stringify(join(lib, 'notices.ts'))}`,
+  `export { createStoreBundle } from ${JSON.stringify(join(lib, 'session/bundle.ts'))}`,
+  `export { activeSession } from ${JSON.stringify(join(lib, 'session/active.ts'))}`,
   `export { statusPaintQueue } from ${JSON.stringify(join(lib, 'status.ts'))}`,
   `export { get } from 'svelte/store'`,
 ].join('\n'))
@@ -79,11 +80,12 @@ async function session(t, { bridge = {}, host = {} } = {}) {
     quit: record('quit'),
     ...host,
   }
-  const controller = m.createSessionController({ bridge: fake, events, host: hostCalls })
-  m.configStore.set(fixtureConfig())
+  const stores = m.createStoreBundle()
+  const controller = m.createSessionController({ bridge: fake, events, host: hostCalls, stores })
+  stores.configStore.set(fixtureConfig())
   const row = { status: 'clean', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0, path: '/fixture/x' }
-  m.repoStates.set({ [keyOne]: { ...row }, [keyTwo]: { ...row } })
-  events.snapshot(10, () => m.get(m.configStore)?.revision ?? 0)
+  stores.repoStates.set({ [keyOne]: { ...row }, [keyTwo]: { ...row } })
+  events.snapshot(10, () => m.get(stores.configStore)?.revision ?? 0)
   let sequence = 10
   function emit(name, operationID, payload, extra = {}) {
     const envelope = { schema: 1, sequence: ++sequence, operationID: String(operationID), configRevision: 1, payload, ...extra }
@@ -91,9 +93,9 @@ async function session(t, { bridge = {}, host = {} } = {}) {
   }
   t.after(() => {
     controller.stop()
-    for (const notice of m.get(m.notices)) m.dismissNotice(notice.id)
+    for (const notice of m.get(stores.notices)) stores.dismissNotice(notice.id)
   })
-  return { ...m, controller, emit, calls, seen, listeners, value: store => m.get(store) }
+  return { ...m, ...stores, stores, controller, emit, calls, seen, listeners, value: store => m.get(store) }
 }
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0))
@@ -394,7 +396,7 @@ test('a remote session loads on connect, keeps its rows on a resumed reconnect a
   const passes = []
   let s
   s = await session(t, { bridge: startBridge(passes, {
-    remoteInfo: async () => ({ state: 'connected', alias: 'fixture-host' }),
+    remoteInfo: async () => ({ state: 'connected', alias: 'fixture-host', remoteEditors: ['code'], editor: 'code' }),
     refreshStatus: async () => { s.emit('status:updated', 1, [status(one), status(two, 'behind')]) },
     reloadConfig: async () => fixtureConfig(),
     getAllStatus: async () => [status(one), status(two, 'behind')],
@@ -404,6 +406,13 @@ test('a remote session loads on connect, keeps its rows on a resumed reconnect a
   const started = s.controller.start(true)
   await until(() => passes.length === 1, 'the first status pass')
   assert.deepEqual(s.seen.find(([name]) => name === 'markRemote'), ['markRemote', 'fixture-host'])
+  // The session marks its own bundle as remote (#381); its texts name the host.
+  assert.equal(s.value(s.stores.remoteWindow), true)
+  assert.equal(s.value(s.stores.remoteTextHost), 'fixture-host')
+  assert.deepEqual(s.value(s.stores.remoteHost), { editors: ['code'], editor: 'code' })
+  const active = s.value(s.activeSession)
+  assert.notEqual(active, s.stores, 'positive control: the case bundle is not the active one')
+  assert.equal(s.value(active.remoteWindow), false, 'the active session stays local')
   assert.equal(s.value(s.controller.remoteLoading), true)
   s.emit('status:batch', 1, { passID: 1, revision: 1, items: [status(one), status(two, 'behind')], done: true })
   await started

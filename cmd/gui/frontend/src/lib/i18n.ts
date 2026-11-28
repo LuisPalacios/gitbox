@@ -1,4 +1,6 @@
 import { writable, derived } from 'svelte/store';
+import type { Readable } from 'svelte/store';
+import { follow } from './session/active';
 
 export type Language = 'en' | 'es';
 
@@ -2685,23 +2687,28 @@ export function format(template: string, vars?: Vars): string {
   return value;
 }
 
-// remoteTextHost is the alias of the host a remote window shows (#295), null
-// in a local window. There, a key with a "<key>.remote" variant reads that
-// variant with {host} filled in, so a text about this computer names the
-// host the action reaches over SSH instead.
-export const remoteTextHost = writable<string | null>(null);
+// createTexts builds the translator of one session from the alias of the
+// host it shows (#295, #381): null for a local session. In a remote one, a
+// key with a "<key>.remote" variant reads that variant with {host} filled
+// in, so a text about this computer names the host the action reaches
+// over SSH instead. Its tpl returns a key's template with its {name}
+// placeholders unfilled, for Rich.svelte, which splits the markup before
+// it fills them.
+export function createTexts(host: Readable<string | null>) {
+  const tpl = derived([languageStore, host], ([$lang, $host]) => {
+    const lookup = (key: string): string | undefined => catalogs[$lang]?.[key] ?? catalogs[fallback][key];
+    return (key: string): string => {
+      const remote = $host ? lookup(`${key}.remote`) : undefined;
+      if (remote !== undefined) return remote.replaceAll('{host}', $host as string);
+      return lookup(key) ?? key;
+    };
+  });
+  const t = derived(tpl, ($tpl) => {
+    return (key: string, vars?: Vars): string => format($tpl(key), vars);
+  });
+  return { tpl, t };
+}
 
-// tpl returns a key's template with its {name} placeholders unfilled, for
-// Rich.svelte, which splits the markup before it fills them.
-export const tpl = derived([languageStore, remoteTextHost], ([$lang, $host]) => {
-  const lookup = (key: string): string | undefined => catalogs[$lang]?.[key] ?? catalogs[fallback][key];
-  return (key: string): string => {
-    const remote = $host ? lookup(`${key}.remote`) : undefined;
-    if (remote !== undefined) return remote.replaceAll('{host}', $host as string);
-    return lookup(key) ?? key;
-  };
-});
-
-export const t = derived(tpl, ($tpl) => {
-  return (key: string, vars?: Vars): string => format($tpl(key), vars);
-});
+// The shell's texts follow the session it shows: its host is session state
+// (remoteTextHost in lib/session/bundle.ts), not a setting of this module.
+export const { tpl, t } = createTexts(follow('remoteTextHost'));

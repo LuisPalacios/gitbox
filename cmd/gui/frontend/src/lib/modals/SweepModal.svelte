@@ -5,7 +5,8 @@
   import { pushNotice } from '../notices';
   import { t } from '../i18n';
   import { ro } from '../ro';
-  import { applyStatusResults } from '../stores';
+  import { activeSession } from '../stores';
+  import { get } from 'svelte/store';
   import { dismiss } from '../dismiss';
 
   export let closeActionMenu: () => void;
@@ -34,6 +35,8 @@
   $: manual = !!(sweepModal?.gone.length || sweepModal?.squashed.length);
 
   async function confirmSweepAction() {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     const selection = sweepModal;
     if (!selection?.preview.id || sweepBusy) return;
     sweepBusy = true;
@@ -49,7 +52,7 @@
     if (result.deleted?.length > 0) {
       pushNotice('success', $t('notice.swept'), [$t(result.deleted.length === 1 ? 'notice.sweptOne' : 'notice.sweptN', { n: result.deleted.length }), result.deleted.join(', ')]);
     }
-    bridge.getAllStatus().then(results => { applyStatusResults(results); });
+    bridge.getAllStatus().then(results => { session.applyStatusResults(results); });
   }
 </script>
 

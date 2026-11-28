@@ -5,7 +5,8 @@
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import { dismiss } from '../dismiss';
-  import { configStore, mirrors } from '../stores';
+  import { mirrors, activeSession } from '../stores';
+  import { get } from 'svelte/store';
 
   export let setupMirrorRepo: (mirrorKey: string, repoKey: string) => Promise<void>;
 
@@ -44,10 +45,12 @@
   }
 
   async function submitAddMirrorRepo() {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     if (!addMirrorRepoModal || !newMirrorRepoKey) return;
     try {
       await bridge.addMirrorRepo(addMirrorRepoModal, newMirrorRepoKey, newMirrorRepoDirection, newMirrorRepoOrigin);
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
       const mirrorKey = addMirrorRepoModal;
       const repoKey = newMirrorRepoKey;
       addMirrorRepoModal = null;

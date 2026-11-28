@@ -157,7 +157,9 @@ test('I show GCM as unavailable in a remote window and offer a switch to token',
     }, svelte()],
   });
   try {
-    const stores = await server.ssrLoadModule('/src/lib/stores.ts');
+    // The modal reads the active session's stores; the fixture writes to its bundle (#381).
+    const { activeSession } = await server.ssrLoadModule('/src/lib/stores.ts');
+    const stores = (await server.ssrLoadModule('svelte/store')).get(activeSession);
     const { gcmRemoteReasonKey, defaultCredentialType } = await server.ssrLoadModule('/src/lib/gcmRemote.ts');
     const { default: CredentialModal } = await server.ssrLoadModule('/src/lib/modals/CredentialModal.svelte');
     const { render } = await server.ssrLoadModule('svelte/server');
