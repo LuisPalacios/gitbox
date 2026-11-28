@@ -217,7 +217,7 @@ func (b localBackend) CredentialStoreToken(accountKey, token string) CredentialS
 	return b.a.credentialStoreTokenLocal(accountKey, token)
 }
 func (b localBackend) CredentialVerify(key string) CredentialStatus {
-	return b.a.credentialVerifyLocal(key)
+	return b.a.localSession.credentialVerifyLocal(key)
 }
 func (b localBackend) DeleteAccount(accountKey string, removeFolders bool) ([]string, error) {
 	return b.a.deleteAccountLocal(accountKey, removeFolders)
@@ -241,14 +241,14 @@ func (b localBackend) DoctorPrecheck(credentialType string) DoctorPrecheckDTO {
 	return b.a.doctorPrecheckLocal(credentialType)
 }
 func (b localBackend) DoctorRun() DoctorReport             { return b.a.doctorRunLocal() }
-func (b localBackend) FetchAllRepos() error                { return b.a.fetchAllReposLocal() }
+func (b localBackend) FetchAllRepos() error                { return b.a.localSession.fetchAllReposLocal() }
 func (b localBackend) FetchRepo(sourceKey, repoKey string) { b.a.fetchRepoLocal(sourceKey, repoKey) }
 func (b localBackend) FixGlobalGCMConfig() error           { return b.a.fixGlobalGCMConfigLocal() }
 func (b localBackend) BeginStatus(passID uint64) error {
-	b.a.requestStatusStream(false, false, passID)
+	b.a.localSession.requestStatusStream(false, false, passID)
 	return nil
 }
-func (b localBackend) GetAllStatus() []StatusResult        { return b.a.getAllStatusLocal() }
+func (b localBackend) GetAllStatus() []StatusResult        { return b.a.localSession.getAllStatusLocal() }
 func (b localBackend) GetCheckGlobalGitignore() bool       { return b.a.getCheckGlobalGitignoreLocal() }
 func (b localBackend) GetCollapsed() config.CollapsedState { return b.a.getCollapsedLocal() }
 func (b localBackend) GetConfig() (ConfigDTO, error)       { return b.a.getConfigLocal() }
@@ -315,9 +315,11 @@ func (b localBackend) OpenRepoInBrowser(sourceKey, repoKey string) (string, erro
 func (b localBackend) PreviewSweep(sourceKey, repoKey string) SweepPreviewDTO {
 	return b.a.previewSweepLocal(sourceKey, repoKey)
 }
-func (b localBackend) PreviewPullAll() (PullPlanDTO, error) { return b.a.previewPullAllLocal(), nil }
-func (b localBackend) PullAll(run, planID string)           { b.a.pullAllLocal(run, planID) }
-func (b localBackend) PullRepo(sourceKey, repoKey string)   { b.a.pullRepoLocal(sourceKey, repoKey) }
+func (b localBackend) PreviewPullAll() (PullPlanDTO, error) {
+	return b.a.localSession.previewPullAllLocal(), nil
+}
+func (b localBackend) PullAll(run, planID string)         { b.a.pullAllLocal(run, planID) }
+func (b localBackend) PullRepo(sourceKey, repoKey string) { b.a.pullRepoLocal(sourceKey, repoKey) }
 func (b localBackend) RecommendedGlobalGitignoreBody() string {
 	return b.a.recommendedGlobalGitignoreBodyLocal()
 }
@@ -326,8 +328,8 @@ func (b localBackend) Reconcile() ReconcileDTO {
 }
 func (b localBackend) RedetectProfiles() (ConfigDTO, error) { return b.a.redetectProfilesLocal() }
 func (b localBackend) RefreshAIHarnesses()                  { b.a.refreshAIHarnessesLocal() }
-func (b localBackend) RefreshAllPRs()                       { b.a.refreshAllPRsLocal() }
-func (b localBackend) RefreshStatus()                       { b.a.refreshStatusLocal() }
+func (b localBackend) RefreshAllPRs()                       { b.a.localSession.refreshAllPRsLocal() }
+func (b localBackend) RefreshStatus()                       { b.a.localSession.refreshStatusLocal() }
 func (b localBackend) ReloadConfig() (ConfigDTO, error)     { return b.a.reloadConfigLocal() }
 func (b localBackend) RemoveGlobalIdentity() error          { return b.a.removeGlobalIdentityLocal() }
 func (b localBackend) RemoveRoot(path string, forget bool) (RemoveRootDTO, error) {

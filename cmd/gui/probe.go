@@ -32,76 +32,76 @@ type upstreamProbeRevisions struct {
 	credentials map[string]uint64
 }
 
-func (a *App) snapshotProbeRevisions() upstreamProbeRevisions {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return upstreamProbeRevisions{maps.Clone(a.upstreamRevision), maps.Clone(a.credentialRevision)}
+func (s *localSession) snapshotProbeRevisions() upstreamProbeRevisions {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return upstreamProbeRevisions{maps.Clone(s.upstreamRevision), maps.Clone(s.credentialRevision)}
 }
 
 // beginUpstreamProbe shares an active sweep and throttles completed sweeps.
 // I keep the network work outside both config and coordination locks.
-func (a *App) beginUpstreamProbe() (*upstreamProbeFlight, bool) {
-	if a.refreshContext().Err() != nil {
+func (s *localSession) beginUpstreamProbe() (*upstreamProbeFlight, bool) {
+	if s.refreshContext().Err() != nil {
 		return nil, false
 	}
-	return a.shareUpstreamProbe()
+	return s.shareUpstreamProbe()
 }
 
-func (a *App) shareUpstreamProbe() (*upstreamProbeFlight, bool) {
-	a.probeMu.Lock()
-	defer a.probeMu.Unlock()
-	if a.probeFlight != nil {
-		return a.probeFlight, false
+func (s *localSession) shareUpstreamProbe() (*upstreamProbeFlight, bool) {
+	s.probeMu.Lock()
+	defer s.probeMu.Unlock()
+	if s.probeFlight != nil {
+		return s.probeFlight, false
 	}
-	if time.Since(a.lastProbeAt) < probeMinInterval {
+	if time.Since(s.lastProbeAt) < probeMinInterval {
 		return nil, false
 	}
 	flight := &upstreamProbeFlight{done: make(chan struct{})}
-	a.probeFlight = flight
+	s.probeFlight = flight
 	return flight, true
 }
 
-func (a *App) finishUpstreamProbe(flight *upstreamProbeFlight) {
-	ctx, cancel := context.WithTimeout(a.refreshContext(), probeSweepTimeout)
+func (s *localSession) finishUpstreamProbe(flight *upstreamProbeFlight) {
+	ctx, cancel := context.WithTimeout(s.refreshContext(), probeSweepTimeout)
 	defer cancel()
-	cfg := a.snapshotRefreshConfig()
-	revisions := a.snapshotProbeRevisions()
+	cfg := s.snapshotRefreshConfig()
+	revisions := s.snapshotProbeRevisions()
 	// An account whose server is unreachable is left out of the sweep: its
 	// requests would only time out.
 	resolve := func(ctx context.Context, acct config.Account, key string) (string, string, error) {
-		if !a.reachable(ctx, serverAddr(acct)) {
+		if !s.reachable(ctx, serverAddr(acct)) {
 			return "", "", errServerUnreachable
 		}
 		return credential.ResolveAPITokenContext(ctx, acct, key)
 	}
-	results := a.runUpstreamProbe(ctx, cfg, resolve, probeRequestTimeout)
-	flight.changed = a.applyUpstreamProbe(cfg, results, &revisions)
-	active := a.refreshContext().Err() == nil
+	results := s.runUpstreamProbe(ctx, cfg, resolve, probeRequestTimeout)
+	flight.changed = s.applyUpstreamProbe(cfg, results, &revisions)
+	active := s.refreshContext().Err() == nil
 	// Credential edits clear the throttle. I retain that invalidation if an
 	// old sweep finishes after the edit, including a same-type token rotation.
-	a.mu.Lock()
-	a.probeMu.Lock()
-	if active && maps.Equal(a.credentialRevision, revisions.credentials) {
-		a.lastProbeAt = time.Now()
+	s.mu.Lock()
+	s.probeMu.Lock()
+	if active && maps.Equal(s.credentialRevision, revisions.credentials) {
+		s.lastProbeAt = time.Now()
 	}
-	a.probeFlight = nil
+	s.probeFlight = nil
 	close(flight.done)
-	a.probeMu.Unlock()
-	a.mu.Unlock()
+	s.probeMu.Unlock()
+	s.mu.Unlock()
 }
 
 // probeUpstreamExistence joins an existing sweep instead of bypassing its guard.
-func (a *App) probeUpstreamExistence() bool {
-	flight, owner := a.beginUpstreamProbe()
+func (s *localSession) probeUpstreamExistence() bool {
+	flight, owner := s.beginUpstreamProbe()
 	if flight == nil {
 		return false
 	}
 	if owner {
-		a.finishUpstreamProbe(flight)
+		s.finishUpstreamProbe(flight)
 	} else {
 		select {
 		case <-flight.done:
-		case <-a.refreshContext().Done():
+		case <-s.refreshContext().Done():
 			return false
 		}
 	}
@@ -110,20 +110,20 @@ func (a *App) probeUpstreamExistence() bool {
 
 // probeUpstreamExistenceAsync publishes confirmed changes from the local cache.
 // I avoid another git status sweep when only provider metadata changes.
-func (a *App) probeUpstreamExistenceAsync() {
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	if a.refreshClosed {
+func (s *localSession) probeUpstreamExistenceAsync() {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	if s.refreshClosed {
 		return
 	}
-	flight, owner := a.shareUpstreamProbe()
+	flight, owner := s.shareUpstreamProbe()
 	if !owner {
 		return
 	}
-	a.refreshWG.Go(func() {
-		a.finishUpstreamProbe(flight)
+	s.refreshWG.Go(func() {
+		s.finishUpstreamProbe(flight)
 		if flight.changed {
-			a.emitCachedStatus()
+			s.emitCachedStatus()
 		}
 	})
 }
@@ -146,7 +146,7 @@ type upstreamProbeResult struct {
 
 type probeTokenResolver func(context.Context, config.Account, string) (string, string, error)
 
-func (a *App) runUpstreamProbe(ctx context.Context, cfg *config.Config, resolveToken probeTokenResolver, requestTimeout time.Duration) []upstreamProbeResult {
+func (s *localSession) runUpstreamProbe(ctx context.Context, cfg *config.Config, resolveToken probeTokenResolver, requestTimeout time.Duration) []upstreamProbeResult {
 	if cfg == nil || ctx.Err() != nil {
 		return nil
 	}
@@ -205,10 +205,10 @@ func (a *App) runUpstreamProbe(ctx context.Context, cfg *config.Config, resolveT
 				valid := err == nil && requestCtx.Err() == nil
 				cancel()
 				if err == nil {
-					a.diagnostics.Record(diag.RepoProbe, started, finished, nil, "", nil)
+					s.app.recordActivity(diag.RepoProbe, started, finished, nil, "", nil)
 				} else {
 					for _, path := range job.paths {
-						a.diagnostics.Record(diag.RepoProbe, started, finished, nil, path, err)
+						s.app.recordActivity(diag.RepoProbe, started, finished, nil, path, err)
 					}
 				}
 				if valid {
@@ -235,77 +235,77 @@ dispatch:
 	return results
 }
 
-func (a *App) applyUpstreamProbe(snapshot *config.Config, results []upstreamProbeResult, revisions *upstreamProbeRevisions) bool {
+func (s *localSession) applyUpstreamProbe(snapshot *config.Config, results []upstreamProbeResult, revisions *upstreamProbeRevisions) bool {
 	if snapshot == nil || len(results) == 0 {
 		return false
 	}
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg == nil {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cfg == nil {
 		return false
 	}
-	if !reflect.DeepEqual(a.cfg.Global.CredentialGCM, snapshot.Global.CredentialGCM) ||
-		!reflect.DeepEqual(a.cfg.Global.CredentialSSH, snapshot.Global.CredentialSSH) ||
-		!reflect.DeepEqual(a.cfg.Global.CredentialToken, snapshot.Global.CredentialToken) {
+	if !reflect.DeepEqual(s.cfg.Global.CredentialGCM, snapshot.Global.CredentialGCM) ||
+		!reflect.DeepEqual(s.cfg.Global.CredentialSSH, snapshot.Global.CredentialSSH) ||
+		!reflect.DeepEqual(s.cfg.Global.CredentialToken, snapshot.Global.CredentialToken) {
 		return false
 	}
-	if a.upstreamGone == nil {
-		a.upstreamGone = make(map[string]bool)
+	if s.upstreamGone == nil {
+		s.upstreamGone = make(map[string]bool)
 	}
 	// Compare timestamp changes on the same local status cache the
 	// asynchronous probe will publish.
 	cachedRows := make(map[statusRepoKey]StatusResult)
-	if reflect.DeepEqual(a.cachedStatusConfig, snapshot) {
-		for _, row := range a.cachedStatus {
+	if reflect.DeepEqual(s.cachedStatusConfig, snapshot) {
+		for _, row := range s.cachedStatus {
 			cachedRows[statusRepoKey{row.Source, row.Repo}] = row
 		}
 	}
 	changed := false
 	for _, result := range results {
-		if revisions != nil && a.credentialRevision[result.accountKey] != revisions.credentials[result.accountKey] {
+		if revisions != nil && s.credentialRevision[result.accountKey] != revisions.credentials[result.accountKey] {
 			continue
 		}
-		account, ok := a.cfg.Accounts[result.accountKey]
+		account, ok := s.cfg.Accounts[result.accountKey]
 		if !ok || !reflect.DeepEqual(account, snapshot.Accounts[result.accountKey]) {
 			continue
 		}
 		for sourceKey, oldSource := range snapshot.Sources {
 			oldRepo, oldOK := oldSource.Repos[result.repoKey]
-			source, sourceOK := a.cfg.Sources[sourceKey]
+			source, sourceOK := s.cfg.Sources[sourceKey]
 			repo, repoOK := source.Repos[result.repoKey]
 			if oldSource.Account != result.accountKey || !oldOK || !sourceOK || !repoOK ||
 				source.Account != oldSource.Account || source.Folder != oldSource.Folder || source.Root != oldSource.Root || repo != oldRepo ||
-				!slices.Equal(a.cfg.Global.Roots, snapshot.Global.Roots) {
+				!slices.Equal(s.cfg.Global.Roots, snapshot.Global.Roots) {
 				continue
 			}
 			key := sourceKey + "/" + result.repoKey
-			if revisions != nil && a.upstreamRevision[key] != revisions.upstream[key] {
+			if revisions != nil && s.upstreamRevision[key] != revisions.upstream[key] {
 				continue
 			}
 			gone := !result.exists
-			if a.upstreamGone[key] != gone {
+			if s.upstreamGone[key] != gone {
 				changed = true
 			}
 			checkKey := statusRepoKey{sourceKey, result.repoKey}
-			if identity, ok := statusRepoIdentity(a.cfg, checkKey); ok && !result.checkedAt.IsZero() {
-				check := a.networkChecksFor(checkKey, identity)
+			if identity, ok := statusRepoIdentity(s.cfg, checkKey); ok && !result.checkedAt.IsZero() {
+				check := s.networkChecksFor(checkKey, identity)
 				if result.checkedAt.After(check.existence) {
 					row, cached := cachedRows[checkKey]
 					if gone {
 						row.State = status.UpstreamGone.String()
 					}
-					before := a.networkCheckedAt(row)
+					before := s.networkCheckedAt(row)
 					check.existence = result.checkedAt
-					a.statusNetwork[checkKey] = check
-					changed = changed || (cached && before != a.networkCheckedAt(row))
+					s.statusNetwork[checkKey] = check
+					changed = changed || (cached && before != s.networkCheckedAt(row))
 				}
 			}
 			if gone {
-				a.upstreamGone[key] = true
+				s.upstreamGone[key] = true
 			} else {
-				delete(a.upstreamGone, key)
+				delete(s.upstreamGone, key)
 			}
 		}
 	}

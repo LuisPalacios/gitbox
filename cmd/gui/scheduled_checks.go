@@ -83,7 +83,7 @@ func (a *App) RunTask(name string) (string, error) {
 		if a.remote != nil && !a.remote.connected() {
 			return "", errTaskOffline
 		}
-		if err := a.be().RunFleetCheck(a.refreshContext(), name); err != nil {
+		if err := a.be().RunFleetCheck(a.localSession.refreshContext(), name); err != nil {
 			return "", err
 		}
 		return "finished", nil
@@ -111,12 +111,12 @@ func (b localBackend) RunFleetCheck(ctx context.Context, name string) error {
 		if !exists {
 			return config.ErrNotFound
 		}
-		a.recheckDownServer(ctx, serverAddr(account))
+		a.localSession.recheckDownServer(ctx, serverAddr(account))
 		return ctx.Err()
 	}
 	switch name {
 	case taskFetch:
-		return a.fetchAllReposContext(ctx)
+		return a.localSession.fetchAllReposContext(ctx)
 	case taskMirrors:
 		a.mu.Lock()
 		cfg := a.snapshotLocked()
@@ -135,9 +135,9 @@ func (b localBackend) RunFleetCheck(ctx context.Context, name string) error {
 		}
 		return result
 	case taskPRs:
-		pass := a.queuePRs(true)
+		pass := a.localSession.queuePRs(true)
 		if pass == nil {
-			return a.refreshContext().Err()
+			return a.localSession.refreshContext().Err()
 		}
 		select {
 		case <-ctx.Done():
