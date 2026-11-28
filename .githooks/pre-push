@@ -7,7 +7,9 @@
 # - Other branches: a commit with a gate marker skips the checks below;
 #   otherwise the hook runs a gofmt check, go vet and unit tests, building
 #   the GUI frontend first when cmd/gui/frontend/dist is missing.
-# - Tag-only pushes and branch deletions skip every check.
+# - Every pushed commit, and an annotated tag's message, must be free of AI
+#   attribution (.githooks/ai-attribution.sh), whatever the target ref.
+# - Tag-only pushes and branch deletions skip the gate and the Go checks.
 #
 # Setup (one time):
 #   git config core.hooksPath .githooks
@@ -34,14 +36,40 @@ gate_status() {
     fi
 }
 
+hooks_dir="$(cd "$(dirname "$0")" && pwd)"
+remote="$1"
+
+# check_attribution <ref> <sha>: every commit the push sends (not yet on the
+# remote) and an annotated tag's own message must be free of AI attribution.
+# Catches commits made before the commit-msg hook was active or with
+# --no-verify. Sets blocked=true on a finding.
+check_attribution() {
+    local ref="$1" sha="$2" commit offending
+    while read -r commit; do
+        if ! offending="$(git log -1 --format=%B "$commit" | "$hooks_dir/ai-attribution.sh")"; then
+            echo "pre-push: $ref: commit ${commit:0:12} carries AI attribution; reword it:"
+            printf '  %s\n' "$offending"
+            blocked=true
+        fi
+    done < <(git rev-list "$sha" --not --remotes="$remote")
+    if [ "$(git cat-file -t "$sha")" = tag ] &&
+        ! offending="$(git for-each-ref --format='%(contents)' "$ref" | "$hooks_dir/ai-attribution.sh")"; then
+        echo "pre-push: $ref: the tag message carries AI attribution:"
+        printf '  %s\n' "$offending"
+        blocked=true
+    fi
+}
+
 # Git passes "<local ref> <local sha> <remote ref> <remote sha>" per ref on
-# stdin. Read every line: main needs a gate marker; other branch commits
-# without a marker need the light checks.
+# stdin. Read every line: every pushed commit must be free of AI
+# attribution, main needs a gate marker, and other branch commits without a
+# marker need the light checks.
 need_checks=false
 blocked=false
 while read -r local_ref local_sha remote_ref _; do
+    [ "$local_sha" = "$zero" ] && continue   # branch or tag deletion
+    check_attribution "$local_ref" "$local_sha"
     case "$local_ref" in refs/tags/*) continue ;; esac
-    [ "$local_sha" = "$zero" ] && continue   # branch deletion
     status="$(gate_status "$local_sha")"
     if [ "$remote_ref" = "refs/heads/main" ]; then
         case "$status" in

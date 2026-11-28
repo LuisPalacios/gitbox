@@ -134,9 +134,11 @@ GITBOX_SMOKE_ALIAS=my-server GITBOX_SMOKE_SERVER_DIR='~/.cache/gitbox-smoke' \
   -ldflags "-X $pkg.version=$VERSION -X $pkg.commit=$COMMIT" ./cmd/gui/
 ```
 
-## Pre-push hook
+## Git hooks
 
-`.githooks/pre-push` se niega a actualizar `main` salvo que el commit que se sube haya pasado el [gate local](local-gate.md). En otras ramas ejecuta una comprobación `gofmt -s -l`, `go vet ./...` y `go test -short ./...` salvo que el commit ya haya pasado el gate, y construye primero el frontend cuando falta `cmd/gui/frontend/dist`. Los push que solo llevan tags lo saltan. Lo activo una vez por clon:
+`.githooks/pre-push` se niega a actualizar `main` salvo que el commit que se sube haya pasado el [gate local](local-gate.md). En otras ramas ejecuta una comprobación `gofmt -s -l`, `go vet ./...` y `go test -short ./...` salvo que el commit ya haya pasado el gate, y construye primero el frontend cuando falta `cmd/gui/frontend/dist`. Los push que solo llevan tags saltan esas comprobaciones.
+
+Ningún commit lleva atribución a una IA: ni un trailer de coautoría que nombre una herramienta de IA, ni un trailer de sesión de un harness, ni un pie "generated with". Un squash merge copia en `main` los trailers de todos los commits de la rama, y GitHub muestra entonces la herramienta como contributor. `.githooks/commit-msg` rechaza un mensaje así, y `.githooks/pre-push` rechaza un push cuyos commits nuevos o mensaje de tag anotado lleven uno, sea cual sea la ref de destino. Ambos usan `.githooks/ai-attribution.sh`, que `/merge-pr` también ejecuta sobre el texto del PR antes de un squash. Los coautores humanos y las simples menciones de una herramienta siguen permitidos. Activo los hooks una vez por clon:
 
 ```bash
 git config core.hooksPath .githooks

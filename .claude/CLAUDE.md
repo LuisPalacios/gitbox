@@ -209,6 +209,8 @@ After any code change, run the focused tests for the package that changed. Read 
 
 **Pre-push hook:** `.githooks/pre-push` refuses to update main unless the pushed commit has a gate marker (a partial one needs `GATE_ALLOW_PARTIAL=1`). For other branches it runs a `gofmt -s -l` check, `go vet` and `go test -short` unless the commit already passed the gate, building the frontend first when `cmd/gui/frontend/dist` is missing. Run `gofmt -s -w` on changed Go files before committing. Activate with `git config core.hooksPath .githooks`.
 
+**AI attribution guard:** `.githooks/commit-msg` and `pre-push` reject AI co-author trailers and "generated with" footers (`.githooks/ai-attribution.sh`). Reword the message; never use `--no-verify`.
+
 **Test plan:** The full pre-PR and release verification workflow is documented in `docs/testing.md`. The `/test-plan` skill automates the automated steps and guides through interactive ones.
 
 ### Update stakeholder documents

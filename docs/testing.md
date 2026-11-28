@@ -134,9 +134,11 @@ GITBOX_SMOKE_ALIAS=my-server GITBOX_SMOKE_SERVER_DIR='~/.cache/gitbox-smoke' \
   -ldflags "-X $pkg.version=$VERSION -X $pkg.commit=$COMMIT" ./cmd/gui/
 ```
 
-## Pre-push hook
+## Git hooks
 
-`.githooks/pre-push` refuses to update `main` unless the pushed commit passed the [local gate](local-gate.md). For other branches it runs a `gofmt -s -l` check, `go vet ./...` and `go test -short ./...` unless the commit already passed the gate, and builds the frontend first when `cmd/gui/frontend/dist` is missing. Tag-only pushes skip it. I activate it once per clone:
+`.githooks/pre-push` refuses to update `main` unless the pushed commit passed the [local gate](local-gate.md). For other branches it runs a `gofmt -s -l` check, `go vet ./...` and `go test -short ./...` unless the commit already passed the gate, and builds the frontend first when `cmd/gui/frontend/dist` is missing. Tag-only pushes skip those checks.
+
+No commit carries AI attribution: no co-author trailer that names an AI tool, no harness session trailer and no "generated with" footer. A squash merge copies the trailers of every branch commit into `main`, and GitHub then lists the tool as a contributor. `.githooks/commit-msg` rejects such a message, and `.githooks/pre-push` rejects a push whose new commits or annotated tag message carry one, whatever the target ref. Both use `.githooks/ai-attribution.sh`, which `/merge-pr` also runs on the PR text before a squash. Human co-authors and plain mentions of a tool stay allowed. I activate the hooks once per clone:
 
 ```bash
 git config core.hooksPath .githooks

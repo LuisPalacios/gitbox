@@ -403,13 +403,15 @@ run_npm_audit() {
 
 run_shellcheck() {
     local files
-    mapfile -t files < <(git ls-files '*.sh' .githooks/pre-push scripts/appimage/AppRun)
+    mapfile -t files < <(git ls-files '*.sh' .githooks/pre-push .githooks/commit-msg scripts/appimage/AppRun)
     shellcheck -f gcc -x -P SCRIPTDIR "${files[@]}"
 }
 
 run_selftest() {
     bash scripts/test-health-args.sh >"$tmp/selftest.full" 2>&1 \
         || { cat "$tmp/selftest.full"; return 1; }
+    bash scripts/test-githooks.sh >"$tmp/githooks.full" 2>&1 \
+        || { cat "$tmp/githooks.full"; return 1; }
 }
 
 run_bootstrap() {

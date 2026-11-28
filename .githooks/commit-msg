@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Commit-msg hook: rejects AI attribution in the commit message.
+#
+# Commits are the maintainer's own work. A co-author trailer naming an AI
+# tool also makes GitHub list that tool as a contributor, and a squash merge
+# copies the trailers of every branch commit into main. The check lives in
+# .githooks/ai-attribution.sh, shared with pre-push and the merge-pr skill.
+#
+# Setup (one time):
+#   git config core.hooksPath .githooks
+
+set -euo pipefail
+
+hooks_dir="$(cd "$(dirname "$0")" && pwd)"
+
+# Drop the verbose diff below the scissors line and the comment lines, which
+# git removes from the final message anyway.
+message="$(sed '/^# -\{24\} >8 -\{24\}$/,$d' "$1" | git stripspace --strip-comments)"
+
+if ! offending="$(printf '%s\n' "$message" | "$hooks_dir/ai-attribution.sh")"; then
+    echo "commit-msg: remove the AI attribution from the commit message:" >&2
+    printf '  %s\n' "$offending" >&2
+    exit 1
+fi
