@@ -54,7 +54,7 @@ I keep small Go seed corpora under each package's `testdata/fuzz/<target>/`. Ord
 go test ./pkg/config/ ./pkg/workspace/ ./pkg/status/ ./pkg/rpc/
 ```
 
-I opt into mutation passes with `HEALTH_FUZZ=1`; the default health check keeps running only the seeds. Each target gets 10 seconds and two workers. The Linux PR health job enables this flag. I can run just these passes or include them in the full gate:
+I opt into mutation passes with `HEALTH_FUZZ=1`; the default health check keeps running only the seeds. Each target gets a fixed number of executions, about 10 seconds, and two workers. The Linux PR health job enables this flag. I can run just these passes or include them in the full gate:
 
 ```bash
 HEALTH_FUZZ=1 ./scripts/health.sh fuzz

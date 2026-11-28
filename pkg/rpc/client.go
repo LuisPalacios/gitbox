@@ -69,8 +69,10 @@ type Client struct {
 	pingClosed chan struct{}
 
 	// deliverMu orders the delivery of events: live ones from the reader,
-	// and the replay of a resume, which goes first.
+	// and the replay of a resume, which goes first. It is held while
+	// OnEvent runs.
 	deliverMu sync.Mutex
+	ended     bool              // EndDelivery was called: OnEvent gets nothing more
 	lastSeq   uint64            // the highest event number delivered
 	holding   bool              // live events wait for the replay
 	held      []json.RawMessage // what they are
@@ -164,6 +166,17 @@ func (c *Client) ResumePoint() ResumePoint {
 	c.deliverMu.Lock()
 	defer c.deliverMu.Unlock()
 	return ResumePoint{Instance: c.server.Daemon.Instance, After: c.lastSeq}
+}
+
+// EndDelivery stops handing events to OnEvent and returns ResumePoint:
+// the point counts every event OnEvent got, and OnEvent gets none after
+// it. It waits for the event being handed over, so a caller must not hold
+// a lock that OnEvent takes (#409).
+func (c *Client) EndDelivery() ResumePoint {
+	c.deliverMu.Lock()
+	c.ended = true
+	c.deliverMu.Unlock()
+	return c.ResumePoint()
 }
 
 // Server returns what the server said about itself in the handshake.
@@ -370,6 +383,9 @@ func (c *Client) deliverEvent(params json.RawMessage) {
 // event can go out after newer events, and the server never replays an
 // event that the connection got live.
 func (c *Client) deliverLocked(params json.RawMessage) bool {
+	if c.ended {
+		return false
+	}
 	var ev struct {
 		Name    string            `json:"name"`
 		Payload []json.RawMessage `json:"payload"`

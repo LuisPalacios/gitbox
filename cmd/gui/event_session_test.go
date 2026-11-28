@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/LuisPalacios/gitbox/pkg/rpc"
 )
 
 // statusEvent is a valid host envelope of status:updated with sequence seq.
@@ -84,6 +87,65 @@ func TestRelayDropsSupersededConnectionEvents(t *testing.T) {
 	r.relayFrom(gen, "status:updated", statusEvent(t, 2, ""))
 	if got := link.Events.named("status:updated"); len(got) != 1 {
 		t.Errorf("an event of the detached connection reached the window: %+v", got[1:])
+	}
+}
+
+// A connect and a detach end while the host sends events without pause, so
+// one is nearly always being relayed (#409). The client holds its delivery
+// lock while the relay hands an event to the window, and the relay takes
+// relayMu, then mu: a connect or detach that waited for that lock while it
+// held either one froze the window for good.
+func TestRelayConnectAndDetachWhileEventsArrive(t *testing.T) {
+	event := statusEvent(t, 1, "")[0]
+	for range 50 {
+		srv := &rpc.Server{
+			ToUserError: toUserError,
+			Self:        rpc.Hello{Version: version, Commit: commit, OS: "linux", Arch: "amd64", PID: 1},
+			Log:         io.Discard,
+			Persistent:  &rpc.Persistent{Instance: "daemon-1"},
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		stop := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				srv.Emit("status:updated", event)
+				runtime.Gosched()
+			}
+		}()
+		c2sR, c2sW := io.Pipe()
+		s2cR, s2cW := io.Pipe()
+		go func() {
+			_ = srv.Serve(ctx, c2sR, s2cW)
+			_ = s2cW.Close()
+			_ = c2sR.Close()
+		}()
+		sink := &recordingSink{}
+		done := make(chan error, 1)
+		go func() {
+			r, err := dialRemoteBackend(s2cR, c2sW, func() EventSink { return sink }, io.Discard)
+			if err == nil {
+				for len(sink.named("status:updated")) == 0 {
+					time.Sleep(time.Millisecond)
+				}
+				r.detach()
+			}
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("connect: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("connect or detach never returned while events arrived")
+		}
+		close(stop)
+		cancel()
 	}
 }
 

@@ -54,7 +54,7 @@ Mantengo pequeños corpus de semillas de Go en `testdata/fuzz/<target>/` dentro 
 go test ./pkg/config/ ./pkg/workspace/ ./pkg/status/ ./pkg/rpc/
 ```
 
-Activo las pasadas de mutaciones con `HEALTH_FUZZ=1`; la comprobación de salud predeterminada sigue ejecutando solo las semillas. Cada target dispone de 10 segundos y dos workers. El job de salud de PR en Linux activa esta variable. Puedo ejecutar solo estas pasadas o incluirlas en la comprobación completa:
+Activo las pasadas de mutaciones con `HEALTH_FUZZ=1`; la comprobación de salud predeterminada sigue ejecutando solo las semillas. Cada target dispone de un número fijo de ejecuciones, unos 10 segundos, y dos workers. El job de salud de PR en Linux activa esta variable. Puedo ejecutar solo estas pasadas o incluirlas en la comprobación completa:
 
 ```bash
 HEALTH_FUZZ=1 ./scripts/health.sh fuzz
