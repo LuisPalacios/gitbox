@@ -1,13 +1,14 @@
-// SessionController (#353, #379): the event subscriptions of one window's
-// session and the run bookkeeping they update (status passes, Fetch all,
-// Pull all, clones, mirrors, credentials, reconcile, updates). App.svelte
-// creates one, renders from its stores and hands it the lifecycle it still
-// owns through SessionHost.
+// SessionController (#353, #379, #380): one window's session. It owns the
+// event subscriptions, the run bookkeeping they update (status passes,
+// Fetch all, Pull all, clones, mirrors, credentials, reconcile, updates)
+// and the lifecycle: the config load, the dashboard snapshot, the startup
+// status pass and a remote window's connection. App.svelte creates one,
+// starts it, renders from its stores and keeps layout, modals and
+// navigation, which the session reaches through SessionHost.
 import { tick } from 'svelte';
 import { get, readonly, writable } from 'svelte/store';
-import { accounts, applyMirrorStatusResults, applyPRUpdate, applyStatusResults, configStore, mirrors, repoStates, sources, workspaceUnknown } from '../stores';
-import { acceptStatusBatch, applyRepairReports } from '../status';
-import type { statusPaintQueue } from '../status';
+import { accounts, applyMirrorStatusResults, applyPRUpdate, applyStatusResults, configStore, mirrors, repoStates, sources, workspaceDiagnostics, workspaceMembers, workspacePlaceholders, workspaceUnknown } from '../stores';
+import { acceptStatusBatch, applyRepairReports, statusPaintQueue } from '../status';
 import { completionStatuses, hasConfiguredRepo } from '../events';
 import type { createEventRouter } from '../events';
 import type { bridge as appBridge, RemoteState } from '../bridge';
@@ -15,19 +16,23 @@ import type { EventMetadata, EventPayloads } from '../dto.generated';
 import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from '../activity';
 import type { Run, Completion, FetchSummary, Unsafe } from '../activity';
 import { pushNotice, dismissNotice, errorText } from '../notices';
+import { backgroundAllowed, clearsOnReconnect, reloadErrorShown } from '../readonly';
 import { t } from '../i18n';
 import type { Vars } from '../i18n';
 import { tintOf } from '../tint';
-import type { CredentialStatus, MirrorSetupResult, PullSkipReason, RepoState, UpdateInfo } from '../types';
+import type { Placeholder } from '../repo-tree';
+import type { ConfigBackupInfo, CredentialFinding, CredentialStatus, MirrorSetupResult, OrphanRepoDTO, PullSkipReason, ReconcileDTO, RepoState, StartupSnapshot, UpdateInfo, WorkspaceChoiceDTO } from '../types';
 
 export type EventRouter = ReturnType<typeof createEventRouter>;
 
 /** The bridge calls a session makes on its own. */
 export type SessionBridge = Pick<typeof appBridge,
-  'getAllStatus' | 'getConfig' | 'reloadConfig' | 'runTask' | 'pullAll' | 'credentialVerify' | 'getRemoteTint'>;
+  'getAllStatus' | 'getConfig' | 'reloadConfig' | 'runTask' | 'pullAll' | 'credentialVerify' | 'getRemoteTint'
+  | 'getStartupSnapshot' | 'beginStatus' | 'markStartup' | 'refreshStatus' | 'reconcile' | 'repoNesting' | 'remoteInfo'
+  | 'getConfigLoadError' | 'getConfigPath' | 'isFirstRun' | 'listConfigBackups' | 'restoreFromBackup' | 'repairConfig' | 'acknowledgeConfigError'>;
 
-/** The status pass the window's lifecycle started and status:batch fills. */
-export interface StartupStream {
+/** The status pass the session's lifecycle started and status:batch fills. */
+interface StartupStream {
   id: number;
   first: () => void;
   finish: () => void;
@@ -37,16 +42,19 @@ export interface StartupStream {
   paint: ReturnType<typeof statusPaintQueue>;
 }
 
-/** What the session asks of the window: lifecycle and UI state that stay in App.svelte. */
+/** What the session asks of the window: the UI state that stays in App.svelte. */
 export interface SessionHost {
   simple(): boolean;
-  serverOS(): string;
-  stream(): StartupStream | null;
-  markStartup(stage: string): void;
-  finishTiming(): void;
-  restartDashboard(): Promise<void>;
+  /** Applies the window's own settings a dashboard snapshot carries; keepView on a remote window's reconnect. */
+  applySnapshot(snapshot: StartupSnapshot, keepView: boolean): void;
+  /** Applies the window settings a reload from disk may change. */
+  applyReload(snapshot: StartupSnapshot): void;
+  /** The window's checks once the first status is in: global git config, autostart, PR badges. */
+  startupChecks(): Promise<void>;
+  askWorkspaceChoices(choices: WorkspaceChoiceDTO[]): void;
+  /** Marks the window as the remote one of alias, before its data loads. */
+  markRemote(alias: string): void;
   refreshDetail(): void;
-  applyReconcile(res: EventPayloads['reconcile:done']): Promise<void>;
   discoverDone(data: EventPayloads['discover:done']): void;
   quit(): void;
 }
@@ -99,6 +107,37 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
   const rollbackVersion = writable('');
   // The color a remote window tints its top bar and sidebar with (#331).
   const remoteTint = writable('');
+  // No folder configured yet: the window shows the first-run onboarding.
+  const firstRun = writable(false);
+  // A config file that exists but failed to parse (#60): the window shows
+  // the recovery screen, with the dated backups it can restore.
+  const cfgLoadErrorModal = writable(false);
+  const cfgLoadErrorMsg = writable('');
+  const cfgLoadErrorBusy = writable(false);
+  const cfgRepairFailure = writable('');
+  const cfgBackups = writable<ConfigBackupInfo[]>([]);
+  const configPath = writable('');
+  // The system of the host whose data the window shows (#240).
+  const serverOS = writable('');
+  // The banner of a failed reload, cleared by the next one that succeeds.
+  const reloadError = writable('');
+  // child "source/repo" → parent "source/repo", derived from resolved paths.
+  const repoNesting = writable<Record<string, string>>({});
+  const credentialFindings = writable<CredentialFinding[]>([]);
+  // The last reconcile pass (#149): the clones that need me (Unmatched
+  // clones), and the containers with several workspace files and no pick.
+  const orphanList = writable<OrphanRepoDTO[]>([]);
+  const ignoredClones = writable<OrphanRepoDTO[]>([]);
+  const skippedClones = writable<NonNullable<ReconcileDTO['skipped']>>([]);
+  const skippedFolders = writable(0);
+  const skippedScans = writable<NonNullable<ReconcileDTO['skippedScans']>>([]);
+  const orphanCount = writable(0);
+  const workspaceChoices = writable<Set<string>>(new Set());
+  // A remote window's connection (#240): its data loads on the first
+  // connection and again on a reconnect that could not resume.
+  const remoteState = writable<RemoteState | null>(null);
+  const remoteLoaded = writable(false);
+  const remoteLoading = writable(false);
 
   // ── Run bookkeeping ──
   const completion = completionStatuses();
@@ -126,13 +165,26 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
   let statusWaiters: Array<() => void> = [];
   const recheckingAccounts = new Set<string>();
 
+  // ── Lifecycle bookkeeping ──
+  let remote = false;
+  let stopped = false;
+  let statusPass = 0;
+  let currentStream: StartupStream | null = null;
+  // The startup work after the first status is scheduled (startup timing).
+  let remoteScheduled = false;
+  let reloadGeneration = 0;
+  const observedStages = new Set<string>();
+  let timingQueue = Promise.resolve();
+  // A clone git never finished is reported once per session (#295).
+  const incompleteShown = new Set<string>();
+
   const configuredRepo = (source: string, repo: string) => hasConfiguredRepo(get(configStore), source, repo);
   const statusOfKey = (key: string) => get(repoStates)[key]?.status || 'unknown';
   const accountOfKey = (key: string) => get(sources)[key.slice(0, key.indexOf('/'))]?.account || key.slice(0, key.indexOf('/'));
   const repoKey = ({ source, repo }: { source: string; repo: string }) => `${source}/${repo}`;
 
   function publishCompletionRow(row: EventPayloads['status:one']) {
-    host.stream()?.paint.flush();
+    currentStream?.paint.flush();
     statusGeneration++;
     applyStatusResults([row], true, true);
   }
@@ -244,7 +296,7 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
     // A connect refused within milliseconds is the OS blocking it, not a
     // slow or down server; on macOS that's usually Local Network privacy.
     // The fetches ran on the host that has the data: its OS decides.
-    const lanHint = host.serverOS() === 'darwin' && sum.unreachable.some((u) => u.fast) && $t('result.lanHint');
+    const lanHint = get(serverOS) === 'darwin' && sum.unreachable.some((u) => u.fast) && $t('result.lanHint');
     const failedKind = sum.unreachable.length > 0 || sum.unsafe.length > 0 || sum.failed > 0;
     const id = pushNotice(failedKind ? 'error' : 'success', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), simple ? [
       $t('result.checked', { n: sum.checked }),
@@ -420,12 +472,12 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
     onEvent('reconcile:done', (res) => {
       // The coalesced background retry has no caller to apply its result.
       if (res?.background) {
-        void host.applyReconcile(res).catch(console.error);
+        void applyReconcile(res).catch(console.error);
       } else if (res?.workspaceUnknown) workspaceUnknown.set(new Set(res.workspaceUnknown));
     });
 
     onEvent('status:batch', async (batch) => {
-      const stream = host.stream();
+      const stream = currentStream;
       if (!stream || stream.full || batch.passID !== stream.id) return;
       if (acceptStatusBatch(batch, stream.id, get(configStore)?.revision)) {
         if (batch.items?.length) {
@@ -433,43 +485,43 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
           if (!stream.painted) {
             stream.painted = true;
             await tick();
-            if (stream !== host.stream() || batch.revision !== get(configStore)?.revision) return;
-            host.markStartup('firstStatus');
+            if (stream !== currentStream || batch.revision !== get(configStore)?.revision) return;
+            markStartup('firstStatus');
             stream.first();
           }
         }
         if (batch.done) {
           stream.paint.flush();
           await tick();
-          if (stream !== host.stream() || batch.revision !== get(configStore)?.revision) return;
+          if (stream !== currentStream || batch.revision !== get(configStore)?.revision) return;
           if (stream.pending.size) {
             // A remote transport may miss an event. Recover the authoritative sweep.
             const rows = await bridge.getAllStatus();
-            if (stream !== host.stream() || batch.revision !== get(configStore)?.revision) return;
+            if (stream !== currentStream || batch.revision !== get(configStore)?.revision) return;
             applyStatusResults(rows, true);
             for (const row of rows) stream.pending.delete(`${row.source}/${row.repo}`);
-            if (rows.length) host.markStartup('firstStatus');
+            if (rows.length) markStartup('firstStatus');
             await tick();
           }
-          if (!stream.pending.size) host.markStartup('fullStatus');
+          if (!stream.pending.size) markStartup('fullStatus');
           stream.full = true;
           stream.first();
-          host.finishTiming();
+          finishTiming();
           stream.finish();
         }
       } else if (batch.done) {
         // A config change superseded this pass. A fresh snapshot owns the next one.
-        void host.restartDashboard().catch(console.error);
+        void initDashboard().catch(console.error);
       }
     }, batch => {
-      const stream = host.stream();
+      const stream = currentStream;
       if (batch.done && stream && batch.passID === stream.id && !stream.full) {
-        void host.restartDashboard().catch(console.error);
+        void initDashboard().catch(console.error);
       }
     });
 
     onEvent('status:updated', (results) => {
-      host.stream()?.paint.flush();
+      currentStream?.paint.flush();
       statusGeneration++;
       applyStatusResults((results || []).filter(row => configuredRepo(row.source, row.repo)));
       for (const resolve of statusWaiters.splice(0)) resolve();
@@ -759,11 +811,6 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
     onEvent('profiles:reloaded', () => { reload(); });
   }
 
-  // watchRemoteState follows the connection of a remote window.
-  function watchRemoteState(changed: (state: RemoteState) => void) {
-    onEvent('remote:state', (st) => { changed(st as RemoteState); });
-  }
-
   // noteDisconnect marks a Fetch all that was running when a remote
   // window's connection dropped.
   function noteDisconnect() {
@@ -790,9 +837,375 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
     fetchingRepos.set({});
   }
 
-  function destroy() {
+  // ── Startup timing ──
+  // markStartup records each startup stage once, in order.
+  function markStartup(stage: string) {
+    if (observedStages.has(stage)) return;
+    observedStages.add(stage);
+    timingQueue = timingQueue.then(() => bridge.markStartup(stage)).catch(console.error);
+  }
+
+  function finishTiming() {
+    if (currentStream?.full && remoteScheduled) markStartup('finished');
+  }
+
+  function retireStream() {
+    currentStream?.paint.discard();
+    currentStream?.first();
+    currentStream?.finish();
+    currentStream = null;
+  }
+
+  // ── Reconcile (#149) ──
+  // A pass adopts the clones gitbox recognises and re-links moved ones by
+  // itself; the lists hold the clones that need me.
+  async function runReconcile(): Promise<ReconcileDTO | null> {
+    try {
+      const res = await bridge.reconcile();
+      await applyReconcile(res);
+      return res;
+    } catch (e) {
+      pushNotice('error', $t('notice.reconcileFailed'), [errorText(e)]);
+      return null;
+    }
+  }
+
+  async function loadNesting() {
+    try {
+      repoNesting.set(await bridge.repoNesting());
+    } catch { /* I retain the last known nesting when a refresh fails. */ }
+  }
+
+  // applyReconcile shows a pass: the lists, and the config and statuses when
+  // it added or moved anything.
+  async function applyReconcile(res: ReconcileDTO) {
+    if (res.repairs?.length) repoStates.set(applyRepairReports(get(repoStates), res.repairs));
+    if (res.workspaceUnknown) workspaceUnknown.set(new Set(res.workspaceUnknown));
+    const unmatched = res.unmatched || [];
+    const skipped = res.skipped || [];
+    orphanList.set(unmatched);
+    ignoredClones.set(res.ignored || []);
+    skippedFolders.set(res.skippedFolders || 0);
+    skippedScans.set(res.skippedScans || []);
+    skippedClones.set(skipped);
+    orphanCount.set(unmatched.length + skipped.length);
+    if (res.error) pushNotice('error', $t('notice.reconcileFailed'), [res.error]);
+    const incomplete = (res.incomplete || []).filter(c => !incompleteShown.has(c.path));
+    for (const c of incomplete) incompleteShown.add(c.path);
+    if (incomplete.length) pushNotice('error', $t('notice.incompleteClone'), incomplete.map(c => `${c.repo}: ${c.path}`));
+    if (res.adopted + res.relinked > 0 || res.workspacesChanged) {
+      configStore.set(await bridge.reloadConfig());
+      applyStatusResults(await bridge.getAllStatus());
+    }
+    const byParent: Record<string, Placeholder[]> = {};
+    for (const p of res.placeholders || []) (byParent[p.parent] ??= []).push({ name: p.name, path: p.path, outsidePath: p.outsidePath });
+    workspacePlaceholders.set(byParent);
+    workspaceMembers.set(new Set(res.workspaceMembers || []));
+    workspaceDiagnostics.set(Object.fromEntries((res.workspaceDiagnostics || []).map(d => [d.parent, d])));
+    workspaceChoices.set(new Set((res.workspaceChoices || []).map(c => `${c.source}/${c.repo}`)));
+    await loadNesting();
+    host.askWorkspaceChoices(res.workspaceChoices || []);
+  }
+
+  // ── Reloads ──
+  // reloadFromDisk re-reads the config and refreshes every status. It
+  // throws on failure, after it shows the reload banner, so the UI never
+  // swallows an integrity issue. It does nothing while the config-load
+  // error screen is up (the user's choice drives recovery, not focus
+  // events), during first-run onboarding (there is no file to read yet),
+  // or in a disconnected remote window (the next connection reloads
+  // everything).
+  async function reloadFromDisk() {
+    if (get(cfgLoadErrorModal) || get(firstRun)) return;
+    if (!backgroundAllowed(remote, get(remoteState)?.state)) return;
+    const generation = ++reloadGeneration;
+    try {
+      await bridge.reloadConfig();
+      const snapshot = await bridge.getStartupSnapshot();
+      if (generation !== reloadGeneration) return;
+      repoNesting.set(snapshot.nesting || {});
+      credentialFindings.set(snapshot.credentialFindings || []);
+      configStore.set(snapshot.config);
+      events.snapshot(snapshot.eventWatermark, () => get(configStore)?.revision ?? 0);
+      configPath.set(snapshot.configPath);
+      host.applyReload(snapshot);
+      if (!get(fetchingAll)) {
+        const statusVersion = statusGeneration;
+        const statuses = await bridge.getAllStatus();
+        if (generation !== reloadGeneration) return;
+        if (statusVersion === statusGeneration && !get(fetchingAll)) applyStatusResults(statuses);
+        if (!get(fetchingAll)) verifyAllCredentials();
+      }
+      reloadError.set('');
+    } catch (err) {
+      if (generation === reloadGeneration && reloadErrorShown(err, remote, get(remoteState)?.state)) reloadError.set(errorText(err));
+      throw err;
+    }
+  }
+
+  // reloadConfigFromDisk re-reads the config alone (the terminals window).
+  async function reloadConfigFromDisk() {
+    await bridge.reloadConfig();
+    const snapshot = await bridge.getStartupSnapshot();
+    repoNesting.set(snapshot.nesting || {});
+    credentialFindings.set(snapshot.credentialFindings || []);
+    configStore.set(snapshot.config);
+  }
+
+  // ── Dashboard ──
+  async function initDashboard() {
+    const snapshot = await bridge.getStartupSnapshot();
+    if (stopped) return;
+    const cfg = snapshot.config;
+    // A remote window keeps its view across reconnects: the host's config
+    // does not hold it.
+    host.applySnapshot(snapshot, remote && get(remoteLoaded));
+    repoNesting.set(snapshot.nesting || {});
+    credentialFindings.set(snapshot.credentialFindings || []);
+    configPath.set(snapshot.configPath);
+    serverOS.set(snapshot.serverOS || snapshot.os);
+    configStore.set(cfg);
+    const known = get(repoStates);
+    repoStates.set(Object.fromEntries(Object.entries(cfg.sources).flatMap(([sourceKey, source]) =>
+      Object.keys(source.repos).map(repoName => [`${sourceKey}/${repoName}`, known[`${sourceKey}/${repoName}`] ?? { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }])
+    )));
+    events.snapshot(snapshot.eventWatermark, () => get(configStore)?.revision ?? 0);
+    const id = ++statusPass;
+    retireStream();
+    let first!: () => void;
+    const firstReady = new Promise<void>(resolve => { first = resolve; });
+    let finish!: () => void;
+    const completed = new Promise<void>(resolve => { finish = resolve; });
+    const paint = statusPaintQueue(rows => {
+      if (currentStream?.id !== id || get(configStore)?.revision !== cfg.revision) return;
+      for (const row of rows) currentStream.pending.delete(`${row.source}/${row.repo}`);
+      applyStatusResults(rows, true);
+    });
+    currentStream = { id, first, finish, full: false, painted: false, pending: new Set(Object.keys(get(repoStates))), paint };
+    remoteScheduled = false;
+    try {
+      await bridge.beginStatus(id);
+      await firstReady;
+    } catch (e) {
+      if (id !== statusPass) return;
+      repoStates.update(states => Object.fromEntries(Object.entries(states).map(([key, state]) =>
+        [key, state.status === 'unknown' ? { ...state, status: 'error' as const, error: errorText(e) } : state]
+      )));
+      finish();
+      markStartup('finished');
+    }
+    if (id !== statusPass) return;
+    if (Object.keys(cfg.accounts).length) markStartup('firstRemote');
+    remoteScheduled = true;
+    finishTiming();
+
+    // Fetch all repos on startup to detect behind/ahead changes.
+    runFetchAll();
+
+    // Check mirror sync status on startup.
+    checkAllMirrorStatus();
+
+    // The window's own checks: global git config, autostart, PR badges.
+    await host.startupChecks();
+
+    // Reconcile walks the same clone trees as local status. Let the first
+    // sweep finish before starting that second disk traversal.
+    if (remote) {
+      await completed; // The reconnect flow starts its own reconcile after init.
+    } else {
+      void completed.then(() => { if (id === statusPass) void runReconcile(); });
+    }
+  }
+
+  // startMain loads the config and the dashboard: at launch in a local
+  // window, on each connection in a remote one.
+  async function startMain() {
+    // A config that failed to parse (file exists but is broken or
+    // unsupported) shows the in-app recovery screen, not window.confirm:
+    // macOS WebKit has been observed to auto-dismiss confirm() without
+    // showing a dialog, which made GitboxApp "flash and exit".
+    const loadError = await bridge.getConfigLoadError();
+    if (stopped) return;
+    if (loadError) {
+      cfgLoadErrorMsg.set(loadError);
+      // Populate configPath and the backup list before showing the screen
+      // so everything renders in one pass — no flash of empty state.
+      try {
+        configPath.set(await bridge.getConfigPath());
+      } catch { /* fall back to the template's default placeholder */ }
+      await loadBackups();
+      cfgLoadErrorModal.set(true);
+      markStartup('finished');
+      return; // The dashboard loads after the user picks Restore / Auto-repair / Start fresh / Exit.
+    }
+
+    // No folder configured: the window shows onboarding.
+    firstRun.set(await bridge.isFirstRun());
+    if (stopped) return;
+    if (get(firstRun)) {
+      events.snapshot(0, () => 0);
+      markStartup('finished');
+      return;
+    }
+
+    try { await initDashboard(); }
+    catch (e) { markStartup('finished'); throw e; }
+  }
+
+  // ── Config-load error recovery (#60) ──
+  async function loadBackups() {
+    try {
+      cfgBackups.set(await bridge.listConfigBackups());
+    } catch (err) {
+      console.error('listConfigBackups failed', err);
+      cfgBackups.set([]);
+    }
+  }
+
+  const failureMessage = (err: unknown) => (err as { message?: string } | null)?.message || String(err);
+
+  // recover runs a restore or a repair and loads the dashboard when it
+  // succeeded, or onboarding when the config has no folder.
+  async function recover(run: () => Promise<{ success: boolean; error?: string }>) {
+    cfgLoadErrorBusy.set(true);
+    cfgRepairFailure.set('');
+    try {
+      const res = await run();
+      if (!res.success) {
+        cfgRepairFailure.set(res.error || $t('app.unknownError'));
+        await loadBackups(); // the failed attempt may have altered the backup count
+        return;
+      }
+      cfgLoadErrorModal.set(false);
+      cfgLoadErrorMsg.set('');
+      firstRun.set(await bridge.isFirstRun());
+      if (get(firstRun)) return;
+      await initDashboard();
+    } catch (err) {
+      cfgRepairFailure.set(failureMessage(err));
+    } finally {
+      cfgLoadErrorBusy.set(false);
+    }
+  }
+
+  const restoreBackup = (path: string) => recover(() => bridge.restoreFromBackup(path));
+  const repairConfig = () => recover(() => bridge.repairConfig());
+
+  // startFresh acknowledges the corruption so the first save is no longer
+  // refused, and walks through onboarding. The dated backup keeps the
+  // pre-overwrite copy, so the user can recover manually if needed.
+  async function startFresh() {
+    cfgLoadErrorBusy.set(true);
+    try {
+      await bridge.acknowledgeConfigError();
+    } finally {
+      cfgLoadErrorBusy.set(false);
+    }
+    cfgLoadErrorModal.set(false);
+    cfgLoadErrorMsg.set('');
+    cfgRepairFailure.set('');
+    firstRun.set(true);
+  }
+
+  // ── Remote connection (#240, #247) ──
+  async function onRemoteState(s: RemoteState) {
+    const previous = get(remoteState);
+    const wasConnected = previous?.state === 'connected';
+    // A new connection clears what the disconnection left behind.
+    if (clearsOnReconnect(previous?.state, s.state)) reloadError.set('');
+    remoteState.set(s);
+    if (s.state !== 'connected') {
+      // The window keeps what it shows until it knows whether the next
+      // connection resumes the host's daemon (#247): the events it missed
+      // then arrive through the same router, before the connected state.
+      if (wasConnected) noteDisconnect();
+      if (wasConnected && currentStream) {
+        statusPass++;
+        retireStream();
+      }
+      if (s.state === 'disconnected' || s.state === 'failed') markStartup('finished');
+      return;
+    }
+    if (wasConnected || get(remoteLoading)) return;
+    remoteLoading.set(true);
+    // A connection that resumed the host's daemon with every event the
+    // window missed keeps the view, the rows and the work in flight; the
+    // window reads the config and the status again, and starts no fetch
+    // and no reconcile (#247). A window still in onboarding loads again:
+    // the host may have saved its config before the cut (#349).
+    if (get(remoteLoaded) && s.resumed && !get(firstRun)) {
+      try {
+        await reloadFromDisk();
+        const refreshed = nextStatus(30_000);
+        await bridge.refreshStatus();
+        await refreshed;
+      } catch (e) {
+        console.error(e);
+      } finally {
+        remoteLoading.set(false);
+      }
+      return;
+    }
+    // Any other connection, the first one and a reconnect that could not
+    // resume, loads the host's data again; a reconnect keeps the view.
+    if (get(remoteLoaded)) {
+      events.reset();
+      forgetOperations();
+      // Onboarding waits behind the card until the host says whether it
+      // still has no config.
+      if (get(firstRun)) remoteLoaded.set(false);
+    }
+    try {
+      host.markRemote(s.alias);
+      // What the host did meanwhile is not all known: its rows come back
+      // from the host's status.
+      forgetRuns();
+      repoStates.set({});
+      await startMain();
+      // A host without a config shows the onboarding, which saves it there.
+      remoteLoaded.set(true);
+      if (!get(firstRun)) {
+        // What the host's clones are now: a clone the cut stopped shows as
+        // missing or incomplete before any action is offered.
+        await runReconcile();
+        const refreshed = nextStatus(30_000);
+        await bridge.refreshStatus();
+        await refreshed;
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      remoteLoading.set(false);
+    }
+  }
+
+  // ── Start, stop, reset ──
+  // start loads the session: at once in a local window; in a remote one,
+  // on each connection, following the connection state from here on.
+  async function start(remoteWindow: boolean) {
+    remote = remoteWindow;
+    if (!remote) {
+      await startMain();
+      return;
+    }
+    onEvent('remote:state', (st) => { void onRemoteState(st as RemoteState); });
+    try { await onRemoteState(await bridge.remoteInfo()); } catch (e) { console.error(e); }
+  }
+
+  // reset leaves onboarding and loads the dashboard from a fresh snapshot.
+  async function reset() {
+    firstRun.set(false);
+    await initDashboard();
+  }
+
+  // stop ends the session: no listener, no pending status pass or reload.
+  function stop() {
+    stopped = true;
     for (const off of subscriptions.splice(0)) off();
     clearTimeout(fetchProgressTimer);
+    reloadGeneration++;
+    statusPass++;
+    retireStream();
   }
 
   return {
@@ -818,13 +1231,45 @@ export function createSessionController({ bridge, events, host }: SessionDeps) {
     updateDismissed,
     rollbackVersion,
     remoteTint: readonly(remoteTint),
+    firstRun: readonly(firstRun),
+    cfgLoadErrorModal: readonly(cfgLoadErrorModal),
+    cfgLoadErrorMsg: readonly(cfgLoadErrorMsg),
+    cfgLoadErrorBusy: readonly(cfgLoadErrorBusy),
+    cfgRepairFailure: readonly(cfgRepairFailure),
+    cfgBackups: readonly(cfgBackups),
+    configPath: readonly(configPath),
+    serverOS: readonly(serverOS),
+    reloadError,
+    repoNesting: readonly(repoNesting),
+    credentialFindings,
+    orphanList: readonly(orphanList),
+    ignoredClones: readonly(ignoredClones),
+    skippedClones: readonly(skippedClones),
+    skippedFolders: readonly(skippedFolders),
+    skippedScans: readonly(skippedScans),
+    orphanCount: readonly(orphanCount),
+    workspaceChoices: readonly(workspaceChoices),
+    remoteState: readonly(remoteState),
+    remoteLoaded: readonly(remoteLoaded),
+    remoteLoading: readonly(remoteLoading),
     /** Bumped by every status result the session applies, for reloads that race them. */
     get statusGeneration() { return statusGeneration; },
+    /** True once the startup status pass has every row. */
+    statusComplete: () => !!currentStream?.full,
+    start,
+    stop,
+    reset,
+    markStartup,
+    reloadFromDisk,
+    reloadConfigFromDisk,
+    runReconcile,
+    applyReconcile,
+    restoreBackup,
+    repairConfig,
+    startFresh,
     listen,
     loadRemoteTint,
     watchProfiles,
-    watchRemoteState,
-    destroy,
     runFetchAll,
     executePullAll,
     failPullAll,

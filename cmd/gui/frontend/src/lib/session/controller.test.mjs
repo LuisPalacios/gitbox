@@ -55,38 +55,32 @@ async function session(t, { bridge = {}, host = {} } = {}) {
     }
   })
   const calls = []
+  const seen = []
+  const record = name => (...args) => { seen.push([name, ...args]) }
+  const answers = { markStartup: async stage => { seen.push(['markStartup', stage]) }, ...bridge }
   const fake = new Proxy({}, {
     get(_target, name) {
       return async (...args) => {
         calls.push({ name, args })
-        if (!bridge[name]) throw new Error(`unexpected bridge call ${String(name)}`)
-        return bridge[name](...args)
+        if (!answers[name]) throw new Error(`unexpected bridge call ${String(name)}`)
+        return answers[name](...args)
       }
     },
   })
-  const seen = []
-  const record = name => (...args) => { seen.push([name, ...args]) }
   const hostCalls = {
     simple: () => false,
-    serverOS: () => 'linux',
-    stream: () => null,
-    markStartup: record('markStartup'),
-    finishTiming: record('finishTiming'),
-    restartDashboard: async () => { seen.push(['restartDashboard']) },
+    applySnapshot: record('applySnapshot'),
+    applyReload: record('applyReload'),
+    startupChecks: async () => { seen.push(['startupChecks']) },
+    askWorkspaceChoices: record('askWorkspaceChoices'),
+    markRemote: record('markRemote'),
     refreshDetail: record('refreshDetail'),
-    applyReconcile: async res => { seen.push(['applyReconcile', res]) },
     discoverDone: record('discoverDone'),
     quit: record('quit'),
     ...host,
   }
   const controller = m.createSessionController({ bridge: fake, events, host: hostCalls })
-  m.configStore.set({
-    version: 5, revision: 1,
-    global: { roots: ['/fixture'], editors: [] },
-    accounts: { demo: account },
-    sources: { [source]: { account: 'demo', repos: { [one]: {}, [two]: {} } } },
-    mirrors: { backup: { account_src: 'demo', account_dst: 'demo', repos: { [one]: { direction: 'push', origin: 'src' } } } },
-  })
+  m.configStore.set(fixtureConfig())
   const row = { status: 'clean', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0, path: '/fixture/x' }
   m.repoStates.set({ [keyOne]: { ...row }, [keyTwo]: { ...row } })
   events.snapshot(10, () => m.get(m.configStore)?.revision ?? 0)
@@ -96,7 +90,7 @@ async function session(t, { bridge = {}, host = {} } = {}) {
     for (const handler of listeners.get(name) ?? []) handler(envelope)
   }
   t.after(() => {
-    controller.destroy()
+    controller.stop()
     for (const notice of m.get(m.notices)) m.dismissNotice(notice.id)
   })
   return { ...m, controller, emit, calls, seen, listeners, value: store => m.get(store) }
@@ -104,25 +98,78 @@ async function session(t, { bridge = {}, host = {} } = {}) {
 
 const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 
+async function until(ready, what) {
+  for (let i = 0; i < 200; i++) {
+    if (ready()) return
+    await settle()
+  }
+  assert.fail(`timed out waiting for ${what}`)
+}
+
+function fixtureConfig(revision = 1) {
+  return {
+    version: 5, revision,
+    global: { roots: ['/fixture'], editors: [] },
+    accounts: { demo: account },
+    sources: { [source]: { account: 'demo', repos: { [one]: {}, [two]: {} } } },
+    mirrors: { backup: { account_src: 'demo', account_dst: 'demo', repos: { [one]: { direction: 'push', origin: 'src' } } } },
+  }
+}
+
+function snapshot(extra = {}) {
+  return {
+    eventWatermark: 10, credentialFindings: [], nesting: {}, configPath: '/fixture/gitbox.json',
+    appVersion: 'v0.0.0', os: 'darwin', serverOS: 'linux', config: fixtureConfig(), ...extra,
+  }
+}
+
+function reconcileResult(extra = {}) {
+  return {
+    adopted: 0, relinked: 0, workspacesChanged: false, ignored: [], placeholders: [], workspaceMembers: [],
+    unmatched: [{ path: '/fixture/stray', nested: false }], skipped: [{ path: '/fixture/odd', reason: 'fixture' }], skippedFolders: 2,
+    workspaceChoices: [{ source, repo: one, files: ['a.code-workspace', 'b.code-workspace'] }],
+    ...extra,
+  }
+}
+
+// The bridge calls of a session that loads its dashboard; passes collects
+// the status pass ids it begins.
+function startBridge(passes, extra = {}) {
+  return {
+    getConfigLoadError: async () => '',
+    isFirstRun: async () => false,
+    getStartupSnapshot: async () => snapshot(),
+    beginStatus: async id => { passes.push(id) },
+    runTask: async () => 'finished',
+    reconcile: async () => reconcileResult(),
+    repoNesting: async () => ({ [keyTwo]: keyOne }),
+    ...extra,
+  }
+}
+
+const stages = s => s.seen.filter(([name]) => name === 'markStartup').map(([, stage]) => stage)
+
 test('listen subscribes the session events and destroy leaves none', async t => {
   const s = await session(t)
   assert.equal(s.listeners.size, 0, 'nothing is subscribed before listen')
   s.controller.listen()
   s.controller.watchProfiles(() => {})
-  s.controller.watchRemoteState(() => {})
   const names = [...s.listeners.keys()].sort()
-  assert.equal(names.length, 33)
-  for (const name of ['status:batch', 'fetch:alldone', 'pull:done', 'mirror:setup:done', 'update:quit', 'pr:refreshed', 'profiles:reloaded', 'remote:state']) {
+  assert.equal(names.length, 32)
+  for (const name of ['status:batch', 'fetch:alldone', 'pull:done', 'mirror:setup:done', 'update:quit', 'pr:refreshed', 'profiles:reloaded']) {
     assert.ok(names.includes(name), name)
   }
-  s.controller.destroy()
+  assert.ok(!names.includes('remote:state'), 'only a remote session follows the connection')
+  s.controller.stop()
   assert.deepEqual([...s.listeners.keys()], [])
 })
 
-test('App.svelte leaves every event subscription to the session', async () => {
+test('App.svelte leaves every event subscription and the lifecycle to the session', async () => {
   const app = await readFile(new URL('../../App.svelte', import.meta.url), 'utf8')
   assert.ok(app.includes('session.listen()'), 'positive control: the window starts the session listeners')
+  assert.ok(app.includes('session.start(false)') && app.includes('session.start(true)'), 'positive control: the window starts the session')
   assert.doesNotMatch(app, /\bonEvent\(|\bevents\.on\(/)
+  assert.doesNotMatch(app, /\b(startMain|initDashboard|onRemoteState|statusPass|currentStream|retireStream)\b/)
 })
 
 test('Fetch all tracks its repos, ignores older work and leaves a result card', async t => {
@@ -241,34 +288,145 @@ test('status:updated applies configured repos, wakes waiters and refreshes the d
   assert.deepEqual(s.seen.filter(([name]) => name === 'refreshDetail'), [['refreshDetail']])
 })
 
-test('status:batch paints its stream, finishes it and restarts on a newer config', async t => {
-  let stream = null
-  const s = await session(t, { host: { stream: () => stream } })
+test('start loads the dashboard, paints its status pass and reconciles after the first sweep', async t => {
+  const passes = []
+  const s = await session(t, { bridge: startBridge(passes) })
   s.controller.listen()
-  let firsts = 0
-  let finishes = 0
-  const painted = []
-  stream = {
-    id: 3, full: false, painted: false, pending: new Set([keyOne, keyTwo]),
-    first: () => { firsts++ }, finish: () => { finishes++ },
-    paint: s.statusPaintQueue(rows => {
-      for (const row of rows) stream.pending.delete(`${row.source}/${row.repo}`)
-      painted.push(...rows.map(row => row.repo))
-    }),
-  }
-  s.emit('status:batch', 1, { passID: 9, revision: 1, items: [status(one)], done: false })
-  assert.deepEqual(painted, [], 'another pass is ignored')
-  s.emit('status:batch', 1, { passID: 3, revision: 1, items: [status(one), status(two)], done: true })
+  s.repoStates.set({})
+  const started = s.controller.start(false)
+  await until(() => passes.length === 1, 'the status pass')
+  assert.deepEqual(s.seen.find(([name]) => name === 'applySnapshot').slice(2), [false], 'a local window takes its view from the config')
+  assert.equal(s.value(s.controller.configPath), '/fixture/gitbox.json')
+  assert.equal(s.value(s.controller.serverOS), 'linux')
+  assert.deepEqual(Object.values(s.value(s.repoStates)).map(row => row.status), ['unknown', 'unknown'])
+  s.emit('status:batch', 1, { passID: 9, revision: 1, items: [status(one, 'dirty')], done: false })
   await settle()
-  assert.deepEqual(painted, [one, two])
-  assert.equal(stream.full, true)
-  assert.ok(firsts >= 1)
-  assert.equal(finishes, 1)
-  assert.deepEqual(s.seen.filter(([name]) => name === 'markStartup').map(([, stage]) => stage), ['firstStatus', 'fullStatus'])
-  assert.ok(s.seen.some(([name]) => name === 'finishTiming'))
-  stream = { ...stream, id: 4, full: false }
-  s.emit('status:batch', 1, { passID: 4, revision: 0, items: [], done: true })
-  assert.ok(s.seen.some(([name]) => name === 'restartDashboard'), 'a pass of an older config starts over')
+  assert.equal(s.value(s.repoStates)[keyOne].status, 'unknown', 'another pass is ignored')
+  s.emit('status:batch', 1, { passID: 1, revision: 1, items: [status(one), status(two, 'behind')], done: true })
+  await started
+  assert.equal(s.value(s.repoStates)[keyTwo].status, 'behind')
+  assert.ok(s.seen.some(([name]) => name === 'startupChecks'))
+  assert.deepEqual(s.calls.filter(call => call.name === 'runTask').map(call => call.args[0]), ['fetch-all', 'mirror-status'])
+  assert.equal(s.controller.statusComplete(), true)
+  await until(() => s.value(s.controller.orphanCount) === 2, 'the reconcile pass')
+  assert.deepEqual(s.value(s.controller.orphanList).map(o => o.path), ['/fixture/stray'])
+  assert.equal(s.value(s.controller.skippedFolders), 2)
+  assert.deepEqual([...s.value(s.controller.workspaceChoices)], [keyOne])
+  assert.deepEqual(s.value(s.controller.repoNesting), { [keyTwo]: keyOne })
+  await until(() => s.seen.some(([name]) => name === 'askWorkspaceChoices'), 'the workspace question')
+  await until(() => stages(s).includes('finished'), 'the startup timing')
+  assert.deepEqual(stages(s), ['firstStatus', 'firstRemote', 'fullStatus', 'finished'], 'the first rows unblock the startup work')
+})
+
+test('a status pass of an older config starts the dashboard over', async t => {
+  const passes = []
+  const s = await session(t, { bridge: startBridge(passes) })
+  s.controller.listen()
+  const started = s.controller.start(false)
+  await until(() => passes.length === 1, 'the status pass')
+  s.emit('status:batch', 1, { passID: 1, revision: 0, items: [], done: true })
+  await until(() => passes.length === 2, 'the next status pass')
+  await started
+  assert.ok(!s.seen.some(([name]) => name === 'startupChecks'), 'the retired pass starts no startup work')
+})
+
+test('a config that fails to parse shows the recovery screen until a repair works', async t => {
+  let repairs = 0
+  const s = await session(t, { bridge: {
+    getConfigLoadError: async () => 'fixture parse error',
+    getConfigPath: async () => '/fixture/gitbox.json',
+    listConfigBackups: async () => [{ path: '/fixture/gitbox.json.bak', time: 'today' }],
+    repairConfig: async () => (++repairs === 1 ? { success: false, error: 'still broken' } : { success: true }),
+    isFirstRun: async () => true,
+    acknowledgeConfigError: async () => {},
+  } })
+  await s.controller.start(false)
+  assert.equal(s.value(s.controller.cfgLoadErrorModal), true)
+  assert.equal(s.value(s.controller.cfgLoadErrorMsg), 'fixture parse error')
+  assert.equal(s.value(s.controller.configPath), '/fixture/gitbox.json')
+  assert.equal(s.value(s.controller.cfgBackups).length, 1)
+  await until(() => stages(s).includes('finished'), 'the startup timing')
+  await s.controller.reloadFromDisk()
+  assert.ok(!s.calls.some(call => call.name === 'reloadConfig'), 'no reload while the recovery screen is up')
+  await s.controller.repairConfig()
+  assert.equal(s.value(s.controller.cfgRepairFailure), 'still broken')
+  assert.equal(s.value(s.controller.cfgLoadErrorModal), true)
+  await s.controller.repairConfig()
+  assert.equal(s.value(s.controller.cfgLoadErrorModal), false)
+  assert.equal(s.value(s.controller.cfgLoadErrorBusy), false)
+  assert.equal(s.value(s.controller.firstRun), true, 'a repaired config without a folder goes to onboarding')
+})
+
+test('first run waits for onboarding and reset loads the dashboard', async t => {
+  const passes = []
+  const s = await session(t, { bridge: startBridge(passes, { isFirstRun: async () => true }) })
+  s.controller.listen()
+  await s.controller.start(false)
+  assert.equal(s.value(s.controller.firstRun), true)
+  assert.deepEqual(passes, [])
+  const reset = s.controller.reset()
+  assert.equal(s.value(s.controller.firstRun), false)
+  await until(() => passes.length === 1, 'the status pass')
+  s.emit('status:batch', 1, { passID: 1, revision: 1, items: [status(one), status(two)], done: true })
+  await reset
+  assert.ok(s.seen.some(([name]) => name === 'startupChecks'))
+})
+
+test('reloadFromDisk shows its failure in the banner and clears it on the next success', async t => {
+  let fail = true
+  const s = await session(t, { bridge: {
+    reloadConfig: async () => { if (fail) throw new Error('fixture dangling reference'); return fixtureConfig() },
+    getStartupSnapshot: async () => snapshot({ configPath: '/fixture/other.json' }),
+    getAllStatus: async () => [status(one, 'dirty')],
+    credentialVerify: async () => ({ status: 'ok' }),
+  } })
+  await assert.rejects(s.controller.reloadFromDisk(), /dangling/)
+  assert.equal(s.value(s.controller.reloadError), 'fixture dangling reference')
+  fail = false
+  await s.controller.reloadFromDisk()
+  assert.equal(s.value(s.controller.reloadError), '')
+  assert.equal(s.value(s.controller.configPath), '/fixture/other.json')
+  assert.ok(s.seen.some(([name]) => name === 'applyReload'))
+  assert.equal(s.value(s.repoStates)[keyOne].status, 'dirty')
+})
+
+test('a remote session loads on connect, keeps its rows on a resumed reconnect and reloads on one that cannot resume', async t => {
+  const passes = []
+  let s
+  s = await session(t, { bridge: startBridge(passes, {
+    remoteInfo: async () => ({ state: 'connected', alias: 'fixture-host' }),
+    refreshStatus: async () => { s.emit('status:updated', 1, [status(one), status(two, 'behind')]) },
+    reloadConfig: async () => fixtureConfig(),
+    getAllStatus: async () => [status(one), status(two, 'behind')],
+    credentialVerify: async () => ({ status: 'ok' }),
+  }) })
+  s.controller.listen()
+  const started = s.controller.start(true)
+  await until(() => passes.length === 1, 'the first status pass')
+  assert.deepEqual(s.seen.find(([name]) => name === 'markRemote'), ['markRemote', 'fixture-host'])
+  assert.equal(s.value(s.controller.remoteLoading), true)
+  s.emit('status:batch', 1, { passID: 1, revision: 1, items: [status(one), status(two, 'behind')], done: true })
+  await started
+  assert.equal(s.value(s.controller.remoteLoaded), true)
+  assert.equal(s.value(s.controller.remoteLoading), false)
+  assert.equal(s.calls.filter(call => call.name === 'reconcile').length, 1, 'the connection flow runs the reconcile')
+
+  const disconnected = { state: 'disconnected', alias: 'fixture-host' }
+  s.emit('remote:state', 2, disconnected)
+  assert.deepEqual(s.value(s.controller.remoteState), disconnected)
+  s.emit('remote:state', 3, { state: 'connected', alias: 'fixture-host', resumed: true })
+  await until(() => !s.value(s.controller.remoteLoading) && s.seen.some(([name]) => name === 'applyReload'), 'the resumed reload')
+  assert.equal(s.value(s.repoStates)[keyTwo].status, 'behind', 'a resumed connection keeps the rows')
+  assert.deepEqual(passes, [1], 'and starts no status pass')
+  assert.equal(s.calls.filter(call => call.name === 'reconcile').length, 1, 'nor a reconcile')
+
+  s.emit('remote:state', 4, disconnected)
+  s.emit('remote:state', 5, { state: 'connected', alias: 'fixture-host' })
+  await until(() => passes.length === 2, 'the reloaded status pass')
+  assert.equal(s.value(s.repoStates)[keyTwo].status, 'unknown', 'a reconnect that cannot resume reloads the rows')
+  assert.deepEqual(s.seen.filter(([name]) => name === 'applySnapshot').map(([, , keepView]) => keepView), [false, true], 'and keeps the view')
+  s.emit('status:batch', 1, { passID: passes[1], revision: 1, items: [status(one), status(two)], done: true })
+  await until(() => s.calls.filter(call => call.name === 'reconcile').length === 2 && !s.value(s.controller.remoteLoading), 'the reconnect flow')
 })
 
 test('credentials:updated keeps known accounts and outdates a running check', async t => {
@@ -335,7 +493,10 @@ test('update events respect a dismissed version and quit after the message', asy
 })
 
 test('config, reconcile, discovery, network and PR events reach their stores and the window', async t => {
-  const s = await session(t, { bridge: { getConfig: async () => ({ global: { editors: [{ name: 'fixture' }], terminal_apps: [], shells: [], terminal_profiles: [] } }) } })
+  const s = await session(t, { bridge: {
+    getConfig: async () => ({ global: { editors: [{ name: 'fixture' }], terminal_apps: [], shells: [], terminal_profiles: [] } }),
+    repoNesting: async () => ({}),
+  } })
   s.controller.listen()
   s.emit('harnesses:updated', 100, [{ name: 'fixture-harness' }])
   assert.deepEqual(s.value(s.configStore).global.ai_harnesses, [{ name: 'fixture-harness' }])
@@ -344,8 +505,8 @@ test('config, reconcile, discovery, network and PR events reach their stores and
   assert.deepEqual(s.value(s.configStore).global.editors, [{ name: 'fixture' }])
   s.emit('reconcile:done', 102, { workspaceUnknown: [keyOne] })
   assert.deepEqual([...s.value(s.workspaceUnknown)], [keyOne])
-  s.emit('reconcile:done', 103, { background: true, adopted: 0 })
-  assert.equal(s.seen.find(([name]) => name === 'applyReconcile')[1].background, true)
+  s.emit('reconcile:done', 103, reconcileResult({ background: true }))
+  await until(() => s.value(s.controller.orphanCount) === 2, 'the background reconcile')
   s.emit('discover:done', 104, { accountKey: 'demo' })
   assert.deepEqual(s.seen.find(([name]) => name === 'discoverDone')[1], { accountKey: 'demo' })
   s.emit('network:state', 105, { offline: true, hosts: ['example.invalid'] })
@@ -354,7 +515,7 @@ test('config, reconcile, discovery, network and PR events reach their stores and
   assert.deepEqual(s.value(s.prsByAccount), {}, 'an account outside the config is ignored')
 })
 
-test('the window watchers follow the tint, the profiles and the connection', async t => {
+test('the window watchers follow the tint and the profiles', async t => {
   let read
   const s = await session(t, { bridge: { getRemoteTint: () => new Promise(resolve => { read = resolve }) } })
   const loading = s.controller.loadRemoteTint()
@@ -363,13 +524,9 @@ test('the window watchers follow the tint, the profiles and the connection', asy
   await loading
   assert.equal(s.value(s.controller.remoteTint), '#22c55e', 'a change during the read wins over it')
   let reloads = 0
-  const states = []
   s.controller.watchProfiles(() => { reloads++ })
-  s.controller.watchRemoteState(state => states.push(state.state))
   s.emit('profiles:reloaded', 111, null)
-  s.emit('remote:state', 112, { state: 'connected', alias: 'fixture-host' })
   assert.equal(reloads, 1)
-  assert.deepEqual(states, ['connected'])
 })
 
 test('forgetRuns and forgetOperations drop what a lost connection leaves unknown', async t => {

@@ -11,7 +11,7 @@ cmd/
       lib/                Shared modules (bridge, stores, status, views, activity, notices, theme, i18n, rich, repo-tree, repo-detail + *.test.mjs) and shared pieces (Card, Logo, Rich, LauncherMenu, CredentialResult, PrecheckBanner, …)
       lib/components/     Dashboard parts (top bar, activity strip, banners, settings, sidebar, Needs attention / All / account / Mirrors views, account card and menu, repo tree/row/detail, footer, notices)
       lib/modals/         One component per modal + modals.css (the shared dialog kit)
-      lib/session/        SessionController: a window's event listeners and run bookkeeping (+ controller.test.mjs)
+      lib/session/        SessionController: a window's event listeners, run bookkeeping and session lifecycle (+ controller.test.mjs)
     serverbin/            The gitbox-server binaries GitboxApp embeds with -tags serverbin, pinned by SHA-256; gen/ is the build tool that compresses them and writes the pins
 pkg/                      Shared Go library
   ops/                    Account, credential, clone and discovery service layer the GUI calls (+ TestScenario_FullLifecycle)
