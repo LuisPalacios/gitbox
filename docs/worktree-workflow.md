@@ -162,11 +162,12 @@ When I'm ready:
 It runs in any session, the one that created the worktree or a fresh one. The skill:
 
 1. Reads the PR and finds its worktree by branch name.
-2. Checks that the worktree has no uncommitted or unpushed changes, and stops if it has, unless I override. This check runs before the merge because `gh pr merge --delete-branch` also deletes the local branch and its worktree.
+2. Checks that the worktree has no uncommitted or unpushed changes, and stops if it has, unless I override. This check runs before the merge because work left only in the worktree would miss the merge, and the cleanup removes the worktree.
 3. Fetches and, if the base branch moved, offers a rebase and re-pushes with `--force-with-lease`.
 4. Gates on the local gate: the head commit needs a passing gate marker or `local-gate` status, and it offers to run the gate when there is none. A failed GitHub check also stops it and reports its log; a check still running does not.
-5. Shows me `gh pr merge <PR#> --squash --delete-branch` and waits for my go-ahead.
-6. After the merge, returns to the main clone, fast-forwards `main`, removes any worktree and local branch `gh` left behind, and prunes stale worktree metadata.
+5. Shows me `gh pr merge <PR#> --squash` and waits for my go-ahead. It then deletes the remote branch through the GitHub API if the repository didn't already. It never uses `--delete-branch`, because `gh` would then check out and pull the base branch in whichever checkout it runs from.
+6. After the merge, fetches `origin` in the main clone, removes the PR's worktree and local branch, and prunes stale worktree metadata. It never checks out, pulls, merges or resets anything in the main clone, so a session working there keeps its files.
+7. Reports how many commits the main clone's `main` is behind `origin/main` and shows the command to update it. I run that command myself when the main clone is idle.
 
 If the PR body says `Closes #N`, GitHub closes the issue on merge.
 
