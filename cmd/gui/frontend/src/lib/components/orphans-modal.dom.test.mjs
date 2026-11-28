@@ -104,6 +104,7 @@ test('every row, ignored ones included, opens its folder and a terminal there', 
   const { screen, fireEvent, waitFor } = ui
 
   const local = card(ui, 'scratch/local')
+  assert.ok(local.getByRole('button', { name: 'Reveal in Finder' }).querySelector('svg'), 'the folder button shows the folder icon')
   await fireEvent.click(local.getByRole('button', { name: 'Reveal in Finder' }))
   await fireEvent.click(local.getByRole('button', { name: 'Open with WezTerm' }))
   await waitFor(() => assert.deepEqual(called(native, 'OpenInExplorer'), [[noRemote.path]]))

@@ -13,6 +13,7 @@
   import { remoteHost } from '../stores';
   import { unavailableOff } from '../remotehost';
   import BrandIcon, { terminalLogo } from '../BrandIcon.svelte';
+  import UIIcon from '../UIIcon.svelte';
   import type { OrphanRepoDTO, ReconcileDTO, TerminalProfileInfo } from '../types';
 
   export let unmatched: OrphanRepoDTO[];
@@ -167,7 +168,7 @@
       {/if}
       <span class="launch-group">
         <button use:remoteOff={unavailableOff($remoteHost)} class="icon-btn btn-launch" title={revealLabel || $t('launcher.revealDefault')} aria-label={revealLabel || $t('launcher.revealDefault')}
-          on:click={() => openFolder(o)}>&#9636;</button>
+          on:click={() => openFolder(o)}><UIIcon name="folder" /></button>
         {#if profile}
           {@const pr = profile}
           <button class="icon-btn btn-launch" title={$t('simple.btnOpenWith', { name: pr.name })} aria-label={$t('simple.btnOpenWith', { name: pr.name })}
