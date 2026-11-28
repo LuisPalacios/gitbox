@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "node --test src/lib/*.test.mjs && npm run test:dom",
+    "test": "node --test src/lib/*.test.mjs src/lib/session/*.test.mjs && npm run test:dom",
     "test:dom": "node --test src/lib/components/*.dom.test.mjs"
   },
   "devDependencies": {

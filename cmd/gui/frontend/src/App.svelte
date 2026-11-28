@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { acceptStatusBatch, applyRepairReports, statusPaintQueue } from './lib/status';
-  import { completionStatuses, hasConfiguredRepo } from './lib/events';
-  import type { EventMetadata, EventPayloads } from './lib/dto.generated';
+  import { applyRepairReports, statusPaintQueue } from './lib/status';
+  import { createSessionController, type StartupStream } from './lib/session/controller';
   import { onDestroy, onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { main } from '../wailsjs/go/models';
@@ -10,7 +9,7 @@
   import { backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    applyMirrorStatusResults, prsByAccount, prSettings, applyPRUpdate, workspacePlaceholders, workspaceMembers, workspaceUnknown, workspaceDiagnostics,
+    prsByAccount, prSettings, workspacePlaceholders, workspaceMembers, workspaceUnknown, workspaceDiagnostics,
     remoteWindow, remoteHost
   } from './lib/stores';
   import { detailLocked, accountHealth } from './lib/status';
@@ -21,11 +20,9 @@
   import type { ErrorActions } from './lib/explain';
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
   import { languageStore, normalizeLanguage, remoteTextHost, t } from './lib/i18n';
-  import { pushNotice, dismissNotice, errorText } from './lib/notices';
-  import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from './lib/activity';
-  import type { Run, Completion, FetchSummary, Unsafe } from './lib/activity';
+  import { pushNotice, errorText } from './lib/notices';
   import { Quit } from '../wailsjs/runtime/runtime';
-  import type { ConfigDTO, CredentialFinding, RepoState, PullSkipReason, MirrorSetupResult, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, UpdateInfo, ConfigBackupInfo } from './lib/types';
+  import type { ConfigDTO, CredentialFinding, CredentialStatus, RepoState, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, ConfigBackupInfo } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
@@ -69,7 +66,7 @@
   import { repoTreeRows } from './lib/repo-tree';
   import type { Placeholder } from './lib/repo-tree';
   import { themeChoiceOf } from './lib/theme';
-  import { applyTint, tintOf } from './lib/tint';
+  import { applyTint } from './lib/tint';
   import type { ThemeChoice } from './lib/theme';
 
   let languageChoice: 'en' | 'es' = 'en';
@@ -122,15 +119,37 @@
   let gitignoreError = '';
   let checkGitignorePref = true;
 
+  // ── Session (#379) ──
+  // The controller owns the event listeners and the run bookkeeping they
+  // update; the window renders from its stores and keeps the lifecycle.
+  const session = createSessionController({
+    bridge,
+    events,
+    host: {
+      simple: () => simple,
+      serverOS: () => serverOS,
+      stream: () => currentStream,
+      markStartup,
+      finishTiming: () => finishTiming(),
+      restartDashboard: () => initDashboard(),
+      refreshDetail,
+      applyReconcile,
+      discoverDone: (data) => discoverDialog?.onDone(data),
+      quit: () => Quit(),
+    },
+  });
+  const {
+    syncing, fetchRun, pullRun, fetchingAll, fetchingRepos, lastFetchTime, networkDown, credStatuses,
+    mirrorChecking, mirrorSettingUp, mirrorSetupResultModal, mirrorDiscoverLoading, mirrorDiscoverResults,
+    mirrorDiscoverError, mirrorDiscoverProgress, updateInfo, updateApplying, updateProgress, updateDone,
+    updateDismissed, rollbackVersion, remoteTint,
+    executePullAll, failPullAll, markSyncStart, checkAllMirrorStatus, verifyAllCredentials,
+  } = session;
+
   // ── Update state ──
-  let updateInfo: UpdateInfo | null = null;
-  let updateApplying = false;
-  let updateProgress = '';
-  let updateDone = false;
+  // Footer shows the update the session heard of; the error of applying
+  // it stays here.
   let updateError = '';
-  // Version whose pill the user dismissed: hidden for this session only,
-  // while the periodic re-check keeps reporting it.
-  let updateDismissed = '';
 
   async function checkGlobalIdentity() {
     try {
@@ -239,7 +258,6 @@
   // Rendered as a full-screen Svelte view (NOT a window.confirm) because
   // macOS WebKit was observed to auto-dismiss confirm() without showing a
   // dialog, causing the app to flash and exit on corrupted configs.
-  let rollbackVersion = '';
   let rollbackBusy = false;
   let rollbackError = false;
   async function resolveUpdate(rollback: boolean) {
@@ -247,7 +265,7 @@
     rollbackError = false;
     try {
       await bridge.resolveUpdateRecovery(rollback);
-      rollbackVersion = '';
+      $rollbackVersion = '';
     } catch { rollbackError = true; }
     finally { rollbackBusy = false; }
   }
@@ -366,8 +384,7 @@
   let resolvedTheme: 'light' | 'dark' = 'dark';
   // remoteTint is the color a remote window tints its top bar and sidebar
   // with (#331); a local window never paints it.
-  let remoteTint = '';
-  $: applyTint(document.documentElement, windowMode === 'remote' && remoteTint ? remoteTint : null, $themeStore);
+  $: applyTint(document.documentElement, windowMode === 'remote' && $remoteTint ? $remoteTint : null, $themeStore);
 
   function applyTheme() {
     if (themeChoice === 'system') {
@@ -390,183 +407,12 @@
     setTheme(order[(order.indexOf(themeChoice) + 1) % 3]);
   }
 
-  // ── Sync state ──
-  let syncing = false;
-
-  // ── Activity (issue #138) ──
-  // Fetch all and Pull all runs: the strip shows their scope while they
-  // run, and a result card sums them up. Startup and periodic fetches only
-  // leave a card when something changed or failed.
-  let fetchRun: Run | null = null;
-  let fetchManual = false;
-  // The last fetch card with failures and the repos it lists. It goes away
-  // when those repos fetch fine again or the next fetch run starts, so a
-  // momentary failure doesn't stay on screen after everything recovered.
-  let fetchFailNotice: { id: number; keys: Set<string> } | null = null;
-  // Servers the backend cannot reach right now. While the list is not
-  // empty the offline banner shows, with Retry; the backend clears it when
-  // the servers answer again.
-  let networkDown: string[] = [];
-  // The status each row had before a pull or clone started, to put it back
-  // when the backend did not attempt the work because the server is down.
-  const statusBeforeSync: Record<string, RepoState['status']> = {};
-  // notAttempted handles a pull or clone the backend stopped for lack of a
-  // server: the row goes back to what it was instead of turning into an
-  // error.
-  function notAttempted(key: string, data: { code?: string; error?: string }, operation: "clone" | "pull") {
-    repoStates.update((s) => {
-      if (s[key]) s[key] = {
-        ...s[key],
-        status: statusBeforeSync[key] || s[key].status,
-        progress: 0,
-        problem: { code: data.code, detail: data.error },
-        failedOperation: operation,
-      };
-      return { ...s };
-    });
-  }
-  function clearFetchFailNotice() {
-    if (fetchFailNotice) dismissNotice(fetchFailNotice.id);
-    fetchFailNotice = null;
-  }
-  let pullRun: Run | null = null;
-  let pullRunID: string | null = null;
-  let pullRunOperation = '';
-  const completion = completionStatuses();
-  let mirrorDiscoveryDone = '';
-  let fetchOperation = '';
-  const fetchOperations = new Map<string, string>();
-  const configuredRepo = (source: string, repo: string) => hasConfiguredRepo($configStore, source, repo);
-  function publishCompletionRow(row: EventPayloads['status:one']) {
-    currentStream?.paint.flush();
-    statusGeneration++;
-    applyStatusResults([row], true, true);
-  }
-  const statusOfKey = (key: string) => $repoStates[key]?.status || 'unknown';
-  const accountOfKey = (key: string) => $sources[key.slice(0, key.indexOf('/'))]?.account || key.slice(0, key.indexOf('/'));
-
-  let fetchCompletions: Completion[] = [];
-  let fetchProgressTimer: ReturnType<typeof setTimeout> | undefined;
-  function flushFetchProgress() {
-    clearTimeout(fetchProgressTimer);
-    fetchProgressTimer = undefined;
-    if (fetchRun && fetchCompletions.length) fetchRun = noteCompletions(fetchRun, fetchCompletions);
-    fetchCompletions = [];
-  }
-
-  // finishFetch leaves the result card of a fetch run and returns its
-  // summary, or null when there was no run.
-  function finishFetch(error?: string): FetchSummary | null {
-    flushFetchProgress();
-    const run = fetchRun;
-    const manual = fetchManual;
-    fetchRun = null;
-    fetchManual = false;
-    if (!run) {
-      if (manual && error) pushNotice('error', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), [error]);
-      return null;
-    }
-    const offline = Object.keys(credStatuses).filter((k) => credStatuses[k]?.status === 'offline');
-    const sum = summarizeFetch(run, statusOfKey, accountOfKey, offline);
-    if (!manual && !sum.changed) return sum;
-    // Nothing was fetched because no server answered: the offline banner
-    // already says so, and one card per attempt would only pile up.
-    if (networkDown.length > 0 && sum.checked === 0 && sum.failed === 0 && sum.unsafe.length === 0) return sum;
-    const skippedAccounts = sum.skippedAccounts.join(', ');
-    const unreachable = sum.unreachable.map((u) => $t(simple ? 'result.unreachableSimple' : 'result.unreachable', { n: u.count, host: u.host || $t('result.theServer') }));
-    // A connect refused within milliseconds is the OS blocking it, not a
-    // slow or down server; on macOS that's usually Local Network privacy.
-    // The fetches ran on the host that has the data: its OS decides.
-    const lanHint = serverOS === 'darwin' && sum.unreachable.some((u) => u.fast) && $t('result.lanHint');
-    const failedKind = sum.unreachable.length > 0 || sum.unsafe.length > 0 || sum.failed > 0;
-    const id = pushNotice(failedKind ? 'error' : 'success', $t(simple ? 'result.checkTitle' : 'result.fetchTitle'), simple ? [
-      $t('result.checked', { n: sum.checked }),
-      sum.nowBehind > 0 && $t('result.newerOnline', { n: sum.nowBehind }),
-      sum.skipped > 0 && $t('result.skippedSimple', { n: sum.skipped, accounts: skippedAccounts }),
-      ...unreachable,
-      ...unsafeLines(sum.unsafe),
-      sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
-      lanHint,
-      sum.localWork > 0 && $t('result.wipUntouched'),
-    ] : [
-      $t('result.fetched', { n: sum.checked }),
-      sum.nowBehind > 0 && $t('result.nowBehind', { n: sum.nowBehind }),
-      sum.skipped > 0 && $t('result.skipped', { n: sum.skipped, accounts: skippedAccounts }),
-      ...unreachable,
-      ...unsafeLines(sum.unsafe),
-      sum.firstFailure && $t('result.failed', { n: sum.failed, error: `${sum.firstFailure.key}: ${failureText(sum.firstFailure)}` }),
-      lanHint,
-      sum.localWork > 0 && $t('result.localUntouched'),
-    ]);
-    if (failedKind) fetchFailNotice = { id, keys: new Set(Object.keys(run.errors)) };
-    return sum;
-  }
-
-  // unsafeLines says, once per setting, how many clones Gitbox paused for
-  // safety and where to look (#344).
-  function unsafeLines(unsafe: Unsafe[]): string[] {
-    return unsafe.map((u) => simple
-      ? $t('result.unsafeSimple', { n: u.count })
-      : $t('result.unsafe', { n: u.count, setting: u.setting || $t('result.unsafeAnySetting') }));
-  }
-
-  // fetchProblem is the short reason a fetch-all run failed, from its
-  // summary, for the line in Preferences; '' when the summary has none.
-  function fetchProblem(sum: FetchSummary | null): string {
-    if (!sum) return '';
-    return [
-      ...unsafeLines(sum.unsafe),
-      sum.firstFailure && $t('result.failed', { n: sum.failed, error: `${sum.firstFailure.key}: ${failureText(sum.firstFailure)}` }),
-    ].filter(Boolean).join(' · ');
-  }
-
-  // failureText explains a failure: the catalog entry for its code when the
-  // backend classified it, its own text otherwise.
-  function failureText(failure: { error: string; code?: string }): string {
-    const key = failure.code ? `error.${failure.code}` : '';
-    const hint = key ? $t(key) : '';
-    return hint && hint !== key ? hint : failure.error;
-  }
-
-  function finishPull(skippedSincePreview = 0) {
-    const run = pullRun;
-    pullRun = null;
-    if (!run) return;
-    const sum = summarizePull(run);
-    const unsafeCount = sum.unsafe.reduce((n, u) => n + u.count, 0);
-    if (sum.pulled + sum.cloned + sum.skipped + sum.failed + unsafeCount + skippedSincePreview === 0) return;
-    // Nothing was pulled because no server answered: the offline banner
-    // already says so.
-    const stoppedByNetwork = sum.failed > 0 && sum.failures.every((f) => run.failures[f.key]?.code === 'git.offline');
-    if (networkDown.length > 0 && stoppedByNetwork && sum.pulled === 0 && sum.cloned === 0 && sum.skipped === 0 && unsafeCount === 0 && skippedSincePreview === 0) return;
-    const first = sum.failures[0];
-    const localWork = localWorkCount(Object.keys($repoStates), statusOfKey) > 0;
-    pushNotice(sum.failed > 0 || unsafeCount > 0 ? 'error' : 'success', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), simple ? [
-      sum.pulled > 0 && $t('result.updated', { n: sum.pulled }),
-      sum.cloned > 0 && $t('result.downloaded', { n: sum.cloned }),
-      !run.planID && sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
-      skippedSincePreview > 0 && $t('result.pullPlanSkipped', { n: skippedSincePreview }),
-      ...unsafeLines(sum.unsafe),
-      sum.failed > 0 && $t('result.needHelp', { n: sum.failed }),
-      localWork && $t('result.wipUntouched'),
-    ] : [
-      sum.pulled > 0 && $t('result.pulled', { n: sum.pulled }),
-      sum.cloned > 0 && $t('result.cloned', { n: sum.cloned }),
-      !run.planID && sum.skipped > 0 && $t('result.pullSkipped', { n: sum.skipped }),
-      skippedSincePreview > 0 && $t('result.pullPlanSkipped', { n: skippedSincePreview }),
-      ...unsafeLines(sum.unsafe),
-      first && $t('result.failed', { n: sum.failed, error: `${first.key}: ${first.error}` }),
-      localWork && $t('result.localUntouched'),
-    ]);
-  }
-
   let pullPlan: main.PullPlanDTO | null = null;
   let loadingPullPlan = false;
-  let pullRunPlanID = '';
   $: if (remoteOffline) pullPlan = null;
 
   async function syncAll() {
-    if (syncing || loadingPullPlan || pullPlan || remoteOffline) return;
+    if ($syncing || loadingPullPlan || pullPlan || remoteOffline) return;
     if (!($configStore?.global?.show_pull_plan ?? simple)) {
       await executePullAll('');
       return;
@@ -589,36 +435,6 @@
     if (planID && !remoteOffline) void executePullAll(planID);
   }
 
-  async function executePullAll(planID: string) {
-    syncing = true;
-    const run = crypto.getRandomValues(new Uint32Array(4)).join('-');
-    pullRunID = run;
-    pullRunPlanID = planID;
-    try {
-      await bridge.pullAll(run, planID);
-    } catch (error) {
-      if (pullRunID === run) failPullAll(String(error));
-    }
-  }
-
-  function failPullAll(error: string) {
-    syncing = false;
-    pullRunID = null;
-    pullRunOperation = '';
-    pullRunPlanID = '';
-    pullRun = null;
-    pushNotice('error', $t(simple ? 'result.updateTitle' : 'result.pullTitle'), [error]);
-  }
-
-  function markSyncStart(key: string, next: 'syncing' | 'cloning') {
-    repoStates.update((s) => {
-      const row = s[key];
-      if (!row || row.status === next) return s;
-      statusBeforeSync[key] = row.status;
-      return { ...s, [key]: { ...row, status: next, progress: 0, pullSkipped: undefined, problem: undefined, failedOperation: undefined } };
-    });
-  }
-
   function syncRepo(sourceKey: string, repoKey: string) {
     markSyncStart(`${sourceKey}/${repoKey}`, 'syncing');
     bridge.pullRepo(sourceKey, repoKey);
@@ -626,12 +442,7 @@
 
   // startClone clones one repo into root ('' = its account's own root).
   function startClone(sourceKey: string, repoKey: string, root = '') {
-    const key = `${sourceKey}/${repoKey}`;
-    statusBeforeSync[key] = $repoStates[key]?.status || 'unknown';
-    repoStates.update((s) => {
-      s[key] = { ...s[key], status: 'cloning', progress: 0, problem: undefined, failedOperation: undefined };
-      return { ...s };
-    });
+    session.markCloneStart(`${sourceKey}/${repoKey}`);
     bridge.cloneRepo(sourceKey, repoKey, root);
   }
 
@@ -646,13 +457,9 @@
   }
   const cloneRepo = (sourceKey: string, repoKey: string) => cloneRepos(sourceKey, [repoKey]);
 
-  // Track which repos are currently fetching (separate from status).
-  let fetchingRepos: Record<string, boolean> = {};
-
   function fetchRepo(sourceKey: string, repoKey: string) {
     const key = `${sourceKey}/${repoKey}`;
-    fetchingRepos[key] = true;
-    fetchingRepos = fetchingRepos;
+    $fetchingRepos[key] = true;
     bridge.fetchRepo(sourceKey, repoKey);
   }
 
@@ -688,7 +495,7 @@
     // Every account created by import still needs local sign-in.
     const refs = new Set(added);
     for (const [key, account] of Object.entries(cfg.accounts)) {
-      if (refs.has(account.url + '/' + account.username)) credStatuses[key] = {status: 'none'};
+      if (refs.has(account.url + '/' + account.username)) $credStatuses[key] = {status: 'none'} as CredentialStatus;
     }
     configStore.set(cfg);
   }
@@ -753,12 +560,6 @@
     } catch (e) {
       pushNotice('error', $t('notice.reconcileFailed'), [errorText(e)]);
       return null;
-    }
-  }
-
-  function updateRepairWarning(source: string, repo: string, warnings?: string[]) {
-    if (warnings && $repoStates[`${source}/${repo}`]?.repairWarnings) {
-      $repoStates = applyRepairReports($repoStates, [{ source, repo, warnings }]);
     }
   }
 
@@ -968,7 +769,7 @@
     }
     return byAccount;
   })();
-  $: brokenAccounts = Object.keys($accounts).filter((k) => accountHealth(credStatuses[k]?.status, simple).attention || credStatuses[k]?.problem);
+  $: brokenAccounts = Object.keys($accounts).filter((k) => accountHealth($credStatuses[k]?.status, simple).attention || $credStatuses[k]?.problem);
   $: attention = (() => {
     const counts = attentionCounts(keysByAccount, rankOf, CALM_RANK, brokenAccounts);
     return { ...counts, total: counts.total + ($configStore?.pathConflicts?.length ?? 0) };
@@ -1033,6 +834,17 @@
     detailLoading = false;
   }
 
+  // refreshDetail reloads the open detail panel after a status refresh,
+  // unless its clone is now unavailable (a reactive statement collapses it).
+  function refreshDetail() {
+    if (expandedRepo && !detailLocked($repoStates[expandedRepo]?.status)) {
+      const slash = expandedRepo.indexOf('/');
+      const sk = expandedRepo.substring(0, slash);
+      const rn = expandedRepo.substring(slash + 1);
+      void loadRepoDetail(sk, rn);
+    }
+  }
+
   // ── Discovery ──
   let discoverDialog: DiscoverModal;
   let sshTokenDialog: SshTokenModal;
@@ -1056,7 +868,6 @@
   // prior bug). Cleared the next time reload succeeds.
   let reloadError = '';
   let reloadGeneration = 0;
-  let statusGeneration = 0;
 
   // Re-read config from disk and refresh all repo statuses. Throws on
   // failure; callers catch and populate reloadError so the UI does not
@@ -1090,12 +901,12 @@
       if (shown && !snapshot.config.accounts?.[shown]) view = snapshot.config.global?.collapsed?.view || 'attention';
       const saved = snapshot.config.global.periodic_sync || 'off';
       fetchInterval = saved;
-      if (!fetchingAll) {
-        const statusVersion = statusGeneration;
+      if (!$fetchingAll) {
+        const statusVersion = session.statusGeneration;
         const statuses = await bridge.getAllStatus();
         if (generation !== reloadGeneration) return;
-        if (statusVersion === statusGeneration && !fetchingAll) applyStatusResults(statuses);
-        if (!fetchingAll) verifyAllCredentials();
+        if (statusVersion === session.statusGeneration && !$fetchingAll) applyStatusResults(statuses);
+        if (!$fetchingAll) verifyAllCredentials();
       }
       reloadError = '';
     } catch (err: any) {
@@ -1177,11 +988,9 @@
   async function credPostSetup(accountKey: string) {
     if (!credResult?.ok) return;
     bridge.credentialVerify(accountKey).then((cs) => {
-      credStatuses[accountKey] = { ...cs };
-      credStatuses = credStatuses;
+      $credStatuses[accountKey] = { ...cs };
     }).catch(() => {
-      credStatuses[accountKey] = {status: 'ok', primary: 'ok', pat: 'ok', primaryMsg: '', patMsg: ''};
-      credStatuses = credStatuses;
+      $credStatuses[accountKey] = {status: 'ok', primary: 'ok', pat: 'ok', primaryMsg: '', patMsg: ''} as CredentialStatus;
     });
   }
 
@@ -1265,17 +1074,15 @@
   }
 
   async function retryCredential(accountKey: string) {
-    const before = credStatuses[accountKey];
-    credStatuses[accountKey] = { ...(before || {}), status: 'unknown', problem: undefined };
-    credStatuses = credStatuses;
+    const before = $credStatuses[accountKey];
+    $credStatuses[accountKey] = { ...(before || {}), status: 'unknown', problem: undefined } as CredentialStatus;
     try {
       const cs = await bridge.credentialVerify(accountKey);
-      credStatuses[accountKey] = { ...cs };
+      $credStatuses[accountKey] = { ...cs };
     } catch (e) {
       console.error(e);
-      credStatuses[accountKey] = before;
+      $credStatuses[accountKey] = before;
     }
-    credStatuses = credStatuses;
   }
 
   function fixProofCredential(accountKey: string) {
@@ -1290,28 +1097,20 @@
   const askDeleteAccount = (accountKey: string) => deleteAccountDialog.askDeleteAccount(accountKey);
 
   // ── Mirrors ──
-  let mirrorChecking: Record<string, boolean> = {};
-  // Per-row "setup in progress" flag, keyed by `${mirrorKey}/${repoKey}`.
-  // Set before calling bridge.setupMirrorRepo, cleared on the mirror:setup:done event.
-  let mirrorSettingUp: Record<string, boolean> = {};
+  // The session's mirrorSettingUp is set before calling
+  // bridge.setupMirrorRepo and cleared on the mirror:setup:done event.
   let addMirrorGroupDialog: AddMirrorGroupModal;
   let addMirrorRepoDialog: AddMirrorRepoModal;
   let deleteMirrorGroupDialog: DeleteMirrorGroupModal;
   let deleteMirrorRepoDialog: DeleteMirrorRepoModal;
-  let mirrorSetupResultModal: MirrorSetupResult | null = null;
   let mirrorCredWarning: MirrorCredentialCheck | null = null;
 
   // Mirror discovery
-  let mirrorDiscoverLoading = false;
-  let mirrorDiscoverResults: NonNullable<EventPayloads['mirror:discover:done']['results']> | null = null;
-  let mirrorDiscoverError = '';
-  let mirrorDiscoverProgress: EventPayloads['mirror:discover:progress'] | null = null;
-
   async function runMirrorDiscover() {
-    mirrorDiscoverLoading = true;
-    mirrorDiscoverResults = null;
-    mirrorDiscoverError = '';
-    mirrorDiscoverProgress = null;
+    $mirrorDiscoverLoading = true;
+    $mirrorDiscoverResults = null;
+    $mirrorDiscoverError = '';
+    $mirrorDiscoverProgress = null;
     discoverAdded = {};
     await bridge.discoverMirrors();
   }
@@ -1337,7 +1136,7 @@
         void cloneRepo(source, name);
       } else if (state.failedOperation === 'pull') {
         syncRepo(source, name);
-      } else if (!fetchingRepos[`${source}/${name}`]) {
+      } else if (!$fetchingRepos[`${source}/${name}`]) {
         fetchRepo(source, name);
       }
     };
@@ -1351,18 +1150,8 @@
   }
 
   async function checkMirrorStatus(mirrorKey: string) {
-    mirrorChecking = { ...mirrorChecking, [mirrorKey]: true };
+    $mirrorChecking = { ...$mirrorChecking, [mirrorKey]: true };
     await bridge.getMirrorStatus(mirrorKey);
-  }
-
-  async function checkAllMirrorStatus() {
-    const keys = Object.keys($mirrors);
-    if (!keys.length) return;
-    for (const key of keys) mirrorChecking = { ...mirrorChecking, [key]: true };
-    try {
-      await bridge.runTask('mirror-status');
-    } catch (e) { console.error(e); }
-    for (const key of keys) mirrorChecking = { ...mirrorChecking, [key]: false };
   }
 
   async function setupMirrorRepo(mirrorKey: string, repoKey: string) {
@@ -1382,7 +1171,7 @@
     // Flip the per-row spinner on before firing the async bridge call. Cleared
     // in the mirror:setup:done handler below.
     const key = `${mirrorKey}/${repoKey}`;
-    mirrorSettingUp = { ...mirrorSettingUp, [key]: true };
+    $mirrorSettingUp = { ...$mirrorSettingUp, [key]: true };
     await bridge.setupMirrorRepo(mirrorKey, repoKey);
   }
 
@@ -1447,15 +1236,6 @@
   // follow each reconnect (#295).
   $: remoteOffline = remoteShowMain && (remoteState?.state !== 'connected' || remoteLoading);
 
-  // nextStatus resolves on the next status:updated, or after ms.
-  let statusWaiters: Array<() => void> = [];
-  function nextStatus(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      statusWaiters.push(() => { clearTimeout(timer); resolve(); });
-    });
-  }
-
   async function onRemoteState(s: RemoteState) {
     const wasConnected = remoteState?.state === 'connected';
     // A new connection clears what the disconnection left behind.
@@ -1465,7 +1245,7 @@
       // The window keeps what it shows until it knows whether the next
       // connection resumes the host's daemon (#247): the events it missed
       // then arrive through the same router, before the connected state.
-      if (wasConnected && fetchingAll) fetchCrossedReconnect = true;
+      if (wasConnected) session.noteDisconnect();
       if (wasConnected && currentStream) {
         statusPass++;
         retireStream();
@@ -1483,7 +1263,7 @@
     if (remoteLoaded && s.resumed && !firstRun) {
       try {
         await reloadFromDisk();
-        const refreshed = nextStatus(30_000);
+        const refreshed = session.nextStatus(30_000);
         await bridge.refreshStatus();
         await refreshed;
       } catch (e) {
@@ -1497,10 +1277,7 @@
     // resume, loads the host's data again; a reconnect keeps the view.
     if (remoteLoaded) {
       events.reset();
-      completion.clear();
-      fetchOperations.clear();
-      fetchOperation = '';
-      mirrorDiscoveryDone = '';
+      session.forgetOperations();
       // Onboarding waits behind the card until the host says whether it
       // still has no config.
       if (firstRun) remoteLoaded = false;
@@ -1511,12 +1288,7 @@
       setRemoteWindow(true, $t('remote.readOnlyTip'));
       // What the host did meanwhile is not all known: its rows come back
       // from the host's status.
-      syncing = false;
-      pullRunID = null;
-      pullRunOperation = '';
-      pullRun = null;
-      mirrorSettingUp = {};
-      fetchingRepos = {};
+      session.forgetRuns();
       repoStates.set({});
       await startMain();
       // A host without a config shows the onboarding, which saves it there.
@@ -1525,7 +1297,7 @@
         // What the host's clones are now: a clone the cut stopped shows as
         // missing or incomplete before any action is offered.
         await runReconcile();
-        const refreshed = nextStatus(30_000);
+        const refreshed = session.nextStatus(30_000);
         await bridge.refreshStatus();
         await refreshed;
       }
@@ -1566,8 +1338,6 @@
 
   // ── Periodic status check ──
   let fetchInterval: string = 'off';
-  let lastFetchTime: string = '';
-  let fetchingAll = false;
 
   // ── PR badges (issue #29) ──
   async function loadPRSettings() {
@@ -1620,69 +1390,25 @@
     }
   }
 
-  // fetchAllEnded closes the fetch-all run the window shows.
-  function fetchAllEnded(error?: string) {
-    fetchOperation = '';
-    fetchOperations.clear();
-    fetchingAll = false;
-    fetchCrossedReconnect = false;
-    fetchingRepos = {};
-    const sum = finishFetch(error);
-    const now = new Date();
-    lastFetchTime = error ? $t('app.fetchAllError', { error: fetchProblem(sum) || error })
-      : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
-
-  // A remote window's run that crossed a reconnect (#247): the call waits
-  // for the host's run, and when the host's fetch:alldone did not reach
-  // the window, the answer ends the run instead.
-  let fetchCrossedReconnect = false;
-
-  // runFetchAll fetches every clone. A manual run (the top-bar button)
-  // always leaves a result card, also when it joins a run already going.
+  // runFetchAll fetches every clone through the session; a manual run
+  // that started one also rescans the disk.
   async function runFetchAll(manual = false) {
-    if (manual) fetchManual = true;
-    if (fetchingAll) return;
-    fetchingAll = true;
-    fetchCrossedReconnect = false;
-    try {
-      if (await bridge.runTask('fetch-all') === 'already-running') return;
-      if (fetchCrossedReconnect && fetchingAll) fetchAllEnded();
-    } catch (e) {
-      lastFetchTime = $t('app.fetchAllError', { error: errorText(e) });
-      if (fetchingAll) finishFetch(errorText(e));
-      fetchingAll = false;
-      fetchingRepos = {};
-    }
-    if (manual) runReconcile();
+    if (await session.runFetchAll(manual) && manual) runReconcile();
   }
 
   // Everything a clone row shares with its list, passed unchanged through
   // every repo view (RowProps in RepoRow.svelte).
   let rowProps: RowProps;
   $: rowProps = {
-    simple, deleteMode, folderDeleteFailures, fetchingRepos, collapsedRepos, workspaceChoices,
+    simple, deleteMode, folderDeleteFailures, fetchingRepos: $fetchingRepos, collapsedRepos, workspaceChoices,
     revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
-    expandedRepo, repoDetail, detailLoading, repoActions, credentialStatuses: credStatuses, fixProofCredential,
+    expandedRepo, repoDetail, detailLoading, repoActions, credentialStatuses: $credStatuses, fixProofCredential,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
     togglePRPopover, closePRPopover, sweepBranches,
     toggleContainer, rescanContainer, chooseWorkspace, findWorkspaceFolder, toggleRepoCollapsed, isContainerRepo, showAccountView,
   };
 
-  // ── Credential status cache ──
-  let credStatuses: Record<string, any> = {};
-  let credentialGeneration = 0;
-
   let statusPass = 0;
-  interface StartupStream {
-    id: number;
-    first: () => void;
-    finish: () => void;
-    full: boolean;
-    painted: boolean;
-    pending: Set<string>;
-    paint: ReturnType<typeof statusPaintQueue>;
-  }
   let currentStream: StartupStream | null = null;
   function retireStream() {
     currentStream?.paint.discard();
@@ -1839,46 +1565,12 @@
     configStore.set(cfg);
   }
 
-  // An account marked offline whose repo just fetched fine is reachable
-  // after all (a refusal right after launch, a VPN that came up), so its
-  // credential is checked again, once at a time.
-  const recheckingAccounts = new Set<string>();
-  function recheckOfflineAccount(key: string) {
-    if (credStatuses[key]?.status !== 'offline' || recheckingAccounts.has(key)) return;
-    recheckingAccounts.add(key);
-    const account = JSON.stringify($accounts[key]);
-    bridge.credentialVerify(key).then((cs) => {
-      if (account !== JSON.stringify($accounts[key])) return;
-      credStatuses[key] = { ...cs };
-      credStatuses = credStatuses;
-    }).catch(console.error).finally(() => recheckingAccounts.delete(key));
-  }
-
-  function verifyAllCredentials() {
-    const generation = ++credentialGeneration;
-    for (const key of Object.keys($accounts)) {
-      const account = JSON.stringify($accounts[key]);
-      bridge.credentialVerify(key).then((cs) => {
-        if (generation !== credentialGeneration || account !== JSON.stringify($accounts[key])) return;
-        credStatuses[key] = { ...cs };
-        credStatuses = credStatuses;
-      }).catch(console.error);
-    }
-  }
-
   const lifetime = new AbortController();
-  const eventSubscriptions: (() => void)[] = [];
   let focusTimer: ReturnType<typeof setTimeout> | undefined;
-  const onEvent: typeof events.on = (name, handler, stale) => {
-    const off = events.on(name, handler, stale);
-    eventSubscriptions.push(off);
-    return off;
-  };
   onDestroy(() => {
     lifetime.abort();
-    for (const off of eventSubscriptions) off();
+    session.destroy();
     clearTimeout(focusTimer);
-    clearTimeout(fetchProgressTimer);
     rowObserver?.disconnect();
     reloadGeneration++;
     statusPass++;
@@ -1914,14 +1606,7 @@
       applyTheme();
       // The tint of remote windows, from this computer's preferences; the
       // Go side tells of a change any process saves (#331).
-      // Subscribed first, so no change is missed; a change that arrives
-      // before the first read answers wins over it.
-      let tintChanged = false;
-      onEvent('remote:tint', (color: string) => { tintChanged = true; remoteTint = tintOf(color); });
-      try {
-        const saved = tintOf(await bridge.getRemoteTint());
-        if (!tintChanged) remoteTint = saved;
-      } catch (e) { console.error(e); }
+      await session.loadRemoteTint();
       RemoteConnected = (await import('./lib/components/RemoteConnected.svelte')).default;
     }
 
@@ -1983,7 +1668,7 @@
       // listen for that explicitly so we pick the refresh up even if
       // the focus event timing is flaky on Linux/Windows.
       window.addEventListener('focus', () => { hydrate(); }, { signal: lifetime.signal });
-      onEvent('profiles:reloaded', () => { hydrate(); });
+      session.watchProfiles(() => { hydrate(); });
       // The Wails subprocess starts hidden so the user never sees a
       // dark-empty-webview flash before Svelte mounts. Reveal the
       // window only after Svelte has flushed the DOM AND the browser
@@ -2027,354 +1712,19 @@
     }, { signal: lifetime.signal });
 
     // ── Event listeners (always registered) ──
-    // Background harness detection changed global.ai_harnesses and saved
-    // it; swap the list in the store without a full config reload.
-    onEvent('harnesses:updated', (list) => {
-      configStore.update((c) => c ? { ...c, global: { ...c.global, ai_harnesses: list || [] } } : c);
-    });
-
-    onEvent('tools:updated', () => {
-      bridge.getConfig().then(cfg => configStore.update(current => current ? { ...current, global: { ...current.global, editors: cfg.global.editors, terminal_apps: cfg.global.terminal_apps, shells: cfg.global.shells, terminal_profiles: cfg.global.terminal_profiles } } : current)).catch(console.error);
-    });
-
-    onEvent('reconcile:done', (res) => {
-      // The coalesced background retry has no caller to apply its result.
-      if (res?.background) {
-        void applyReconcile(res).catch(console.error);
-      } else if (res?.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
-    });
-
-    onEvent('status:batch', async (batch) => {
-      const stream = currentStream;
-      if (!stream || stream.full || batch.passID !== stream.id) return;
-      if (acceptStatusBatch(batch, stream.id, $configStore?.revision)) {
-        if (batch.items?.length) {
-          stream.paint.push(batch.items);
-          if (!stream.painted) {
-            stream.painted = true;
-            await tick();
-            if (stream !== currentStream || batch.revision !== $configStore?.revision) return;
-            markStartup('firstStatus');
-            stream.first();
-          }
-        }
-        if (batch.done) {
-          stream.paint.flush();
-          await tick();
-          if (stream !== currentStream || batch.revision !== $configStore?.revision) return;
-          if (stream.pending.size) {
-            // A remote transport may miss an event. Recover the authoritative sweep.
-            const rows = await bridge.getAllStatus();
-            if (stream !== currentStream || batch.revision !== $configStore?.revision) return;
-            applyStatusResults(rows, true);
-            for (const row of rows) stream.pending.delete(`${row.source}/${row.repo}`);
-            if (rows.length) markStartup('firstStatus');
-            await tick();
-          }
-          if (!stream.pending.size) markStartup('fullStatus');
-          stream.full = true;
-          stream.first();
-          finishTiming();
-          stream.finish();
-        }
-      } else if (batch.done) {
-        // A config change superseded this pass. A fresh snapshot owns the next one.
-        void initDashboard().catch(console.error);
-      }
-    }, batch => {
-      if (batch.done && batch.passID === currentStream?.id && !currentStream.full) {
-        void initDashboard().catch(console.error);
-      }
-    });
-    onEvent('status:updated', (results) => {
-      currentStream?.paint.flush();
-      statusGeneration++;
-      applyStatusResults((results || []).filter(row => configuredRepo(row.source, row.repo)));
-      for (const resolve of statusWaiters.splice(0)) resolve();
-      // Refresh expanded detail if a repo is still open (reactive $: handles auto-collapse).
-      if (expandedRepo && !detailLocked($repoStates[expandedRepo]?.status)) {
-        const slash = expandedRepo.indexOf('/');
-        const sk = expandedRepo.substring(0, slash);
-        const rn = expandedRepo.substring(slash + 1);
-        void loadRepoDetail(sk, rn);
-      }
-    });
-
-    const repoKey = ({ source, repo }: { source: string; repo: string }) => `${source}/${repo}`;
-    const startPullRun = (data: EventPayloads['pull:allstart'], meta: EventMetadata) => {
-      if (data.run !== pullRunID || (data.planID || '') !== pullRunPlanID || pullRunOperation) return;
-      pullRunOperation = meta.operationID;
-      pullRun = startPull(data.pulls.map(repoKey), data.clones.map(repoKey), accountOfKey, statusOfKey, data.planID);
-    };
-    const finishPullRun = (data: EventPayloads['pull:alldone'], meta: EventMetadata) => {
-      if (data.run !== pullRunID || (data.planID || '') !== pullRunPlanID || (!meta.client && pullRunOperation && pullRunOperation !== meta.operationID)) return;
-      if (data.planExpired) { failPullAll($t('pullPlan.expired')); return; }
-      if (data.error) { failPullAll(data.error); return; }
-      syncing = false;
-      pullRunID = null;
-      pullRunOperation = '';
-      pullRunPlanID = '';
-      finishPull(data.skippedSincePreview);
-    };
-    onEvent('pull:allstart', startPullRun, startPullRun);
-    onEvent('pull:alldone', finishPullRun, finishPullRun);
-
-    const noteClone = (data: EventPayloads['clone:done'], meta: EventMetadata) => {
-      if (pullRun && data.run === pullRunID) {
-        pullRun = noteDone(pullRun, repoKey(data), data.error, { code: data.code, host: data.host }, data.skipped ? 'settingsChanged' : undefined, meta.operationID);
-      }
-    };
-    const notePull = (data: EventPayloads['pull:done'], meta: EventMetadata) => {
-      const skip = typeof data.skipped === 'string' ? data.skipped as PullSkipReason : undefined;
-      if (pullRun && data.run === pullRunID) {
-        pullRun = noteDone(pullRun, repoKey(data), data.error, { code: data.code, host: data.host, setting: data.unsafeConfig?.setting }, skip, meta.operationID, data.unchanged);
-      }
-    };
-
-    for (const name of ['clone:start', 'pull:start'] as const) {
-      onEvent(name, (data, meta) => {
-        const key = repoKey(data);
-        if (configuredRepo(data.source, data.repo) && completion.start(key, meta.operationID)) {
-          markSyncStart(key, name === 'clone:start' ? 'cloning' : 'syncing');
-        }
-      });
-    }
-
-    onEvent('clone:progress', (data, meta) => {
-      if (!configuredRepo(data.source, data.repo)) return;
-      const key = `${data.source}/${data.repo}`;
-      if (!completion.start(key, meta.operationID)) return;
-      repoStates.update((s) => {
-        if (s[key]) {
-          s[key] = { ...s[key], progress: data.percent };
-        }
-        return { ...s };
-      });
-    });
-
-    onEvent('clone:done', (data, meta) => {
-      noteClone(data, meta);
-      if (!configuredRepo(data.source, data.repo)) return;
-      const key = `${data.source}/${data.repo}`;
-      const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !data.skipped);
-      if (!checked.accept) return;
-      if (data.skipped) { notAttempted(key, data, "clone"); return; }
-      repoStates.update((s) => {
-        if (s[key]) {
-          s[key] = {
-            ...s[key],
-            status: data.error ? 'error' : 'pending',
-            statusCheckRevision: meta.configRevision,
-            // Rows seeded in-session (create-repo, Bring Local) have no path
-            // until the next full status refresh; take it from the event so
-            // path-based kebab actions work right away (#79).
-            path: data.path || s[key].path,
-            progress: 0,
-            error: data.error,
-            problem: data.error ? { code: data.code, detail: data.error } : undefined,
-            failedOperation: data.error ? 'clone' : undefined,
-            repairWarnings: data.error ? s[key].repairWarnings : data.warnings,
-          };
-        }
-        return { ...s };
-      });
-      if ('row' in checked && checked.row) publishCompletionRow(checked.row);
-    }, noteClone);
-
-    onEvent('pull:done', (data, meta) => {
-      notePull(data, meta);
-      if (!configuredRepo(data.source, data.repo)) return;
-      const key = `${data.source}/${data.repo}`;
-      const skipped = data.skipped;
-      const checked = meta.client ? { accept: true } : completion.done(key, meta.operationID, !data.error && !skipped && !data.unchanged);
-      if (!checked.accept) return;
-      updateRepairWarning(data.source, data.repo, data.repairWarnings);
-      if (skipped === true) { notAttempted(key, data, "pull"); return; }
-      const reason = skipped ? skipped as PullSkipReason : undefined;
-      repoStates.update((s) => {
-        const row = s[key];
-        if (!row) return s;
-        if (skipped || data.unchanged) {
-          s[key] = {
-            ...row,
-            status: (data.state as RepoState['status'] | undefined) ?? statusBeforeSync[key] ?? 'unknown',
-            progress: 0,
-            modified: data.modified ?? row.modified,
-            untracked: data.untracked ?? row.untracked,
-            ahead: data.ahead ?? row.ahead,
-            behind: data.behind ?? row.behind,
-            pullSkipped: reason,
-            error: undefined,
-            problem: undefined,
-            failedOperation: undefined,
-          };
-        } else {
-          s[key] = {
-            ...row,
-            status: data.error ? 'error' : 'pending',
-            statusCheckRevision: meta.configRevision,
-            progress: 0,
-            pullSkipped: undefined,
-            error: data.error,
-            problem: data.error ? { code: data.code, detail: data.error, unsafe: data.unsafeConfig } : undefined,
-            failedOperation: data.error ? 'pull' : undefined,
-          };
-        }
-        return { ...s };
-      });
-      if ('row' in checked && checked.row) publishCompletionRow(checked.row);
-    }, notePull);
-
-    onEvent('status:one', (row, meta) => {
-      if (!configuredRepo(row.source, row.repo)) return;
-      const key = `${row.source}/${row.repo}`;
-      const result = completion.status(key, meta.operationID, row);
-      if (result && $repoStates[key]?.status === 'pending') publishCompletionRow(result);
-    });
-
-    onEvent('fetch:start', (data, meta) => {
-      if (!configuredRepo(data.source, data.repo)) return;
-      const key = `${data.source}/${data.repo}`;
-      fetchOperations.set(key, meta.operationID);
-      fetchingRepos[key] = true;
-      fetchingRepos = fetchingRepos;
-    });
-
-    onEvent('fetch:done', (data, meta) => {
-      if (!configuredRepo(data.source, data.repo)) return;
-      const key = `${data.source}/${data.repo}`;
-      const active = fetchOperations.get(key);
-      if (active && BigInt(active) > BigInt(meta.operationID)) return;
-      fetchOperations.delete(key);
-      updateRepairWarning(data.source, data.repo, data.repairWarnings);
-      if (fetchingRepos[key]) {
-        delete fetchingRepos[key];
-        fetchingRepos = fetchingRepos;
-      }
-      if (fetchRun) {
-        fetchCompletions.push({ key, operationID: meta.operationID, error: data.error, failure: { code: data.code, host: data.host, fast: data.refusedFast, setting: data.unsafeConfig?.setting } });
-        fetchProgressTimer ??= setTimeout(flushFetchProgress, 125);
-      }
-      repoStates.update((states) => {
-        const state = states[key];
-        if (!state || (state.problem && state.failedOperation !== 'fetch') || (!data.error && state.failedOperation !== 'fetch')) return states;
-        return { ...states, [key]: {
-          ...state,
-          problem: data.error ? { code: data.code, detail: data.error, unsafe: data.unsafeConfig } : undefined,
-          failedOperation: data.error ? 'fetch' : undefined,
-        } };
-      });
-      if (!data.error && fetchFailNotice?.keys.delete(key) && fetchFailNotice.keys.size === 0) clearFetchFailNotice();
-      if (!data.error) recheckOfflineAccount(accountOfKey(key));
-    });
-
-    onEvent('network:state', (data) => {
-      networkDown = data?.offline ? (data.hosts || []) : [];
-    });
-
-    onEvent('fetch:allstart', (_, meta) => {
-      fetchOperation = meta.operationID;
-      fetchingAll = true;
-      clearFetchFailNotice();
-      if (!fetchRun) fetchRun = startFetch(Object.keys($repoStates).filter((k) => !['not cloned', 'root offline'].includes(statusOfKey(k))), accountOfKey, statusOfKey);
-    });
-
-    onEvent('fetch:alldone', (data, meta) => {
-      if (fetchOperation && fetchOperation !== meta.operationID) return;
-      fetchAllEnded(data?.error);
-    });
-
-    onEvent('credentials:updated', (statuses) => {
-      credentialGeneration++;
-      credStatuses = Object.fromEntries(Object.entries(statuses || {}).filter(([key]) => !!$configStore?.accounts[key]));
-    });
-
-    onEvent('discover:done', (data) => discoverDialog?.onDone(data));
-
-    onEvent('mirror:status', (results) => {
-      if (results) {
-        applyMirrorStatusResults(results.filter(row => !!$configStore?.mirrors[row.mirrorKey]?.repos?.[row.repoKey]));
-        // Clear checking flag for the mirror group.
-        for (const r of results) {
-          if (r.mirrorKey) mirrorChecking = { ...mirrorChecking, [r.mirrorKey]: false };
-        }
-      }
-    });
-
-    onEvent('mirror:discover:progress', (data, meta) => {
-      if (mirrorDiscoveryDone && BigInt(meta.operationID) <= BigInt(mirrorDiscoveryDone)) return;
-      mirrorDiscoverProgress = data;
-    });
-
-    onEvent('mirror:discover:done', (data, meta) => {
-      mirrorDiscoveryDone = meta.operationID;
-      mirrorDiscoverLoading = false;
-      mirrorDiscoverProgress = null;
-      if (data.error) {
-        mirrorDiscoverError = data.error;
-        mirrorDiscoverResults = [];
-      } else {
-        mirrorDiscoverResults = data.results || [];
-      }
-    });
-
-    onEvent('mirror:setup:done', async (data) => {
-      mirrorSetupResultModal = data;
-      // Clear the per-row spinner. The Go side now emits the mirrorKey too
-      // (issue #59) so we can key off ${mirrorKey}/${repoKey} directly.
-      if (data?.mirrorKey && data?.repoKey) {
-        const key = `${data.mirrorKey}/${data.repoKey}`;
-        const { [key]: _removed, ...rest } = mirrorSettingUp;
-        mirrorSettingUp = rest;
-      }
-      $configStore = await bridge.reloadConfig();
-      checkAllMirrorStatus();
-    });
-
-    onEvent('update:available', (info) => {
-      if (info?.latest !== updateDismissed) updateInfo = info;
-    });
-
-    onEvent('update:recoveryExpired', () => { rollbackVersion = ''; });
-    onEvent('update:progress', (msg: string) => {
-      updateProgress = msg;
-    });
-
-    // Installed and the new version is starting: the backend quits next.
-    onEvent('update:restarting', (latest: string) => {
-      updateProgress = $t('app.restarting', { version: latest });
-    });
-
-    // Installed, but the new version could not be started automatically.
-    onEvent('update:done', () => {
-      updateApplying = false;
-      updateProgress = '';
-      updateDone = true;
-    });
-
-    onEvent('update:quit', (latest: string) => {
-      // The elevated helper has verified the release and waits for this
-      // process to exit before it can replace the executable.
-      updateProgress = $t('app.restarting', { version: latest });
-      // Auto-quit after a brief moment so the user sees the message.
-      setTimeout(() => Quit(), 1500);
-    });
-
-    onEvent('pr:refreshed', (upd) => {
-      if ($configStore?.accounts[upd.accountKey]) applyPRUpdate(upd);
-    });
+    session.listen();
 
     if (windowMode === 'remote') {
-      onEvent('remote:state', (st) => { void onRemoteState(st as RemoteState); });
+      session.watchRemoteState((st) => { void onRemoteState(st); });
       try { await onRemoteState(await bridge.remoteInfo()); } catch (e) { console.error(e); }
       return;
     }
-    try { rollbackVersion = await bridge.checkUpdateRecovery(false); }
+    try { $rollbackVersion = await bridge.checkUpdateRecovery(false); }
     catch { pushNotice('error', $t('app.rollbackFailed')); }
     if (lifetime.signal.aborted) return;
     await startMain();
     // Let the first frame paint before confirmation and backup cleanup.
-    if (!rollbackVersion && !lifetime.signal.aborted) requestAnimationFrame(() => setTimeout(() => {
+    if (!$rollbackVersion && !lifetime.signal.aborted) requestAnimationFrame(() => setTimeout(() => {
       if (lifetime.signal.aborted) return;
       bridge.checkUpdateRecovery(true).catch(() => pushNotice('error', $t('app.rollbackFailed')));
     }, 0));
@@ -2465,9 +1815,9 @@
 
 {#if windowMode === 'main' || remoteShowMain}
 
-{#if rollbackVersion}
+{#if $rollbackVersion}
   <div class="rollback-notice" role="status">
-    <span class="rollback-title">{$t(rollbackVersion === 'previous' ? 'app.rollbackUnknown' : 'app.rollbackNotice', { version: rollbackVersion })}</span>
+    <span class="rollback-title">{$t($rollbackVersion === 'previous' ? 'app.rollbackUnknown' : 'app.rollbackNotice', { version: $rollbackVersion })}</span>
     <button class="text-btn" disabled={rollbackBusy} on:click={() => resolveUpdate(true)}>{$t('app.rollback')}</button>
     {#if !cfgLoadErrorModal}
       <button class="text-btn" disabled={rollbackBusy} on:click={() => resolveUpdate(false)}>{$t('app.keepUpdate')}</button>
@@ -2500,57 +1850,57 @@
     </div>
   {/if}
   <ReloadErrorBanner bind:reloadError remote={windowMode === 'remote'} />
-  <OfflineBanner hosts={networkDown} retrying={fetchingAll} onRetry={() => runFetchAll(true)} />
+  <OfflineBanner hosts={$networkDown} retrying={$fetchingAll} onRetry={() => runFetchAll(true)} />
   <CredentialWarning findings={credentialFindings} onReview={openDoctorModal} />
 
   <!-- ══════ DASHBOARD ══════ -->
 
   <!-- ── TOP BAR ── -->
-  <TopBar {simple} {syncing} pullPlanBusy={loadingPullPlan || !!pullPlan} {fetchingAll} {themeChoice} bind:deleteMode bind:showSettings remote={windowMode === 'remote' ? remoteState : null}
+  <TopBar {simple} syncing={$syncing} pullPlanBusy={loadingPullPlan || !!pullPlan} fetchingAll={$fetchingAll} {themeChoice} bind:deleteMode bind:showSettings remote={windowMode === 'remote' ? remoteState : null}
     {syncAll} runFetchAll={() => runFetchAll(true)} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} {setView} />
 
   <!-- ── ACTIVITY STRIP (Fetch all / Pull all) ── -->
-  <ActivityStrip run={pullRun || fetchRun} {simple} />
+  <ActivityStrip run={$pullRun || $fetchRun} {simple} />
 
   <!-- ── GLOBAL WARNINGS (identity, GCM helper, gitignore) ── -->
   <Banners bind:globalIdentityWarn bind:globalGCMWarn bind:gitignoreWarn bind:gitignoreInstalled bind:gitignoreError
     {globalGCMFixing} {gitignoreInstalling} {fixGlobalIdentity} {fixGlobalGCM} {installGlobalGitignore} />
 
   <!-- ── SETTINGS PANEL ── -->
-  <SettingsPanel {onRecipeImported} {showSettings} {simple} {configPath} {languageChoice} {themeChoice} {fetchInterval} {lastFetchTime}
+  <SettingsPanel {onRecipeImported} {showSettings} {simple} {configPath} {languageChoice} {themeChoice} {fetchInterval} lastFetchTime={$lastFetchTime}
     {autostartSupported} {autostartOn} {checkGitignorePref} {doctorSummary} {terminalsManagerOpening} {appVersion}
     {openRoots} {setLanguage} {setTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
     {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
 
   <div class="body">
     <!-- ── SIDEBAR ── -->
-    <Sidebar view={currentView} {rail} {simple} {credStatuses} {attention} {totalRepos} {orphanCount} scanIncomplete={skippedFolders > 0} ignoredCount={ignoredClones.length}
+    <Sidebar view={currentView} {rail} {simple} credStatuses={$credStatuses} {attention} {totalRepos} {orphanCount} scanIncomplete={skippedFolders > 0} ignoredCount={ignoredClones.length}
       {setView} onAddAccount={addAccount} {showOrphanModal} />
 
     <main class="content">
     {#if currentView === 'attention'}
       <!-- ── NEEDS ATTENTION ── -->
-      <AttentionView {rankOf} {repoNesting} {credStatuses} {rowProps} {setView} {fixCredential} onAddAccount={addAccount} />
+      <AttentionView {rankOf} {repoNesting} credStatuses={$credStatuses} {rowProps} {setView} {fixCredential} onAddAccount={addAccount} />
     {:else if currentView === 'all'}
       <!-- ── ALL REPOS ── -->
-      <RepoList {treeRows} {collapsedSources} {credStatuses} {actionMenuAccount} {rowProps}
+      <RepoList {treeRows} {collapsedSources} credStatuses={$credStatuses} {actionMenuAccount} {rowProps}
         {toggleSourceCollapsed} {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openDiscover} {openCreateRepo} {openEditAccount} {openCredChange} />
     {:else if currentView === 'mirrors'}
       <!-- ── MIRRORS ── -->
-      <MirrorsTab bind:expandedCard {deleteMode} {mirrorDiscoverLoading} {mirrorDiscoverProgress} {mirrorChecking} {mirrorSettingUp}
+      <MirrorsTab bind:expandedCard {deleteMode} mirrorDiscoverLoading={$mirrorDiscoverLoading} mirrorDiscoverProgress={$mirrorDiscoverProgress} mirrorChecking={$mirrorChecking} mirrorSettingUp={$mirrorSettingUp}
         {checkMirrorStatus} {setupMirrorRepo} {openTokenSetup} {runMirrorDiscover} {checkAllMirrorStatus}
         onAddGroup={() => addMirrorGroupDialog.open()} onAddRepo={(mirrorKey) => addMirrorRepoDialog.open(mirrorKey)}
         onDeleteGroup={(mirrorKey) => deleteMirrorGroupDialog.ask(mirrorKey)} onDeleteRepo={(mirrorKey, repoKey) => deleteMirrorRepoDialog.ask(mirrorKey, repoKey)} />
     {:else}
       <!-- ── ONE ACCOUNT ── -->
-      <AccountView accountKey={viewAcct} {repoNesting} {rankOf} {credStatuses} {actionMenuAccount} {rowProps}
+      <AccountView accountKey={viewAcct} {repoNesting} {rankOf} credStatuses={$credStatuses} {actionMenuAccount} {rowProps}
         {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openEditAccount} {openCredChange} {openDiscover} {openCreateRepo} {fixCredential} />
     {/if}
     </main>
   </div>
 
   <!-- ── SUMMARY FOOTER ── -->
-  <Footer {simple} bind:updateInfo bind:updateApplying bind:updateError bind:updateDismissed {updateProgress} {updateDone} />
+  <Footer {simple} bind:updateInfo={$updateInfo} bind:updateApplying={$updateApplying} bind:updateError bind:updateDismissed={$updateDismissed} updateProgress={$updateProgress} updateDone={$updateDone} />
 
   {#if pullPlan}
     <PullPlanModal plan={pullPlan} {simple} onCancel={() => { pullPlan = null; }} onConfirm={confirmPullPlan} />
@@ -2589,7 +1939,7 @@
   <AddAccountModal bind:this={addAccountDialog} {simple} bind:credResult bind:credTokenInput bind:credPrecheck {credBusy} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {runCredSetup} {fetchTokenGuide} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── CHANGE CREDENTIAL MODAL ── -->
-  <CredentialModal bind:this={credentialDialog} {simple} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses {credTokenGuide} {credTokenScopes} {sshKeyCopied} {serverOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
+  <CredentialModal bind:this={credentialDialog} {simple} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses={$credStatuses} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {serverOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── DELETE ACCOUNT MODAL ── -->
   <DeleteAccountModal bind:this={deleteAccountDialog} bind:deleteMode {simple} {reloadFromDisk} />
@@ -2612,10 +1962,10 @@
   <DeleteMirrorRepoModal bind:this={deleteMirrorRepoDialog} bind:deleteMode />
 
   <!-- ── MIRROR SETUP RESULT MODAL ── -->
-  <MirrorSetupResultModal bind:mirrorSetupResultModal />
+  <MirrorSetupResultModal bind:mirrorSetupResultModal={$mirrorSetupResultModal} />
 
   <!-- ── MIRROR DISCOVER RESULTS MODAL ── -->
-  <MirrorDiscoverModal bind:mirrorDiscoverResults bind:discoverAdded {mirrorDiscoverError} {checkAllMirrorStatus} />
+  <MirrorDiscoverModal bind:mirrorDiscoverResults={$mirrorDiscoverResults} bind:discoverAdded mirrorDiscoverError={$mirrorDiscoverError} {checkAllMirrorStatus} />
 
   <!-- ── MIRROR CREDENTIAL WARNING MODAL ── -->
   <MirrorTokenModal bind:mirrorCredWarning storeMirrorPat={openTokenSetup} />
