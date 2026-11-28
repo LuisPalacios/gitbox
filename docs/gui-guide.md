@@ -489,20 +489,27 @@ The standard layout is `<root>/<account>/<org|user>/<repo>`. A clone found at th
 
 ### Settings panel
 
-Click the **gear icon** to open the settings panel:
+Click the **gear icon** to open the settings panel. It groups its rows under two headings, **General** and **Session**.
 
-- **Config** — the path to your config file, with an **Open in Editor** button.
-- **Clone roots** — the folders where projects live, the default first, with a **Change** button (see [Clone roots](#clone-roots)).
+**General** holds the preferences of the app itself:
+
 - **Language** — English or Español. The change applies at once.
 - **Theme** — System, Light or Dark.
-- **Periodic status check** (Simple: **Check for changes**) — choose Off, 5m, 15m or 30m for fetch, mirror status and pull request checks. Each check starts its next interval when it finishes. In Advanced, **System check → Run** shows the last result, whether a check is running and its next scheduled time. **Re-check** refreshes that snapshot.
 - **Run at startup** — launch Gitbox when you log in, where the platform supports it.
-- **PR / reviews** — show review requests in Simple and badges with counts for your open PRs and review requests in Advanced. Use **Include drafts** to include draft PRs.
-- **Global gitignore** — the automatic startup check of `~/.gitignore_global` (see [Global gitignore warning](#global-gitignore-warning)).
-- **System check** — **Run** opens a report of every external tool Gitbox uses (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows): where it's installed, its version, and an install command for anything missing that your config needs. Each tool reads ok, missing (required by your config) or optional. The report also lists credential-directory and file permission findings, with the path, problem and suggested action. **Re-check** repeats both checks without changing permissions.
 - **Terminals** — **Manager** opens the terminal profile editor (see [Editors and terminal profiles](#editors-and-terminal-profiles)).
 - **Version** — the current app version.
 - **Author** — the project author and a link to the GitHub repository.
+
+**Session** holds the preferences of the config the window manages:
+
+- **Config** — the path to your config file, with an **Open in Editor** button.
+- **Fleet recipe** — **Export recipe** and **Import recipe** move accounts and projects between computers (see [Portable fleet recipes](#portable-fleet-recipes)).
+- **Clone roots** — the folders where projects live, the default first, with a **Change** button (see [Clone roots](#clone-roots)).
+- **Periodic status check** (Simple: **Check for changes**) — choose Off, 5m, 15m or 30m for fetch, mirror status and pull request checks. Each check starts its next interval when it finishes. In Advanced, **System check → Run** shows the last result, whether a check is running and its next scheduled time. **Re-check** refreshes that snapshot.
+- **Show plan before Pull all** (Simple: **Show plan before Update all**) — By mode, On or Off for the plan before the bulk pull (see [Pull all](#pull-all)).
+- **PR / reviews** — show review requests in Simple and badges with counts for your open PRs and review requests in Advanced. Use **Include drafts** to include draft PRs.
+- **Global gitignore** — the automatic startup check of `~/.gitignore_global` (see [Global gitignore warning](#global-gitignore-warning)).
+- **System check** — **Run** opens a report of every external tool Gitbox uses (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add`, and `wsl` on Windows): where it's installed, its version, and an install command for anything missing that your config needs. Each tool reads ok, missing (required by your config) or optional. The report also lists credential-directory and file permission findings, with the path, problem and suggested action. **Re-check** repeats both checks without changing permissions.
 
 In Advanced mode, **Settings → System check → Run** also shows the elapsed milliseconds from opening the application to each observed startup stage, including the first repository row, the first status, the complete status pass and the first scheduled fleet network task.
 

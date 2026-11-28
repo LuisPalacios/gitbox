@@ -489,20 +489,27 @@ El layout estándar es `<root>/<account>/<org|user>/<repo>`. Un clon encontrado 
 
 ### Panel de ajustes
 
-Haz clic en el **icono de engranaje** para abrir el panel de ajustes:
+Haz clic en el **icono de engranaje** para abrir el panel de ajustes. Agrupa sus filas bajo dos encabezados, **General** y **Sesión**.
 
-- **Configuración** — la ruta a tu archivo de config, con un botón **Abrir en editor**.
-- **Raíces de clonado** — las carpetas donde viven los proyectos, la predeterminada primero, con un botón **Cambiar** (consulta [Raíces de clonado](#raíces-de-clonado)).
+**General** reúne las preferencias de la propia app:
+
 - **Idioma** — English o Español. El cambio se aplica al momento.
 - **Tema** — Sistema, Claro u Oscuro.
-- **Comprobación periódica** (Simple: **Buscar cambios**) — elige No, 5m, 15m o 30m para comprobar repositorios, mirrors y pull requests. El intervalo de cada comprobación empieza cuando termina la anterior. En Avanzado, **Comprobación del sistema → Ejecutar** muestra el último resultado, si hay una comprobación en curso y su próxima hora programada. **Volver a comprobar** actualiza esos datos.
 - **Ejecutar al inicio** — abre Gitbox al iniciar sesión, donde la plataforma lo permite.
-- **PR / revisiones** — muestra las solicitudes de revisión en Simple y las insignias con los conteos de tus PR abiertos y de las solicitudes de revisión en Avanzado. Usa **Incluir borradores** para incluir los PR en borrador.
-- **Gitignore global** — la comprobación automática de `~/.gitignore_global` al arrancar (consulta [Aviso de gitignore global](#aviso-de-gitignore-global)).
-- **Comprobación del sistema** — **Ejecutar** abre un informe de cada herramienta externa que usa Gitbox (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add` y `wsl` en Windows): dónde está instalada, su versión y un comando de instalación para cualquier cosa ausente que tu config necesite. Cada herramienta se marca como ok, missing (requerida por tu config) u optional. El informe también lista los hallazgos de permisos del directorio y los archivos de credenciales, con la ruta, el problema y la acción sugerida. **Volver a comprobar** repite ambas comprobaciones sin cambiar permisos.
 - **Terminales** — **Gestor** abre el editor de perfiles de terminal (consulta [Editores y perfiles de terminal](#editores-y-perfiles-de-terminal)).
 - **Versión** — la versión actual de la app.
 - **Autor** — el autor del proyecto y un enlace al repositorio de GitHub.
+
+**Sesión** reúne las preferencias de la config que gestiona la ventana:
+
+- **Configuración** — la ruta a tu archivo de config, con un botón **Abrir en editor**.
+- **Receta de flota** — **Exportar receta** e **Importar receta** llevan cuentas y proyectos de un ordenador a otro (consulta [Recetas de flota portátiles](#recetas-de-flota-portátiles)).
+- **Raíces de clonado** — las carpetas donde viven los proyectos, la predeterminada primero, con un botón **Cambiar** (consulta [Raíces de clonado](#raíces-de-clonado)).
+- **Comprobación periódica** (Simple: **Buscar cambios**) — elige No, 5m, 15m o 30m para comprobar repositorios, mirrors y pull requests. El intervalo de cada comprobación empieza cuando termina la anterior. En Avanzado, **Comprobación del sistema → Ejecutar** muestra el último resultado, si hay una comprobación en curso y su próxima hora programada. **Volver a comprobar** actualiza esos datos.
+- **Mostrar plan antes de Pull de todo** (Simple: **Mostrar plan antes de Actualizar todo**) — Según el modo, Sí o No para el plan previo al pull masivo (consulta [Pull de todo](#pull-de-todo)).
+- **PR / revisiones** — muestra las solicitudes de revisión en Simple y las insignias con los conteos de tus PR abiertos y de las solicitudes de revisión en Avanzado. Usa **Incluir borradores** para incluir los PR en borrador.
+- **Gitignore global** — la comprobación automática de `~/.gitignore_global` al arrancar (consulta [Aviso de gitignore global](#aviso-de-gitignore-global)).
+- **Comprobación del sistema** — **Ejecutar** abre un informe de cada herramienta externa que usa Gitbox (`git`, `git-credential-manager`, `ssh`, `ssh-keygen`, `ssh-add` y `wsl` en Windows): dónde está instalada, su versión y un comando de instalación para cualquier cosa ausente que tu config necesite. Cada herramienta se marca como ok, missing (requerida por tu config) u optional. El informe también lista los hallazgos de permisos del directorio y los archivos de credenciales, con la ruta, el problema y la acción sugerida. **Volver a comprobar** repite ambas comprobaciones sin cambiar permisos.
 
 En modo Avanzado, **Ajustes → Comprobación del sistema → Ejecutar** también muestra los milisegundos transcurridos desde que se abre la aplicación hasta cada etapa observada del arranque, incluidas la primera fila de repositorio, el primer estado, la pasada completa de estados y la primera tarea de red de la flota programada.
 
