@@ -37,7 +37,18 @@ type RemoteBackend struct {
 	// credential methods (#242, #244). Client and server are the same
 	// build, so servedMethods is exact. A remote window sets it.
 	refuseUnserved bool
+	// session is the id the relay stamps on every event it hands the
+	// window, whatever session the host put in it. "" is the process's
+	// default session, the one it was launched for: a remote window's own
+	// stamps "". Any other session uses "local" or "remote:<alias>"; one
+	// connection per host per machine keeps the alias unique, and it stays
+	// the same across reconnects.
+	session string
 
+	// relayMu serializes relaying with the end of a connection: connect
+	// and detach take it before mu when they move gen, so once they return
+	// no event of the old connection is in flight or still to come.
+	relayMu sync.Mutex
 	mu      sync.Mutex
 	client  *rpc.Client // nil while not connected
 	lastErr error
@@ -96,6 +107,7 @@ func dialRemoteBackend(in io.Reader, out io.WriteCloser, sink func() EventSink, 
 // a daemon resumes from where the last one left, when it is the same
 // daemon. The server must be this build, on every connection.
 func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
+	r.relayMu.Lock()
 	r.mu.Lock()
 	r.gen++
 	gen := r.gen
@@ -105,18 +117,14 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 		resume = &point
 	}
 	r.mu.Unlock()
+	r.relayMu.Unlock()
 	dead := make(chan struct{})
 	var deadOnce sync.Once
 	client, err := rpc.Dial(in, out, rpc.ClientOptions{
 		Version: version, Commit: commit,
 		OnDead: func(error) { deadOnce.Do(func() { close(dead) }) },
 		OnEvent: func(name string, payload []json.RawMessage) {
-			r.mu.Lock()
-			live := r.gen == gen
-			r.mu.Unlock()
-			if live {
-				r.relayEvent(name, payload)
-			}
+			r.relayFrom(gen, name, payload)
 		},
 		Log:          r.log,
 		SecretParams: secretParams,
@@ -153,6 +161,7 @@ func (r *RemoteBackend) connect(in io.Reader, out io.WriteCloser) error {
 // daemon keeps running them, and nothing here asks it to cancel them
 // (#247): their outcomes come with the next connection.
 func (r *RemoteBackend) detach() {
+	r.relayMu.Lock()
 	r.mu.Lock()
 	c := r.client
 	r.client = nil
@@ -162,6 +171,7 @@ func (r *RemoteBackend) detach() {
 	}
 	r.signalLocked()
 	r.mu.Unlock()
+	r.relayMu.Unlock()
 	if c != nil {
 		_ = c.Close()
 	}
@@ -402,6 +412,20 @@ func (r *RemoteBackend) logf(format string, args ...any) {
 	}
 }
 
+// relayFrom relays an event of the connection of generation gen, unless a
+// later connect or detach superseded it: an event the old connection still
+// had queued when it ended never reaches the window.
+func (r *RemoteBackend) relayFrom(gen uint64, name string, payload []json.RawMessage) {
+	r.relayMu.Lock()
+	defer r.relayMu.Unlock()
+	r.mu.Lock()
+	live := r.gen == gen
+	r.mu.Unlock()
+	if live {
+		r.relayEvent(name, payload)
+	}
+}
+
 // relayEvent hands a server event to the window. Only the events of the
 // relay table pass: an unknown name, a LOCAL event such as remote:state or
 // update:quit, which only this process may emit, and an event of a later
@@ -445,13 +469,17 @@ func (r *RemoteBackend) relayPayload(name string, event Envelope[json.RawMessage
 			r.sawDone(name, item)
 		}
 	}
+	// Every relayed event belongs to this backend's session (see session):
+	// the host's own tag is never passed on.
 	if event.Client {
 		op := r.clientApp.newOperation()
-		op.client = true
+		op.client, op.session = true, r.session
 		emit(op, name, item)
 		return
 	}
-	r.clientApp.transport().Emit(name, Envelope[any]{EventMetadata: event.EventMetadata, Payload: item})
+	meta := event.EventMetadata
+	meta.Session = r.session
+	r.clientApp.transport().Emit(name, Envelope[any]{EventMetadata: meta, Payload: item})
 }
 
 // longDoneEvents end a long call (goLong).

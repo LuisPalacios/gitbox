@@ -31,6 +31,56 @@ export function hasConfiguredRepo(config: Pick<ConfigDTO, 'sources'> | null, sou
   return !!repos && Object.hasOwn(repos, repo);
 }
 
+// The session an event belongs to: '' is the process's default session,
+// and an untagged event is the default's. Any other session is 'local' or
+// 'remote:<alias>'. A tag that is not a string belongs to no session.
+function sessionOf(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || !('session' in value)) return '';
+  const session = (value as { session: unknown }).session;
+  return typeof session === 'string' ? session : undefined;
+}
+
+// createSessionSubscriptions keeps one runtime subscription per event name
+// and hands each event only to the listeners of its own session. forSession
+// gives a session's subscribe, for that session's createEventRouter.
+export function createSessionSubscriptions(subscribe: Subscribe) {
+  const names = new Map<string, { off: () => void; sessions: Map<string, Set<(value: unknown) => void>> }>();
+  function forSession(session: string): Subscribe {
+    return (name, handler) => {
+      let entry = names.get(name);
+      if (!entry) {
+        const sessions = new Map<string, Set<(value: unknown) => void>>();
+        const off = subscribe(name, value => {
+          const target = sessionOf(value);
+          if (target === undefined) return;
+          for (const listener of [...(sessions.get(target) ?? [])]) listener(value);
+        });
+        entry = { off, sessions };
+        names.set(name, entry);
+      }
+      const current = entry;
+      let listeners = current.sessions.get(session);
+      if (!listeners) {
+        listeners = new Set();
+        current.sessions.set(session, listeners);
+      }
+      const own = listeners;
+      // Each subscription is its own entry, even for the same handler.
+      const listener = (value: unknown) => handler(value);
+      own.add(listener);
+      return () => {
+        if (!own.delete(listener)) return;
+        if (!own.size) current.sessions.delete(session);
+        if (!current.sessions.size && names.get(name) === current) {
+          names.delete(name);
+          current.off();
+        }
+      };
+    };
+  }
+  return { forSession };
+}
+
 export function createEventRouter(subscribe: Subscribe) {
   type Delivery = { event: Envelope<unknown>; dispatch: () => void };
   let startup: Delivery[] | null = [];

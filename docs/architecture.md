@@ -110,6 +110,8 @@ The `App` struct does two jobs, and `cmd/gui` keeps them apart so that remote mo
 
 Every event goes through one `EventSink` (`events.go`): code calls `a.sink().Emit("name", …)` with a literal name, `startup` installs the Wails sink, and an `App` without a sink drops events.
 
+Each event carries the session that produced it (`EventMetadata.Session`). An empty session is the process's default session, the one it was launched for, and it stays off the wire. Any other session is `local` or `remote:<alias>`. The remote relay stamps its own session on every event it relays and never passes on the host's. The frontend keeps one Wails subscription per event name and hands each event only to the router of its session (`createSessionSubscriptions` in `lib/events.ts`); `events` in `lib/bridge.ts` is the default session's router.
+
 `classification.go` records each renderer binding, backend-only operation and event as LOCAL, REMOTE or MIXED, with the owning phase and whether it changes state on the host. Guard tests check coverage and agreement with `Backend`. The server serves the RPC methods listed in `server.go`.
 
 #### Client preferences
