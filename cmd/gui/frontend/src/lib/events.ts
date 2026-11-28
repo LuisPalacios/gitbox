@@ -2,7 +2,7 @@ import type { ConfigDTO } from './types';
 import type { Envelope, EventMetadata, EventPayloads, StatusResult } from './dto.generated';
 
 type Name = keyof EventPayloads;
-type Subscribe = (name: string, handler: (value: unknown) => void) => () => void;
+export type Subscribe = (name: string, handler: (value: unknown) => void) => () => void;
 
 function isEnvelope(value: unknown): value is Envelope<unknown> {
   if (!value || typeof value !== 'object') return false;
@@ -135,6 +135,20 @@ export function createEventRouter(subscribe: Subscribe) {
       queued?.sort((a, b) => a.event.sequence - b.event.sequence);
       queued?.forEach(({ dispatch }) => dispatch());
     },
+  };
+}
+
+// createActiveEvents is the router of the window's active session for the
+// code that subscribes outside a SessionController (#383). Each controller
+// owns its router and alone moves its watermark, so this proxy only
+// subscribes: each subscription stays with the router that was active when
+// it was made. Until a session takes over, fallback serves the subscriptions.
+export function createActiveEvents(fallback: Pick<ReturnType<typeof createEventRouter>, 'on'>) {
+  let current = fallback;
+  const on: typeof fallback.on = (name, handler, onStaleRevision) => current.on(name, handler, onStaleRevision);
+  return {
+    on,
+    follow(router: typeof fallback) { current = router; },
   };
 }
 

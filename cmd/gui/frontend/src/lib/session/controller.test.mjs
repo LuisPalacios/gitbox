@@ -17,7 +17,7 @@ after(() => rm(scratch, { recursive: true, force: true }))
 const entry = join(scratch, 'entry.ts')
 await writeFile(entry, [
   `export { createSessionController } from ${JSON.stringify(join(lib, 'session/controller.ts'))}`,
-  `export { createEventRouter } from ${JSON.stringify(join(lib, 'events.ts'))}`,
+  `export { createSessionSubscriptions } from ${JSON.stringify(join(lib, 'events.ts'))}`,
   `export { createStoreBundle } from ${JSON.stringify(join(lib, 'session/bundle.ts'))}`,
   `export { activeSession } from ${JSON.stringify(join(lib, 'session/active.ts'))}`,
   `export { statusPaintQueue } from ${JSON.stringify(join(lib, 'status.ts'))}`,
@@ -43,10 +43,13 @@ function status(repo, state = 'clean', extra = {}) {
   return { source, repo, state, account: 'demo', path: `/fixture/${repo}`, ahead: 0, behind: 0, modified: 0, untracked: 0, conflicts: 0, ...extra }
 }
 
-async function session(t, { bridge = {}, host = {} } = {}) {
-  const m = await import(`${pathToFileURL(bundled).href}?case=${++cases}`)
+const load = () => import(`${pathToFileURL(bundled).href}?case=${++cases}`)
+
+// runtime stands in for the Wails event runtime: listeners holds its
+// subscriptions per event name.
+function runtime() {
   const listeners = new Map()
-  const events = m.createEventRouter((name, handler) => {
+  const subscribe = (name, handler) => {
     const group = listeners.get(name) ?? new Set()
     listeners.set(name, group)
     group.add(handler)
@@ -54,7 +57,14 @@ async function session(t, { bridge = {}, host = {} } = {}) {
       group.delete(handler)
       if (!group.size) listeners.delete(name)
     }
-  })
+  }
+  const deliver = (name, envelope) => { for (const handler of [...(listeners.get(name) ?? [])]) handler(envelope) }
+  return { listeners, subscribe, deliver }
+}
+
+// controllerFor builds a session over subscribe and its store bundle, with
+// a fake bridge and host that record what the session asks of them.
+function controllerFor(m, subscribe, stores, { bridge = {}, host = {} } = {}) {
   const calls = []
   const seen = []
   const record = name => (...args) => { seen.push([name, ...args]) }
@@ -80,16 +90,22 @@ async function session(t, { bridge = {}, host = {} } = {}) {
     quit: record('quit'),
     ...host,
   }
+  const controller = m.createSessionController({ bridge: fake, subscribe, host: hostCalls, stores })
+  return { controller, calls, seen }
+}
+
+async function session(t, { bridge = {}, host = {} } = {}) {
+  const m = await load()
+  const { listeners, subscribe, deliver } = runtime()
   const stores = m.createStoreBundle()
-  const controller = m.createSessionController({ bridge: fake, events, host: hostCalls, stores })
+  const { controller, calls, seen } = controllerFor(m, subscribe, stores, { bridge, host })
   stores.configStore.set(fixtureConfig())
   const row = { status: 'clean', progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0, path: '/fixture/x' }
   stores.repoStates.set({ [keyOne]: { ...row }, [keyTwo]: { ...row } })
-  events.snapshot(10, () => m.get(stores.configStore)?.revision ?? 0)
+  controller.events.snapshot(10, () => m.get(stores.configStore)?.revision ?? 0)
   let sequence = 10
   function emit(name, operationID, payload, extra = {}) {
-    const envelope = { schema: 1, sequence: ++sequence, operationID: String(operationID), configRevision: 1, payload, ...extra }
-    for (const handler of listeners.get(name) ?? []) handler(envelope)
+    deliver(name, { schema: 1, sequence: ++sequence, operationID: String(operationID), configRevision: 1, payload, ...extra })
   }
   t.after(() => {
     controller.stop()
@@ -172,6 +188,55 @@ test('App.svelte leaves every event subscription and the lifecycle to the sessio
   assert.ok(app.includes('session.start(false)') && app.includes('session.start(true)'), 'positive control: the window starts the session')
   assert.doesNotMatch(app, /\bonEvent\(|\bevents\.on\(/)
   assert.doesNotMatch(app, /\b(startMain|initDashboard|onRemoteState|statusPass|currentStream|retireStream)\b/)
+})
+
+test('two sessions over one runtime each apply only their own events, with their own watermark, queue and reset', async t => {
+  const m = await load()
+  const wails = runtime()
+  const sessions = m.createSessionSubscriptions(wails.subscribe)
+  const local = controllerFor(m, sessions.forSession('local'), m.createStoreBundle()).controller
+  const remote = controllerFor(m, sessions.forSession('remote:r1'), m.createStoreBundle()).controller
+  t.after(() => { local.stop(); remote.stop() })
+  for (const c of [local, remote]) c.stores.configStore.set(fixtureConfig())
+  local.listen()
+  remote.listen()
+  assert.equal(wails.listeners.get('fetch:start')?.size, 1, 'both sessions share one runtime subscription per name')
+  const send = (name, session, sequence, repo, operationID = sequence) =>
+    wails.deliver(name, { schema: 1, sequence, operationID: String(operationID), configRevision: 1, session, payload: { source, repo } })
+  const fetching = c => Object.keys(m.get(c.fetchingRepos)).sort()
+
+  // Each startup queue holds its own session's events until that session's snapshot.
+  send('fetch:start', 'remote:r1', 12, one)
+  local.events.snapshot(10, () => 1)
+  assert.deepEqual(fetching(local), [], 'the remote event does not reach the local session')
+  assert.deepEqual(fetching(remote), [], 'the remote session still queues it')
+
+  // Interleaved events with overlapping sequences: each session applies its own.
+  send('fetch:start', 'local', 12, two)
+  send('fetch:start', 'remote:r1', 11, two)
+  send('fetch:start', 'local', 11, one)
+  assert.deepEqual(fetching(local), [keyOne, keyTwo])
+  assert.deepEqual(fetching(remote), [])
+  remote.events.snapshot(11, () => 1)
+  assert.deepEqual(fetching(remote), [keyOne], 'the remote queue replays above its own watermark only')
+  send('fetch:done', 'remote:r1', 13, one)
+  send('fetch:start', 'remote:r1', 13, two)
+  assert.deepEqual(fetching(remote), [keyTwo])
+  assert.deepEqual(fetching(local), [keyOne, keyTwo], 'the remote fetch:done leaves the local fetch going')
+  send('fetch:done', 'local', 13, two)
+  assert.deepEqual(fetching(local), [keyOne])
+  assert.deepEqual(fetching(remote), [keyTwo])
+
+  // A reset, as on a reconnect that cannot resume, stays in its session.
+  remote.events.reset()
+  send('fetch:done', 'local', 10, one)
+  assert.deepEqual(fetching(local), [keyOne], 'the local session keeps its watermark')
+  send('fetch:done', 'local', 14, one)
+  assert.deepEqual(fetching(local), [], 'and delivers at once, with no startup queue to refill')
+  send('fetch:done', 'remote:r1', 1, two, 20)
+  assert.deepEqual(fetching(remote), [keyTwo], 'the reset remote session queues again')
+  remote.events.snapshot(0, () => 1)
+  assert.deepEqual(fetching(remote), [])
 })
 
 test('Fetch all tracks its repos, ignores older work and leaves a result card', async t => {
