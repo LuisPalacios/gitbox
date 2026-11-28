@@ -12,7 +12,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
@@ -43,14 +45,16 @@ type OrphanRepoDTO struct {
 
 // ReconcileDTO answers a reconcile pass.
 type ReconcileDTO struct {
-	Adopted        int              `json:"adopted"`
-	Repairs        []RepairDTO      `json:"repairs,omitempty"`
-	Relinked       int              `json:"relinked"`
-	Unmatched      []OrphanRepoDTO  `json:"unmatched"`
-	Ignored        []OrphanRepoDTO  `json:"ignored"`
-	SkippedFolders int              `json:"skippedFolders,omitempty"`
-	Skipped        []reconcile.Skip `json:"skipped,omitempty"`
-	Background     bool             `json:"background,omitempty"` // completion of a coalesced retry
+	Adopted        int             `json:"adopted"`
+	Repairs        []RepairDTO     `json:"repairs,omitempty"`
+	Relinked       int             `json:"relinked"`
+	Unmatched      []OrphanRepoDTO `json:"unmatched"`
+	Ignored        []OrphanRepoDTO `json:"ignored"`
+	SkippedFolders int             `json:"skippedFolders,omitempty"`
+	// SkippedScans says which folders the scans skipped and why, grouped.
+	SkippedScans []SkippedScanDTO `json:"skippedScans,omitempty"`
+	Skipped      []reconcile.Skip `json:"skipped,omitempty"`
+	Background   bool             `json:"background,omitempty"` // completion of a coalesced retry
 	// WorkspacesChanged is set when the pass flagged a container or changed
 	// a repo's workspace file.
 	WorkspacesChanged bool                 `json:"workspacesChanged"`
@@ -66,6 +70,46 @@ type ReconcileDTO struct {
 	// clone killed mid-transfer. Their folders are left as they are.
 	Incomplete []IncompleteCloneDTO `json:"incomplete"`
 	Error      string               `json:"error,omitempty"`
+}
+
+// SkippedScanDTO groups the folders one scan skipped for one cause: below
+// its depth limit, or unreadable.
+type SkippedScanDTO struct {
+	Kind       string `json:"kind"`  // adopt.ScanRoot, ScanContainer or ScanWorkspace
+	Under      string `json:"under"` // the root, container or workspace folder
+	Depth      int    `json:"depth"` // the scan's depth limit
+	Unreadable bool   `json:"unreadable"`
+	Count      int    `json:"count"`
+	// Folders are relative to Under, the first maxSkippedListed of Count.
+	Folders []string `json:"folders"`
+}
+
+// maxSkippedListed bounds the folders one group lists.
+const maxSkippedListed = 50
+
+// groupSkipped groups skipped folders by scan and cause, in scan order.
+func groupSkipped(folders []adopt.SkippedFolder) []SkippedScanDTO {
+	var out []SkippedScanDTO
+	index := map[string]int{}
+	for _, f := range folders {
+		key := fmt.Sprintf("%s\x00%s\x00%t", f.Kind, f.Under, f.Unreadable)
+		i, ok := index[key]
+		if !ok {
+			i = len(out)
+			index[key] = i
+			out = append(out, SkippedScanDTO{Kind: f.Kind, Under: f.Under, Depth: f.Depth, Unreadable: f.Unreadable, Folders: []string{}})
+		}
+		g := &out[i]
+		g.Count++
+		if len(g.Folders) < maxSkippedListed {
+			rel, err := filepath.Rel(f.Under, f.Path)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				rel = f.Path
+			}
+			g.Folders = append(g.Folders, rel)
+		}
+	}
+	return out
 }
 
 // IncompleteCloneDTO is a tracked repo whose clone git stopped before it
@@ -278,7 +322,8 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	out := emptyReconcile("")
 	out.Repairs = a.repairAdoptions(snap, placed)
 	out.Adopted, out.Relinked, out.WorkspacesChanged = len(placed), applied.Relinked, wsChanged
-	out.SkippedFolders = res.SkippedFolders
+	out.SkippedFolders = len(res.SkippedFolders)
+	out.SkippedScans = groupSkipped(res.SkippedFolders)
 	out.Skipped, out.Background = applied.Skipped, !retryStale
 	if retryStale && len(applied.Skipped) > 0 {
 		a.retryReconcileAfterRefresh()

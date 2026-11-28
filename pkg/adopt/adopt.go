@@ -58,13 +58,40 @@ func FindOrphansIn(cfg *config.Config, extraRoots []string) ([]OrphanRepo, error
 	return orphans, err
 }
 
-// FindOrphansContext returns confirmed observations and the number of directory branches skipped.
-func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []string) ([]OrphanRepo, int, error) {
-	skipped := map[string]bool{}
+// Kinds of scan that can skip a folder.
+const (
+	ScanRoot      = "root"      // a clone root, DiscoveryDepth levels deep
+	ScanContainer = "container" // a container repo's working tree, the nested scan depth deep
+	ScanWorkspace = "workspace" // a workspace folder, the nested scan depth deep
+)
+
+// SkippedFolder is a folder a scan did not look into: one below the
+// scan's depth limit, or one it could not read.
+type SkippedFolder struct {
+	Path       string
+	Under      string // the root, container or workspace folder whose scan skipped it
+	Kind       string // ScanRoot, ScanContainer or ScanWorkspace
+	Depth      int    // the depth limit of that scan
+	Unreadable bool
+}
+
+// FindOrphansContext returns confirmed observations and the folders the
+// scans skipped, each once, in scan order.
+func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []string) ([]OrphanRepo, []SkippedFolder, error) {
+	var skipped []SkippedFolder
+	seen := map[string]bool{}
 	var candidates []string
-	recordSkipped := func(c git.Coverage) {
+	recordSkipped := func(c git.Coverage, under, kind string, depth int) {
+		unreadable := map[string]bool{}
+		for _, p := range c.Unreadable {
+			unreadable[p] = true
+		}
 		for _, p := range c.Skipped {
-			skipped[p] = true
+			if seen[p] {
+				continue
+			}
+			seen[p] = true
+			skipped = append(skipped, SkippedFolder{Path: p, Under: under, Kind: kind, Depth: depth, Unreadable: unreadable[p]})
 		}
 	}
 	// Pass 1 — flat scan of every root: the configured roots and any
@@ -73,10 +100,10 @@ func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []st
 	roots := gatherRoots(cfg.Global.Roots, extraRoots)
 	for _, root := range roots {
 		c, err := git.FindReposContext(ctx, root, git.DiscoveryDepth)
-		recordSkipped(c)
+		recordSkipped(c, root, ScanRoot, git.DiscoveryDepth)
 		candidates = append(candidates, c.Repos...)
 		if err != nil {
-			return nil, len(skipped), err
+			return nil, skipped, err
 		}
 	}
 	sort.Strings(candidates)
@@ -88,9 +115,9 @@ func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []st
 	nestedSet := make(map[string]bool)
 	for _, cp := range containerPaths {
 		c, err := git.FindNestedReposContext(ctx, cp, depth)
-		recordSkipped(c)
+		recordSkipped(c, cp, ScanContainer, depth)
 		if err != nil {
-			return nil, len(skipped), err
+			return nil, skipped, err
 		}
 		for _, np := range c.Repos {
 			candidates = append(candidates, np)
@@ -100,9 +127,9 @@ func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []st
 	var workspaceMatches []string
 	for _, member := range workspaceFolders(cfg) {
 		c, err := git.FindReposContext(ctx, member, depth)
-		recordSkipped(c)
+		recordSkipped(c, member, ScanWorkspace, depth)
 		if err != nil {
-			return nil, len(skipped), err
+			return nil, skipped, err
 		}
 		workspaceMatches = append(workspaceMatches, c.Repos...)
 	}
@@ -115,7 +142,7 @@ func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []st
 	// it without broadening the search to files around it.
 	for _, ignored := range cfg.Global.IgnoredClones {
 		if err := ctx.Err(); err != nil {
-			return nil, len(skipped), err
+			return nil, skipped, err
 		}
 		path := config.ExpandTilde(ignored)
 		if filepath.IsAbs(path) && (git.IsRepo(path) || git.IsLinkedWorktree(path)) {
@@ -123,7 +150,7 @@ func FindOrphansContext(ctx context.Context, cfg *config.Config, extraRoots []st
 		}
 	}
 	relRoots := append(append([]string{}, roots...), containerPaths...)
-	return inspectOrphans(ctx, cfg, dedupPaths(candidates), relRoots, nestedSet), len(skipped), ctx.Err()
+	return inspectOrphans(ctx, cfg, dedupPaths(candidates), relRoots, nestedSet), skipped, ctx.Err()
 }
 
 // FindOrphansUnder inspects only an explicitly selected directory. The

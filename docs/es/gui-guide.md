@@ -457,7 +457,13 @@ Bajo las tarjetas, cada grupo lista sus repos replicados con:
 - **Configurar** para los repos que todavía no se han configurado mediante la API.
 - **+ Repo** para añadir repos al grupo.
 
-El escaneo ordinario de una raíz llega hasta ocho niveles de carpetas. Abre **Clones sin ubicar** para ver cuántas carpetas omitió Gitbox por profundidad o falta de acceso, incluso si no encontró clones sin asociar.
+El escaneo ordinario de una raíz llega hasta ocho niveles de carpetas. Abre **Clones sin ubicar** para ver las carpetas que omitió Gitbox, incluso si no encontró clones sin asociar. Las agrupa por la raíz, el contenedor o la carpeta de workspace cuyo escaneo las omitió, y dice por qué:
+
+- **Más profundas que la profundidad de escaneo anidado de un contenedor o carpeta de workspace** — no se revisaron las carpetas por debajo de esa profundidad, así que cualquier clon entre ellas queda oculto. **Escanear N niveles** sube en uno la profundidad de escaneo anidado, como en **Raíces de clonado**, y vuelve a escanear con la lista aún abierta.
+- **Más profundas que los ocho niveles de una raíz** — sube un clon de nivel si debe aparecer.
+- **Ilegibles** — revisa los permisos de las carpetas.
+
+**Mostrar carpetas** lista las carpetas de cada grupo, relativas a su raíz, contenedor o carpeta de workspace.
 
 ## Workspaces de VS Code y contenedores multi-repo
 

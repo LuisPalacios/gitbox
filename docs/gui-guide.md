@@ -457,7 +457,13 @@ Below the cards, each group lists its mirrored repos with:
 - **Setup** for repos not yet configured through the API.
 - **+ Repo** to add repos to the group.
 
-An ordinary root scan reaches eight directory levels. Open **Unmatched clones** to see how many folders Gitbox skipped because they were deeper or inaccessible, even when it found no unmatched clones.
+An ordinary root scan reaches eight directory levels. Open **Unmatched clones** to see the folders Gitbox skipped, even when it found no unmatched clones. It groups them by the root, container or workspace folder whose scan skipped them, and says why:
+
+- **Deeper than a container or workspace folder's nested scan depth** — folders below that depth weren't looked into, so a clone among them stays hidden. **Scan N levels deep** raises the nested scan depth by one, as in **Clone roots**, and scans again with the list still open.
+- **Deeper than a root's eight levels** — move a clone up if it should show.
+- **Unreadable** — check the folders' permissions.
+
+**Show folders** lists each group's folders, relative to its root, container or workspace folder.
 
 ## VS Code workspaces and multi-repo containers
 

@@ -98,7 +98,8 @@ type Incomplete struct {
 
 // Result is what one pass decided.
 type Result struct {
-	SkippedFolders int
+	// SkippedFolders are the folders the scans did not look into.
+	SkippedFolders []adopt.SkippedFolder
 	scope          *scanScope
 	Adopt          []Adoption
 	Relink         []Relink

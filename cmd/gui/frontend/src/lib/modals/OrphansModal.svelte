@@ -5,7 +5,7 @@
   // can't adopt says what to do instead (#351), and every row opens its
   // folder in the file manager or a terminal, like a clone row.
   import { fade, slide } from 'svelte/transition';
-  import { bridge } from '../bridge';
+  import { bridge, settingsSaveFailed } from '../bridge';
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import { ro, remoteOff } from '../ro';
@@ -14,11 +14,13 @@
   import { unavailableOff } from '../remotehost';
   import BrandIcon, { terminalLogo } from '../BrandIcon.svelte';
   import UIIcon from '../UIIcon.svelte';
-  import type { OrphanRepoDTO, ReconcileDTO, TerminalProfileInfo } from '../types';
+  import type { OrphanRepoDTO, ReconcileDTO, SkippedScanDTO, TerminalProfileInfo } from '../types';
 
   export let unmatched: OrphanRepoDTO[];
   export let skipped: NonNullable<ReconcileDTO['skipped']>;
   export let skippedFolders = 0;
+  // Which folders the scans skipped and why, grouped (#406).
+  export let skippedScans: SkippedScanDTO[] = [];
   export let ignored: OrphanRepoDTO[];
   // Shows a fresh reconcile result (lists, config and status reload).
   export let applyReconcile: (res: ReconcileDTO) => Promise<void>;
@@ -73,6 +75,7 @@
 
   export function showOrphanModal() {
     picked = {};
+    shownGaps = {};
     showIgnored = false;
     workspaceSearch = null;
     open = true;
@@ -109,6 +112,32 @@
       pushNotice('error', $t('notice.adoptFailed'), [errorText(e)]);
     }
     busy = '';
+  }
+
+  // gapText says what one group of skipped folders is and what to do.
+  function gapText(g: SkippedScanDTO, tr: (key: string, vars?: Record<string, string | number>) => string): string {
+    const vars = { path: g.under, depth: g.depth, n: g.count };
+    if (g.unreadable) return tr('unmatched.gapUnreadable', vars);
+    if (g.kind === 'container') return tr('unmatched.gapContainer', vars);
+    if (g.kind === 'workspace') return tr('unmatched.gapWorkspace', vars);
+    return tr('unmatched.gapRoot', vars);
+  }
+  const gapKey = (g: SkippedScanDTO) => `${g.kind}\u0000${g.under}\u0000${g.unreadable}`;
+  // The groups whose folders are on show, keyed by gapKey.
+  let shownGaps: Record<string, boolean> = {};
+
+  // scanDeeper raises the nested scan depth one level past the group's and
+  // scans again, so the list shows what it finds while it stays open.
+  async function scanDeeper(g: SkippedScanDTO) {
+    busy = 'deeper';
+    try {
+      await bridge.setNestedScanDepth(g.depth + 1);
+    } catch (e) {
+      busy = '';
+      settingsSaveFailed(e, () => void scanDeeper(g));
+      return;
+    }
+    await rescan();
   }
 
   async function openFolder(o: OrphanRepoDTO) {
@@ -192,7 +221,30 @@
         <button class="btn-x" on:click={() => open = false}>&#10005;</button>
       </div>
       <div class="modal-body">
-        {#if skippedFolders && !workspaceSearch}<p role="status">{$t('unmatched.scanIncomplete', { n: skippedFolders })}</p>{/if}
+        {#if skippedFolders && !workspaceSearch}
+          <div class="gaps" role="status">
+            <p class="gaps-head">{$t('unmatched.scanIncomplete', { n: skippedFolders })}</p>
+            {#each skippedScans as g (gapKey(g))}
+              <div class="gap">
+                <p class="hint">{gapText(g, $t)}</p>
+                <div class="gap-actions">
+                  {#if !g.unreadable && g.kind !== 'root'}
+                    <button use:ro={'setNestedScanDepth'} class="btn-cancel" title={$t('unmatched.scanDeeperTip')} disabled={!!busy} on:click={() => scanDeeper(g)}>{$t('unmatched.scanDeeper', { n: g.depth + 1 })}</button>
+                  {/if}
+                  {#if g.folders.length}
+                    <button class="link" aria-expanded={!!shownGaps[gapKey(g)]} on:click={() => shownGaps[gapKey(g)] = !shownGaps[gapKey(g)]}>{shownGaps[gapKey(g)] ? $t('unmatched.hideFolders') : $t('unmatched.showFolders')}</button>
+                  {/if}
+                </div>
+                {#if shownGaps[gapKey(g)]}
+                  <ul class="gap-folders">
+                    {#each g.folders as f (f)}<li>{f}</li>{/each}
+                    {#if g.count > g.folders.length}<li class="more">{$t('unmatched.moreFolders', { n: g.count - g.folders.length })}</li>{/if}
+                  </ul>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
         {#if workspaceSearch || visibleUnmatched.length || skipped.length || !skippedFolders}
           <p class="intro">{(visibleUnmatched.length || (!workspaceSearch && skipped.length)) ? $t(anyAdoptable ? 'unmatched.intro' : 'unmatched.introNoAdopt') : workspaceSearch ? $t('unmatched.workspaceEmpty') : $t('unmatched.empty')}</p>
         {/if}
@@ -239,6 +291,16 @@
     margin-top: 2px; font-size: 11px; color: var(--text-muted);
     font-family: var(--font-mono, monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  .gaps { margin: 0 0 12px; }
+  .gaps-head { margin: 0 0 4px; }
+  .gap { padding: 4px 0; }
+  .gap-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+  .gap-actions .link { margin-top: 0; }
+  .gap-folders {
+    margin: 4px 0 0; padding-left: 16px; font-size: 11px; color: var(--text-muted);
+    font-family: var(--font-mono, monospace); overflow-wrap: anywhere;
+  }
+  .gap-folders .more { font-family: inherit; list-style: none; }
   .hint { margin: 4px 0 0; font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; }
   .clone-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
   .launch-group { display: inline-flex; align-items: center; gap: 1px; flex-shrink: 0; }

@@ -288,6 +288,8 @@ export interface RepairDTO {
 export interface ReconcileDTO {
   repairs?: RepairDTO[];
   skippedFolders?: number;
+  // Which folders the scans skipped and why, grouped (#406).
+  skippedScans?: SkippedScanDTO[];
   adopted: number;
   relinked: number;
   skipped?: { path: string; reason: string }[];
@@ -303,6 +305,17 @@ export interface ReconcileDTO {
   // Tracked clones git never finished (#295); their folders are left alone.
   incomplete?: IncompleteCloneDTO[] | null;
   error?: string;
+}
+
+// The folders one scan skipped for one cause: below its depth limit, or
+// unreadable. Folders are relative to under, the first ones of count.
+export interface SkippedScanDTO {
+  kind: 'root' | 'container' | 'workspace' | string;
+  under: string;
+  depth: number;
+  unreadable: boolean;
+  count: number;
+  folders: string[];
 }
 
 export interface IncompleteCloneDTO {

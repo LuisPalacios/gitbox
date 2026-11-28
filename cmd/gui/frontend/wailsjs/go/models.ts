@@ -1433,6 +1433,28 @@ export namespace main {
 	        this.files = source["files"];
 	    }
 	}
+	export class SkippedScanDTO {
+	    kind: string;
+	    under: string;
+	    depth: number;
+	    unreadable: boolean;
+	    count: number;
+	    folders: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SkippedScanDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.under = source["under"];
+	        this.depth = source["depth"];
+	        this.unreadable = source["unreadable"];
+	        this.count = source["count"];
+	        this.folders = source["folders"];
+	    }
+	}
 	export class RepairDTO {
 	    source: string;
 	    repo: string;
@@ -1458,6 +1480,7 @@ export namespace main {
 	    unmatched: OrphanRepoDTO[];
 	    ignored: OrphanRepoDTO[];
 	    skippedFolders?: number;
+	    skippedScans?: SkippedScanDTO[];
 	    skipped?: reconcile.Skip[];
 	    background?: boolean;
 	    workspacesChanged: boolean;
@@ -1481,6 +1504,7 @@ export namespace main {
 	        this.unmatched = this.convertValues(source["unmatched"], OrphanRepoDTO);
 	        this.ignored = this.convertValues(source["ignored"], OrphanRepoDTO);
 	        this.skippedFolders = source["skippedFolders"];
+	        this.skippedScans = this.convertValues(source["skippedScans"], SkippedScanDTO);
 	        this.skipped = this.convertValues(source["skipped"], reconcile.Skip);
 	        this.background = source["background"];
 	        this.workspacesChanged = source["workspacesChanged"];
@@ -1944,6 +1968,7 @@ export namespace main {
 	        this.args = source["args"];
 	    }
 	}
+	
 	
 	export class StartupSnapshot {
 	    eventWatermark: number;
