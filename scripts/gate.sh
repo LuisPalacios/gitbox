@@ -25,6 +25,8 @@
 #   ./scripts/gate.sh                  # every lane
 #   ./scripts/gate.sh --only linux     # one lane (repeatable); records "partial"
 #   ./scripts/gate.sh --skip win       # all but one lane (repeatable); "partial"
+#   ./scripts/gate.sh --auto           # skip remote-it when the diff against
+#                                      # origin/main cannot affect it (gate-scope.sh)
 #   ./scripts/gate.sh --report         # post the HEAD marker as a "local-gate"
 #                                      # commit status (the commit must be pushed)
 #   ./scripts/gate.sh -h               # help
@@ -48,7 +50,7 @@ is_lane() {
     esac
 }
 
-only=() skip=() report=0
+only=() skip=() report=0 auto=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help) usage 0 ;;
@@ -58,6 +60,7 @@ while [[ $# -gt 0 ]]; do
             fi
             if [[ "$1" == "--only" ]]; then only+=("$2"); else skip+=("$2"); fi
             shift 2 ;;
+        --auto) auto=1; shift ;;
         --report) report=1; shift ;;
         *) die "unknown argument: $1 (see --help)" ;;
     esac
@@ -93,6 +96,17 @@ fi
 # ---------------------------------------------------------------------------
 # Lane selection
 # ---------------------------------------------------------------------------
+
+auto_skip=""
+if [[ $auto -eq 1 && ${#only[@]} -eq 0 ]]; then
+    if scope="$(bash "$REPO_ROOT/scripts/gate-scope.sh" origin/main)"; then
+        skip+=(remote-it)
+        auto_skip=remote-it
+        info "remote-it: $scope; skipping it (--auto)"
+    else
+        info "remote-it: $scope; running it"
+    fi
+fi
 
 lanes=()
 if [[ ${#only[@]} -gt 0 ]]; then
@@ -245,6 +259,7 @@ mkdir -p "$marker_dir"
     echo "status=$overall"
     echo "lanes=${results[*]}"
     echo "skipped=${skipped[*]}"
+    [[ -z "$auto_skip" ]] || echo "auto_skip=$auto_skip"
     echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } > "$marker"
 ok "marker: $overall for ${sha:0:12}"

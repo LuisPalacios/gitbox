@@ -412,6 +412,8 @@ run_selftest() {
         || { cat "$tmp/selftest.full"; return 1; }
     bash scripts/test-githooks.sh >"$tmp/githooks.full" 2>&1 \
         || { cat "$tmp/githooks.full"; return 1; }
+    bash scripts/test-gate-scope.sh >"$tmp/gatescope.full" 2>&1 \
+        || { cat "$tmp/gatescope.full"; return 1; }
 }
 
 run_bootstrap() {

@@ -94,8 +94,8 @@ The merge gate is the local gate (`./scripts/gate.sh`, see `docs/local-gate.md`)
 - The gate passed when either holds:
   - The marker `$(git rev-parse --path-format=absolute --git-common-dir)/gitbox-gate/<headRefOid>` exists with `status=pass`.
   - The commit has a successful `local-gate` status: `gh api repos/<owner>/<repo>/commits/<headRefOid>/statuses --jq '.[] | select(.context=="local-gate") | .state'`.
-- `status=partial` (a lane was skipped): report the skipped lanes and stop unless the user explicitly accepts the partial gate for this merge.
-- No marker: offer to run `./scripts/gate.sh` in the PR's worktree (clean tree, `HEAD` at `headRefOid`), then continue on a pass. After the push already happened, `./scripts/gate.sh --report` publishes the result.
+- `status=partial` (a lane was skipped): report the skipped lanes and stop unless the user explicitly accepts the partial gate for this merge. One partial needs no acceptance: the marker has `skipped=remote-it` and `auto_skip=remote-it` (written by `./scripts/gate.sh --auto`), and `bash scripts/gate-scope.sh origin/<baseRefName>` run in the PR's worktree prints `unaffected`. Then the diff touches nothing the remote-it lane compiles or tests; say so in the report. A `needed:` result or any other skipped lane stays a stop.
+- No marker: offer to run `./scripts/gate.sh --auto` in the PR's worktree (clean tree, `HEAD` at `headRefOid`), then continue on a pass. After the push already happened, `./scripts/gate.sh --report` publishes the result.
 - A PR from anyone else runs untrusted code on my machines through the gate. Review its diff first, and run the gate only with my explicit go-ahead, from a temporary worktree at `headRefOid`.
 - A squash merge copies every branch commit's co-author trailers into `main`, and GitHub then lists their authors as contributors. Check the PR title, body and commit messages with the hooks' checker, from the repository root, and stop on any finding until the commits are reworded and the body is edited:
 
