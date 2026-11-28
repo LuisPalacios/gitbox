@@ -540,15 +540,27 @@ func TestFakeUnreadableFinalNotReinstalled(t *testing.T) {
 	}
 }
 
+// slowLoginWait shortens loginWait for a case whose fake ssh delays its
+// login, so the slow-login signal fires long before that login ends. A case
+// without a delay keeps the real loginWait: on a busy machine, starting the
+// fake ssh alone can take longer than a short wait, and a fast login must
+// not depend on how long a process takes to start.
+func slowLoginWait(t *testing.T, delay string) {
+	t.Helper()
+	if delay == "" {
+		return
+	}
+	old := loginWait
+	loginWait = 100 * time.Millisecond
+	t.Cleanup(func() { loginWait = old })
+}
+
 // TestSlowLoginNamesTheAgent: a first ssh that has not logged in after
 // loginWait calls OnSlowLogin once, with 1Password named when the alias's
 // IdentityAgent, or SSH_AUTH_SOCK without one, is its socket. A fast login
 // calls nothing.
 func TestSlowLoginNamesTheAgent(t *testing.T) {
 	f := newFake(t, fakeServer)
-	old := loginWait
-	loginWait = 100 * time.Millisecond
-	t.Cleanup(func() { loginWait = old })
 	const onePassword = "/Users/x/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
 	for _, tc := range []struct {
 		name, agent, authSock, delay string
@@ -563,6 +575,7 @@ func TestSlowLoginNamesTheAgent(t *testing.T) {
 			t.Setenv("FAKE_SSH_AGENT", tc.agent)
 			t.Setenv("SSH_AUTH_SOCK", tc.authSock)
 			t.Setenv("FAKE_SSH_DELAY", tc.delay)
+			slowLoginWait(t, tc.delay)
 			o := f.opts
 			o.ControlDir = t.TempDir()
 			var mu sync.Mutex
@@ -638,9 +651,6 @@ func TestLoginLimitStopsUninstall(t *testing.T) {
 // remote command is not a slow login: the limit and the hint are gone.
 func TestLoginLimitOnlyBoundsTheLogin(t *testing.T) {
 	f := newFake(t, fakeServer)
-	oldWait, oldLimit := loginWait, loginLimit
-	loginWait, loginLimit = 100*time.Millisecond, 300*time.Millisecond
-	t.Cleanup(func() { loginWait, loginLimit = oldWait, oldLimit })
 	o := f.opts
 	called := false
 	o.OnSlowLogin = func(string) { called = true }
@@ -648,9 +658,15 @@ func TestLoginLimitOnlyBoundsTheLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The login runs with the real timers, so a slow start of the fake ssh
+	// is not a slow login. Only the command after it gets short ones, which
+	// its one-second sleep would cross if they applied.
 	if _, err := r.run(ctx(t), "first", `printf "\0GBX\0"`, nil); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
+	oldWait, oldLimit := loginWait, loginLimit
+	loginWait, loginLimit = 100*time.Millisecond, 300*time.Millisecond
+	t.Cleanup(func() { loginWait, loginLimit = oldWait, oldLimit })
 	if _, err := r.run(ctx(t), "slow", `sleep 1; printf "\0GBX\0x\0"`, nil); err != nil {
 		t.Fatalf("a slow command after the login failed: %v", err)
 	}
@@ -665,9 +681,6 @@ func TestLoginLimitOnlyBoundsTheLogin(t *testing.T) {
 // denial, or one with another agent, stays CodeSSHAuth.
 func TestSlowDenialWithOnePasswordIsTheAgent(t *testing.T) {
 	f := newFake(t, fakeServer)
-	old := loginWait
-	loginWait = 100 * time.Millisecond
-	t.Cleanup(func() { loginWait = old })
 	const onePassword = "/Users/x/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
 	for _, tc := range []struct {
 		name, agent, delay string
@@ -680,6 +693,7 @@ func TestSlowDenialWithOnePasswordIsTheAgent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("FAKE_SSH_AGENT", tc.agent)
 			t.Setenv("FAKE_SSH_DELAY", tc.delay)
+			slowLoginWait(t, tc.delay)
 			o := f.opts
 			o.ControlDir = t.TempDir()
 			_, err := Uninstall(ctx(t), "denied", o, false)
