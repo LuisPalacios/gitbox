@@ -268,20 +268,47 @@ failures_first() {
     grep -Ev '^(ok |\?) ' "$1" | grep -Ev "$signal"
     return 0
 }
+# The race pass covers the failure schedules: overlapping config changes,
+# partial saves and stalled credential helpers.
+RACE_PKGS=(./cmd/gui/ ./pkg/config/ ./pkg/git/...)
+
+# On macOS and Linux the race pass runs RACE_PKGS and the plain pass every
+# other package, both at once (#416): a race run executes the same tests, so
+# a plain run of those packages would only repeat them. Windows has no race
+# detector without a C toolchain and keeps one plain pass over everything.
 run_test() {
-    if ! go test -short ./... >"$tmp/test.full" 2>&1; then
-        failures_first "$tmp/test.full"
-        return 1
-    fi
-    # Windows runs the same schedules above without requiring a C toolchain.
     case "$(go env GOOS)" in
-        darwin|linux)
-            if ! go test -race -short ./cmd/gui/ ./pkg/config/ ./pkg/git/... >"$tmp/test.race" 2>&1; then
-                failures_first "$tmp/test.race"
-                return 1
-            fi
+        darwin|linux) ;;
+        *)
+            go test -short ./... >"$tmp/test.full" 2>&1 && return 0
+            failures_first "$tmp/test.full"
+            return 1
             ;;
     esac
+    # stdout holds only import paths; stderr may announce module downloads.
+    go list ./... >"$tmp/test.all" 2>"$tmp/test.listerr" || { cat "$tmp/test.listerr"; return 1; }
+    go list "${RACE_PKGS[@]}" >"$tmp/test.racelist" 2>"$tmp/test.listerr" \
+        || { cat "$tmp/test.listerr"; return 1; }
+    [[ -s "$tmp/test.racelist" ]] || { echo "the race pass lists no package"; return 1; }
+    local plain=() race_pid plain_pid rc=0
+    mapfile -t plain < <(sort "$tmp/test.all" | comm -23 - <(sort "$tmp/test.racelist"))
+    go test -race -short "${RACE_PKGS[@]}" >"$tmp/test.race" 2>&1 &
+    race_pid=$!
+    if [[ ${#plain[@]} -gt 0 ]]; then
+        go test -short "${plain[@]}" >"$tmp/test.full" 2>&1 &
+        plain_pid=$!
+        if ! wait "$plain_pid"; then
+            echo "go test -short (packages outside the race pass):"
+            failures_first "$tmp/test.full"
+            rc=1
+        fi
+    fi
+    if ! wait "$race_pid"; then
+        echo "go test -race -short ${RACE_PKGS[*]}:"
+        failures_first "$tmp/test.race"
+        rc=1
+    fi
+    return "$rc"
 }
 
 # A fuzz command accepts exactly one target. Keep successes quiet while
@@ -292,14 +319,22 @@ run_test() {
 # run that found nothing can fail with a bare "context deadline exceeded"
 # before Go 1.26.12 and 1.27.5 (golang/go#75804, #409); a count sets no
 # deadline. A crasher still fails the check and writes its input.
+#
+# The targets run at the same time (#416); a failing target prints its whole
+# output, in the order listed here.
 run_fuzz() {
-    local spec package target execs rc=0
+    local spec package target execs rc=0 targets=() pids=() i
     for spec in config:FuzzDecodeRoundTrip:600000 workspace:FuzzStripJSONC:1000000 \
         status:FuzzRepoPath:1000000 rpc:FuzzDecodeFrame:1000000; do
         IFS=: read -r package target execs <<<"$spec"
-        if ! go test "./pkg/$package/" -run='^$' -fuzz="^$target$" -fuzztime="${execs}x" -parallel=2 \
-            >"$tmp/fuzz-$target.full" 2>&1; then
-            cat "$tmp/fuzz-$target.full"
+        go test "./pkg/$package/" -run='^$' -fuzz="^$target$" -fuzztime="${execs}x" -parallel=2 \
+            >"$tmp/fuzz-$target.full" 2>&1 &
+        pids+=("$!")
+        targets+=("$target")
+    done
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            cat "$tmp/fuzz-${targets[$i]}.full"
             rc=1
         fi
     done
