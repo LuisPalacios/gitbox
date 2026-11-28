@@ -549,6 +549,7 @@
   let ignoredClones: OrphanRepoDTO[] = [];
   let orphanCount = 0;
   let skippedFolders = 0;
+  let skippedScans: NonNullable<ReconcileDTO['skippedScans']> = [];
   let orphansDialog: OrphansModal;
   const showOrphanModal = () => orphansDialog.showOrphanModal();
 
@@ -572,6 +573,7 @@
     orphanList = res.unmatched || [];
     ignoredClones = res.ignored || [];
     skippedFolders = res.skippedFolders || 0;
+    skippedScans = res.skippedScans || [];
     skippedClones = res.skipped || [];
     orphanCount = orphanList.length + skippedClones.length;
     if (res.error) pushNotice('error', $t('notice.reconcileFailed'), [res.error]);
@@ -1933,7 +1935,7 @@
   <SweepModal bind:this={sweepDialog} {closeActionMenu} />
 
   <!-- ── ORPHAN ADOPTION MODAL ── -->
-  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} skipped={skippedClones} {skippedFolders} {applyReconcile} {revealLabel} profiles={configProfiles} addAccountFor={addAccountForClone} />
+  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} skipped={skippedClones} {skippedFolders} {skippedScans} {applyReconcile} {revealLabel} profiles={configProfiles} addAccountFor={addAccountForClone} />
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if connectModal}

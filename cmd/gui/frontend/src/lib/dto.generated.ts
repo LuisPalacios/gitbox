@@ -251,6 +251,15 @@ export interface OrphanRepoDTO {
   trackedPath?: string;
 }
 
+export interface SkippedScanDTO {
+  kind: string;
+  under: string;
+  depth: number;
+  unreadable: boolean;
+  count: number;
+  folders: string[];
+}
+
 export interface Skip {
   path: string;
   reason: string;
@@ -288,6 +297,7 @@ export interface ReconcileDTO {
   unmatched: OrphanRepoDTO[];
   ignored: OrphanRepoDTO[];
   skippedFolders?: number;
+  skippedScans?: SkippedScanDTO[];
   skipped?: Skip[];
   background?: boolean;
   workspacesChanged: boolean;

@@ -13,10 +13,13 @@ const DiscoveryDepth = 8
 
 // Coverage holds observed clones and the directory branches a walk could not inspect.
 type Coverage struct {
-	Repos    []string
-	Skipped  []string
-	Errors   []error
-	Complete bool
+	Repos   []string
+	Skipped []string
+	// Unreadable lists the skipped folders the scan could not read; the
+	// rest of Skipped lay below the depth limit.
+	Unreadable []string
+	Errors     []error
+	Complete   bool
 }
 
 // FindReposContext stops at clone boundaries, hidden directories and the requested depth.
@@ -52,6 +55,7 @@ func findRepos(ctx context.Context, root string, maxDepth int, nested bool) (Cov
 		c.Complete = false
 		c.Skipped = append(c.Skipped, path)
 		if err != nil {
+			c.Unreadable = append(c.Unreadable, path)
 			c.Errors = append(c.Errors, err)
 		}
 	}

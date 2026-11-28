@@ -802,6 +802,11 @@ func capReconcile(r *RemoteBackend, res *ReconcileDTO) {
 	}
 	res.Unmatched = capList(r, "unmatched clones", res.Unmatched, maxRemoteRepos)
 	res.Skipped = capList(r, "skipped clones", res.Skipped, maxRemoteRepos)
+	res.SkippedScans = capList(r, "skipped folder groups", res.SkippedScans, maxRemoteRepos)
+	for i := range res.SkippedScans {
+		g := &res.SkippedScans[i]
+		g.Folders = capList(r, "skipped folders", g.Folders, maxSkippedListed)
+	}
 	res.Ignored = capList(r, "ignored clones", res.Ignored, maxRemoteRepos)
 	res.Incomplete = capList(r, "incomplete clones", res.Incomplete, maxRemoteRepos)
 	res.WorkspaceChoices = capList(r, "workspace choices", res.WorkspaceChoices, maxRemoteRepos)

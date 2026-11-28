@@ -3,6 +3,7 @@ package adopt
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -66,8 +67,20 @@ func TestFindOrphans_NestedClonesUnderContainer(t *testing.T) {
 		initBareRepo(t, filepath.Join(member, "visible"), "https://github.com/LuisPalacios/visible.git")
 		initBareRepo(t, filepath.Join(member, "layer", "hidden"), "https://github.com/LuisPalacios/hidden.git")
 		found, skipped, err := FindOrphansContext(t.Context(), cfg, nil)
-		if err != nil || skipped == 0 {
-			t.Fatalf("coverage: %d skipped, %v", skipped, err)
+		if err != nil || len(skipped) == 0 {
+			t.Fatalf("coverage: %d skipped, %v", len(skipped), err)
+		}
+		// The folder below the workspace's limit is reported as that
+		// workspace folder's, with its depth, and as readable.
+		hiddenAt := filepath.Join(member, "layer", "hidden")
+		var hit *SkippedFolder
+		for i := range skipped {
+			if skipped[i].Path == hiddenAt {
+				hit = &skipped[i]
+			}
+		}
+		if hit == nil || hit.Kind != ScanWorkspace || hit.Under != member || hit.Depth != 1 || hit.Unreadable {
+			t.Fatalf("skipped %s = %+v, want workspace %s at depth 1 (all: %+v)", hiddenAt, hit, member, skipped)
 		}
 		var visible bool
 		for _, o := range found {
@@ -187,5 +200,37 @@ func TestFindOrphans_ConfidenceNeedsMoreThanTheHost(t *testing.T) {
 		if got[k] != v {
 			t.Errorf("%s confident = %v, want %v", k, got[k], v)
 		}
+	}
+}
+
+// TestFindOrphansContext_ReportsContainerDepth: a clone two levels inside a
+// container with the default nested depth of 1 is not found, and its folder
+// is reported as skipped by that container's scan, not as unreadable.
+func TestFindOrphansContext_ReportsContainerDepth(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfig(root)
+	containerPath := filepath.Join(root, "github-me", "LuisPalacios", "tracked-repo")
+	initBareRepo(t, containerPath, "https://github.com/LuisPalacios/tracked-repo.git")
+	src := cfg.Sources["github-me"]
+	repo := src.Repos["LuisPalacios/tracked-repo"]
+	repo.Container = true
+	src.Repos["LuisPalacios/tracked-repo"] = repo
+	cfg.Sources["github-me"] = src
+	cfg.Global.NestedScanDepth = 1
+	deep := filepath.Join(containerPath, "vendor-dir", "deep-clone")
+	initBareRepo(t, deep, "https://github.com/LuisPalacios/deep-clone.git")
+
+	found, skipped, err := FindOrphansContext(t.Context(), cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range found {
+		if o.Repo == "deep-clone" {
+			t.Fatal("found a clone beyond the container's nested depth")
+		}
+	}
+	want := SkippedFolder{Path: deep, Under: containerPath, Kind: ScanContainer, Depth: 1}
+	if !slices.Contains(skipped, want) {
+		t.Fatalf("skipped = %+v, want %+v", skipped, want)
 	}
 }

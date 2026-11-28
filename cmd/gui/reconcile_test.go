@@ -14,6 +14,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/LuisPalacios/gitbox/pkg/adopt"
 	"github.com/LuisPalacios/gitbox/pkg/config"
 	"github.com/LuisPalacios/gitbox/pkg/git"
 	"github.com/LuisPalacios/gitbox/pkg/reconcile"
@@ -579,5 +580,40 @@ func TestReconcile_WorkspaceReadFailurePreservesSavedWorkspace(t *testing.T) {
 	res = a.reconcilePass(false)
 	if res.WorkspacesChanged || res.WorkspaceUnknown == nil || len(res.WorkspaceUnknown) != 0 || len(events.named("reconcile:done")) != 2 {
 		t.Fatalf("workspace scan = %+v, want a recovery event without a config change", res)
+	}
+}
+
+// TestGroupSkipped: skipped folders group by scan and cause in scan order,
+// list paths relative to their scan, and stop listing at maxSkippedListed
+// while still counting every folder.
+func TestGroupSkipped(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "roots", "main")
+	box := filepath.Join(root, "acct", "box")
+	folders := []adopt.SkippedFolder{
+		{Path: filepath.Join(box, "doc", "a"), Under: box, Kind: adopt.ScanContainer, Depth: 1},
+		{Path: filepath.Join(root, "locked"), Under: root, Kind: adopt.ScanRoot, Depth: 8, Unreadable: true},
+		{Path: filepath.Join(box, "doc", "b"), Under: box, Kind: adopt.ScanContainer, Depth: 1},
+	}
+	for i := range maxSkippedListed + 2 {
+		folders = append(folders, adopt.SkippedFolder{Path: filepath.Join(root, "deep", fmt.Sprint(i)), Under: root, Kind: adopt.ScanRoot, Depth: 8})
+	}
+
+	got := groupSkipped(folders)
+	if len(got) != 3 {
+		t.Fatalf("groups = %+v, want 3", got)
+	}
+	box0 := got[0]
+	if box0.Kind != adopt.ScanContainer || box0.Under != box || box0.Depth != 1 || box0.Unreadable || box0.Count != 2 ||
+		!reflect.DeepEqual(box0.Folders, []string{filepath.Join("doc", "a"), filepath.Join("doc", "b")}) {
+		t.Errorf("container group = %+v", box0)
+	}
+	if g := got[1]; g.Kind != adopt.ScanRoot || !g.Unreadable || g.Count != 1 || !reflect.DeepEqual(g.Folders, []string{"locked"}) {
+		t.Errorf("unreadable group = %+v", g)
+	}
+	if g := got[2]; g.Unreadable || g.Count != maxSkippedListed+2 || len(g.Folders) != maxSkippedListed || g.Folders[0] != filepath.Join("deep", "0") {
+		t.Errorf("depth group = count %d, %d listed, first %q", g.Count, len(g.Folders), g.Folders[0])
+	}
+	if groupSkipped(nil) != nil {
+		t.Error("no skipped folders should give no groups")
 	}
 }

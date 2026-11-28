@@ -140,3 +140,51 @@ test('without a terminal profile a row shows the folder button alone', async (t)
   assert.ok(local.getByRole('button', { name: 'Reveal in Finder' }))
   assert.equal(local.queryByRole('button', { name: /Open with/ }), null)
 })
+
+// Skipped folders (#406): each group says what was skipped and why, lists its
+// folders on demand, and a container group can scan one level deeper.
+const gaps = [
+  { kind: 'container', under: '/roots/acct/box', depth: 1, unreadable: false, count: 3, folders: ['doc/a', 'doc/b'] },
+  { kind: 'root', under: '/roots', depth: 8, unreadable: false, count: 1, folders: ['a/b/c/d/e/f/g/h/i'] },
+  { kind: 'root', under: '/roots', depth: 8, unreadable: true, count: 1, folders: ['locked'] },
+]
+
+test('skipped folders say where, why and what to do', async (t) => {
+  const { ui } = await open(t, { skippedFolders: 5, skippedScans: gaps })
+  const { screen, fireEvent, waitFor, within } = ui
+  const status = within(screen.getByRole('status'))
+  assert.ok(status.getByText('Scan incomplete. Folders skipped: 5.'))
+  assert.ok(status.getByText("Container /roots/acct/box: the nested scan depth is 1, so deeper folders weren't looked into (3). Any clone among them stays hidden."))
+  assert.ok(status.getByText(/^Root \/roots: the scan stops 8 levels deep, so deeper folders weren't looked into \(1\)\./))
+  assert.ok(status.getByText("Couldn't read these folders under /roots (1). Check their permissions."))
+  assert.equal(status.getAllByRole('button', { name: /Scan \d+ levels deep/ }).length, 1, 'only the container group scans deeper')
+
+  const box = status.getByText(/^Container/).closest('.gap')
+  await fireEvent.click(within(box).getByRole('button', { name: 'Show folders' }))
+  await waitFor(() => assert.ok(within(box).getByText('doc/a')))
+  assert.ok(within(box).getByText('doc/b'))
+  assert.ok(within(box).getByText('and 1 more'))
+  await fireEvent.click(within(box).getByRole('button', { name: 'Hide folders' }))
+  await waitFor(() => assert.equal(within(box).queryByText('doc/a'), null))
+})
+
+test('scanning deeper saves the next depth and scans again with the list open', async (t) => {
+  const scanned = []
+  const { ui, native } = await open(t, { skippedFolders: 3, skippedScans: [gaps[0]], applyReconcile: async (res) => { scanned.push(res) } }, {
+    SetNestedScanDepth: async () => {},
+    Reconcile: async () => ({ adopted: 0, relinked: 0, unmatched: [], ignored: [], workspacesChanged: false, workspaceChoices: [], placeholders: [], workspaceMembers: [] }),
+  })
+  const { screen, fireEvent, waitFor } = ui
+  await fireEvent.click(screen.getByRole('button', { name: 'Scan 2 levels deep' }))
+  await waitFor(() => assert.deepEqual(called(native, 'SetNestedScanDepth'), [[2]]))
+  await waitFor(() => assert.equal(scanned.length, 1))
+  assert.equal(called(native, 'Reconcile').length, 1)
+  assert.ok(screen.getByRole('dialog'), 'the list stayed open')
+  assert.deepEqual(native.unexpected, [])
+})
+
+test('without groups the skipped count still shows', async (t) => {
+  const { ui } = await open(t, { skippedFolders: 2 })
+  assert.ok(ui.screen.getByText('Scan incomplete. Folders skipped: 2.'))
+  assert.equal(ui.screen.queryByRole('button', { name: 'Show folders' }), null)
+})

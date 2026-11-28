@@ -97,7 +97,7 @@ func TestFindReposContextCoverage(t *testing.T) {
 		}
 	}
 	c, err := FindReposContext(t.Context(), root, 1)
-	if err != nil || c.Complete || !slices.Equal(c.Skipped, []string{skipped}) || !slices.Equal(c.Repos, []string{found}) {
+	if err != nil || c.Complete || !slices.Equal(c.Skipped, []string{skipped}) || !slices.Equal(c.Repos, []string{found}) || len(c.Unreadable) != 0 {
 		t.Fatalf("depth-limited walk = %+v, %v", c, err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -129,7 +129,7 @@ func TestFindReposContextCoverage(t *testing.T) {
 			t.Skip("privileged reader")
 		}
 		c, err := FindReposContext(t.Context(), filepath.Dir(denied), 8)
-		if err != nil || c.Complete || !slices.Equal(c.Skipped, []string{denied}) || len(c.Errors) != 1 || !errors.Is(c.Errors[0], os.ErrPermission) {
+		if err != nil || c.Complete || !slices.Equal(c.Skipped, []string{denied}) || !slices.Equal(c.Unreadable, []string{denied}) || len(c.Errors) != 1 || !errors.Is(c.Errors[0], os.ErrPermission) {
 			t.Fatalf("unreadable directory = %+v, %v", c, err)
 		}
 	})
