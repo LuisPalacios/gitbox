@@ -7,7 +7,8 @@
   import { t } from '../i18n';
   import { ro } from '../ro';
   import { dismiss } from '../dismiss';
-  import { configStore, mirrors } from '../stores';
+  import { mirrors, activeSession } from '../stores';
+  import { get } from 'svelte/store';
 
   export let mirrorDiscoverResults: any[] | null;
   export let mirrorDiscoverError: string;
@@ -27,6 +28,8 @@
   }
 
   async function addDiscoveredRepo(dr: any, dm: any) {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     const addKey = `${dr.AccountSrc}:${dr.AccountDst}:${dm.RepoKey}`;
     try {
       // Find or create mirror group for this account pair.
@@ -44,7 +47,7 @@
         await bridge.addMirrorGroup(groupKey, dr.AccountSrc, dr.AccountDst);
       }
       await bridge.addMirrorRepo(groupKey, dm.RepoKey, dm.Direction, dm.Origin);
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
       discoverAdded = { ...discoverAdded, [addKey]: true };
     } catch (e: any) {
       pushNotice('error', $t('notice.mirrorRepoAddFailed'), [errorText(e)]);
@@ -52,9 +55,11 @@
   }
 
   async function applyMirrorDiscovery() {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     try {
       await bridge.applyDiscoveredMirrors();
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
       mirrorDiscoverResults = null;
       discoverAdded = {};
       checkAllMirrorStatus();

@@ -3,9 +3,12 @@ import { test, mock } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 
-const sourceCode = await readFile(new URL('./notices.ts', import.meta.url), 'utf8');
+// Each session keeps its own list (#381): load makes a fresh one, with the
+// module's constants and errorText beside it.
+const sourceCode = await readFile(new URL('./notice-list.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(sourceCode, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const load = () => import(`data:text/javascript;base64,${Buffer.from(outputText + `\n// ${Math.random()}`).toString('base64')}`);
+const list = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const load = async () => ({ ...list, ...list.createNotices() });
 
 const current = (n) => { let v; n.notices.subscribe((x) => { v = x; })(); return v; };
 
@@ -54,4 +57,16 @@ test('I read the message of anything thrown', async () => {
   assert.equal(n.errorText(new Error('boom')), 'boom');
   assert.equal(n.errorText({ message: 'from Go' }), 'from Go');
   assert.equal(n.errorText('plain'), 'plain');
+});
+
+test('two sessions keep their notices apart', async () => {
+  const a = await load();
+  const b = await load();
+  const id = a.pushNotice('error', 'Only in A');
+  assert.equal(current(a).length, 1);
+  assert.deepEqual(current(b), []);
+  b.dismissNotice(id);
+  assert.equal(current(a).length, 1, 'B cannot dismiss what A shows');
+  a.dismissNotice(id);
+  assert.deepEqual(current(a), []);
 });

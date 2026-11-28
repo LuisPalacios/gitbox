@@ -7,9 +7,9 @@
   import type { CredentialStepReport, DiscoverResult } from './types';
   import { providerLabel, providerURLs } from './theme';
   import Logo from './Logo.svelte';
-  import { remoteTextHost, t } from './i18n';
+  import { t } from './i18n';
   import { openExternal } from './external';
-  import { remoteWindow } from './stores';
+  import { remoteTextHost, remoteWindow } from './stores';
   import { gcmOffered } from './gcmRemote';
   import ErrorExplanation from './components/ErrorExplanation.svelte';
   import { accountIssue, caughtIssue, errorInfo } from './explain';

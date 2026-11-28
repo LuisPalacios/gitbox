@@ -7,7 +7,8 @@
   import { pushNotice, errorText } from '../notices';
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
-  import { configStore, remoteHost, blocked } from '../stores';
+  import { remoteHost, blocked, activeSession } from '../stores';
+  import { get } from 'svelte/store';
   import { ro } from '../ro';
   import RemotePathInput from '../RemotePathInput.svelte';
   import { dismiss } from '../dismiss';
@@ -40,6 +41,8 @@
   }
 
   async function addRoot() {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     const dir = $remoteHost ? typedRoot.trim() : await bridge.pickFolder($t('roots.pickAdd'));
     if (!dir) return;
     try {
@@ -47,17 +50,19 @@
       // The typed folder is a root now; a failed add keeps it for a fix.
       typedRoot = '';
       await loadRoots();
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
       await runReconcile();
       await loadRoots();
     } catch (err: any) { pushNotice('error', $t('notice.rootAddFailed'), [errorText(err)]); }
   }
 
   async function makeDefault(path: string) {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     try {
       await bridge.setDefaultRoot(path);
       await loadRoots();
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
     } catch (err: any) { pushNotice('error', $t('notice.rootDefaultFailed'), [errorText(err)]); }
   }
 

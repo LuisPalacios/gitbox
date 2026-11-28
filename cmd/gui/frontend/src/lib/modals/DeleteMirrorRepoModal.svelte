@@ -6,7 +6,8 @@
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
   import { dismiss } from '../dismiss';
-  import { configStore } from '../stores';
+  import { activeSession } from '../stores';
+  import { get } from 'svelte/store';
 
   export let deleteMode: boolean;
 
@@ -17,10 +18,12 @@
   }
 
   async function confirmDeleteMirrorRepo() {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     if (!deleteMirrorRepoConfirm) return;
     try {
       await bridge.deleteMirrorRepo(deleteMirrorRepoConfirm.mirrorKey, deleteMirrorRepoConfirm.repoKey);
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
     } catch (e: any) {
       pushNotice('error', $t('notice.mirrorRepoDeleteFailed'), [errorText(e)]);
     }

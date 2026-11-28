@@ -8,9 +8,10 @@
   import { backgroundAllowed } from './lib/readonly';
   import {
     configStore, accounts, sources, mirrors, repoStates, themeStore,
-    prsByAccount, prSettings, workspacePlaceholders,
-    remoteWindow, remoteHost
+    prSettings, workspacePlaceholders,
+    remoteHost
   } from './lib/stores';
+  import { defaultBundle } from './lib/session/active';
   import { detailLocked, accountHealth } from './lib/status';
   import { derivePresentation, CALM_RANK } from './lib/presentation';
   import { createDetailLoader } from './lib/repo-detail';
@@ -18,7 +19,7 @@
   import { editorOff } from './lib/remotehost';
   import type { ErrorActions } from './lib/explain';
   import { resolveView, viewAccount, accountView, attentionCounts } from './lib/views';
-  import { languageStore, normalizeLanguage, remoteTextHost, t } from './lib/i18n';
+  import { languageStore, normalizeLanguage, t } from './lib/i18n';
   import { pushNotice, errorText } from './lib/notices';
   import { Quit } from '../wailsjs/runtime/runtime';
   import type { ConfigDTO, CredentialFinding, CredentialStatus, RepoState, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, StartupSnapshot } from './lib/types';
@@ -117,13 +118,17 @@
   let gitignoreError = '';
   let checkGitignorePref = true;
 
-  // ── Session (#379, #380) ──
+  // ── Session (#379, #380, #381) ──
   // The controller owns the event listeners, the run bookkeeping they
   // update and the lifecycle; the window renders from its stores and keeps
-  // layout, modals and navigation.
+  // layout, modals and navigation. The window's session is the process's
+  // default one: what the window changes in its stores goes to its bundle
+  // (sessionStores), and the shared stores follow it while it is active.
+  const sessionStores = defaultBundle;
   const session = createSessionController({
     bridge,
     events,
+    stores: sessionStores,
     host: {
       simple: () => simple,
       applySnapshot,
@@ -414,7 +419,7 @@
   async function saveTerminalProfilesAndReload(apps: TerminalAppInfo[], shells: ShellInfo[], profiles: TerminalProfileInfo[]) {
     await bridge.saveTerminalProfiles(apps, shells, profiles);
     const fresh = await bridge.reloadConfig();
-    configStore.set(fresh);
+    sessionStores.configStore.set(fresh);
   }
 
   function onRecipeImported(cfg: ConfigDTO, added: string[]) {
@@ -423,7 +428,7 @@
     for (const [key, account] of Object.entries(cfg.accounts)) {
       if (refs.has(account.url + '/' + account.username)) $credStatuses[key] = {status: 'none'} as CredentialStatus;
     }
-    configStore.set(cfg);
+    sessionStores.configStore.set(cfg);
   }
 
   // openTerminalsManagerWindow asks the Go side to spawn a sub-process of
@@ -501,7 +506,7 @@
       await bridge.setRepoWorkspace(sourceKey, repoName, file);
       // The pass below sees no change to report, so I reload the config
       // myself: the row's editor button reads repo.workspace from it.
-      $configStore = await bridge.reloadConfig();
+      sessionStores.configStore.set(await bridge.reloadConfig());
       await runReconcile();
     } catch (e) {
       pushNotice('error', $t('notice.workspaceFailed'), [errorText(e)]);
@@ -1009,7 +1014,7 @@
     const next = !isContainerRepo(sourceKey, repoName);
     try {
       await bridge.setRepoContainer(sourceKey, repoName, next);
-      $configStore = await bridge.reloadConfig();
+      sessionStores.configStore.set(await bridge.reloadConfig());
       if (next) {
         // Newly a container — rescan: recognised nested clones are added in
         // place; the Unmatched list opens for any it couldn't place.
@@ -1057,11 +1062,9 @@
   // follow each reconnect (#295).
   $: remoteOffline = remoteShowMain && ($remoteState?.state !== 'connected' || $remoteLoading);
 
-  // markRemote marks the window as the remote one of alias, before the
-  // session loads the host's data.
-  function markRemote(alias: string) {
-    remoteWindow.set(true);
-    remoteTextHost.set(alias);
+  // markRemote marks the bridge of a remote window, before the session
+  // loads the host's data; the session has marked its own stores already.
+  function markRemote() {
     setRemoteWindow(true, $t('remote.readOnlyTip'));
   }
   let autostartOn = false;
@@ -1099,7 +1102,7 @@
   async function loadPRSettings() {
     try {
       const s = await bridge.getPRSettings();
-      prSettings.set({ enabled: !!s.enabled, includeDrafts: !!s.includeDrafts });
+      sessionStores.prSettings.set({ enabled: !!s.enabled, includeDrafts: !!s.includeDrafts });
     } catch (e) { console.error(e); }
   }
 
@@ -1113,16 +1116,16 @@
   async function setPRBadgesEnabled(enabled: boolean) {
     try {
       await bridge.setPRBadgesEnabled(enabled);
-      prSettings.update((v) => ({ ...v, enabled }));
+      sessionStores.prSettings.update((v) => ({ ...v, enabled }));
       if (enabled) refreshAllPRs();
-      else prsByAccount.set({});
+      else sessionStores.prsByAccount.set({});
     } catch (e) { settingsSaveFailed(e, () => setPRBadgesEnabled(enabled)); }
   }
 
   async function setPRIncludeDrafts(include: boolean) {
     try {
       await bridge.setPRIncludeDrafts(include);
-      prSettings.update((v) => ({ ...v, includeDrafts: include }));
+      sessionStores.prSettings.update((v) => ({ ...v, includeDrafts: include }));
       refreshAllPRs();
     } catch (e) { settingsSaveFailed(e, () => setPRIncludeDrafts(include)); }
   }
@@ -1250,7 +1253,7 @@
     languageStore.set(lang);
     await bridge.setLanguage(lang);
     const cfg = await bridge.getConfig();
-    configStore.set(cfg);
+    sessionStores.configStore.set(cfg);
   }
 
   const lifetime = new AbortController();
@@ -1304,7 +1307,7 @@
       const hydrate = async () => {
         try {
           const cfg = await bridge.reloadConfig();
-          configStore.set(cfg);
+          sessionStores.configStore.set(cfg);
           themeChoice = themeChoiceOf(cfg.global?.theme);
         } catch (e) { console.error(e); }
         applyTheme();
@@ -1334,7 +1337,7 @@
       const hydrate = async () => {
         try {
           const cfg = await bridge.reloadConfig();
-          configStore.set(cfg);
+          sessionStores.configStore.set(cfg);
           themeChoice = themeChoiceOf(cfg.global?.theme);
         } catch (e) { console.error(e); }
         applyTheme();

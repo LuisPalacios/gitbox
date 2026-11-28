@@ -6,7 +6,8 @@
   import { t } from '../i18n';
   import Rich from '../Rich.svelte';
   import { dismiss } from '../dismiss';
-  import { configStore, mirrors } from '../stores';
+  import { mirrors, activeSession } from '../stores';
+  import { get } from 'svelte/store';
 
   export let deleteMode: boolean;
 
@@ -17,10 +18,12 @@
   }
 
   async function confirmDeleteMirrorGroup() {
+    // The session the action started in (#381), captured before any await.
+    const session = get(activeSession);
     if (!deleteMirrorGroupConfirm) return;
     try {
       await bridge.deleteMirrorGroup(deleteMirrorGroupConfirm);
-      $configStore = await bridge.reloadConfig();
+      session.configStore.set(await bridge.reloadConfig());
     } catch (e: any) {
       pushNotice('error', $t('notice.mirrorGroupDeleteFailed'), [errorText(e)]);
     }
