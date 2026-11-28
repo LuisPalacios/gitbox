@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createSessionController } from './lib/session/controller';
   import { onDestroy, onMount, tick } from 'svelte';
-  import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
+  import { settingsSaveFailed, bridge, events, sessionEvents, setRemoteWindow } from './lib/bridge';
   import type { main } from '../wailsjs/go/models';
   import PullPlanModal from './lib/modals/PullPlanModal.svelte';
   import type { DoctorPrecheckDTO } from './lib/bridge';
@@ -118,16 +118,16 @@
   let gitignoreError = '';
   let checkGitignorePref = true;
 
-  // ── Session (#379, #380, #381) ──
-  // The controller owns the event listeners, the run bookkeeping they
-  // update and the lifecycle; the window renders from its stores and keeps
-  // layout, modals and navigation. The window's session is the process's
-  // default one: what the window changes in its stores goes to its bundle
-  // (sessionStores), and the shared stores follow it while it is active.
+  // ── Session (#379, #380, #381, #383) ──
+  // The controller owns its event router and listeners, the run bookkeeping
+  // they update and the lifecycle; the window renders from its stores and
+  // keeps layout, modals and navigation. The window's session is the
+  // process's default one: what the window changes in its stores goes to its
+  // bundle (sessionStores), and the shared stores follow it while it is active.
   const sessionStores = defaultBundle;
   const session = createSessionController({
     bridge,
-    events,
+    subscribe: sessionEvents.forSession(''),
     stores: sessionStores,
     host: {
       simple: () => simple,
@@ -141,6 +141,8 @@
       quit: () => Quit(),
     },
   });
+  // The components that subscribe through events follow this session.
+  events.follow(session.events);
   const {
     syncing, fetchRun, pullRun, fetchingAll, fetchingRepos, lastFetchTime, networkDown, credStatuses,
     mirrorChecking, mirrorSettingUp, mirrorSetupResultModal, mirrorDiscoverLoading, mirrorDiscoverResults,

@@ -9,7 +9,7 @@ import { recipe } from '../../wailsjs/go/models';
 import { ListSSHHosts, OpenRemotesWindow, ShowLocalWindow, ShowRemoteLog, GetRemoteTint, SetRemoteTint } from '../../wailsjs/go/main/App';
 import { GetStartupSnapshot, GetConfig, SetCollapsed, GetConfigPath, GetAllStatus, RefreshStatus, CloneRepo, PreviewPullAll, PullAll, PullRepo, Discover, AddDiscoveredRepos, CredentialVerify, CredentialDelete, ReloadConfig, StopTrackingRepo, DeleteRepoFolder, AddAccount, SuggestAccountKey, DiscardAccount, UpdateAccount, RenameAccount, CredentialSetupGCM, CredentialStoreToken, CredentialSetupSSH, CredentialRegenerateSSH, CredentialSSHAgentReport, GetTokenGuide, AccountDeletionImpact, DeleteAccount, ChangeCredentialType, OpenAccountFolder, OpenAccountInApp, OpenAccountInAIHarness, OpenFileInEditor, OpenInExplorer, OpenInApp, OpenInAIHarness, RefreshAIHarnesses, IsFirstRun, GetConfigLoadError, AcknowledgeConfigError, RepairConfig, ListConfigBackups, RestoreFromBackup, PickFolder, InitRoot, ListRoots, AddRoot, RemoveRoot, SetDefaultRoot, GetOS, FetchRepo, GetRepoDetail, GetIdentityProof, RepairRepoIdentity, OpenRepoConfigInEditor, GetLanguage, SetLanguage, GetPeriodicSync, SetPeriodicSync, GetUIMode, SetUIMode, SetShowPullPlan, SetTheme, ShowWindow, CheckGlobalIdentity, RemoveGlobalIdentity, IsGlobalGCMConfigNeeded, CheckGlobalGCMConfig, FixGlobalGCMConfig, CheckGlobalGitignore, InstallGlobalGitignore, GetCheckGlobalGitignore, SetCheckGlobalGitignore, GetAutostart, SetAutostart, GetMirrorStatus, SetupMirrorRepo, AddMirrorGroup, DeleteMirrorGroup, AddMirrorRepo, DeleteMirrorRepo, CheckMirrorCredentials, ListRemoteRepos, DiscoverMirrors, ApplyDiscoveredMirrors, ListAccountOrgs, CreateNewRepo, ApplyUpdate, PreviewSweep, ConfirmSweep, Reconcile, AdoptClones, IgnoreClone, GetPRSettings, SetPRBadgesEnabled, SetPRIncludeDrafts, SetRepoContainer, SetRepoWorkspace, RepoWorkspaceFiles, GetNestedScanDepth, SetNestedScanDepth, ScanFolderForClones, RepoNesting, DoctorRun, DoctorPrecheck, OpenProfile, OpenAccountProfile, SaveTerminalProfilesDTO, RedetectProfiles, MissingModernTerminal, GetWindowMode, OpenTerminalsManagerWindow, RemoteInfo, RemoteLog, RemoteDisconnect, RemoteReconnect, RemoteReinstall, RemoteUninstall, RemoteRunDoctor, ListRemotes, ValidateRemotePath, SetRemoteEditor, AddRemote, RemoveRemote, ConnectRemote } from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { createEventRouter, createSessionSubscriptions } from './events';
+import { createActiveEvents, createEventRouter, createSessionSubscriptions } from './events';
 import { get } from 'svelte/store';
 import { pushNotice } from './notices';
 import { guardCalls, decodeWindowError, WindowError } from './readonly';
@@ -355,7 +355,9 @@ export interface DoctorPrecheckDTO {
   missing?: DoctorToolDTO[];
 }
 
-// One runtime subscription per event name, routed by session (#357):
-// events is the router of this window's default session.
+// One runtime subscription per event name, routed by session (#357). Each
+// SessionController owns the router of its session (#383); events follows
+// the window's active session for the components that subscribe through
+// it, and serves a router of the default session until a session takes over.
 export const sessionEvents = createSessionSubscriptions(EventsOn);
-export const events = createEventRouter(sessionEvents.forSession(''));
+export const events = createActiveEvents(createEventRouter(sessionEvents.forSession('')));

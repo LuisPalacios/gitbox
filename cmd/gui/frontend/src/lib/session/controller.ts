@@ -1,18 +1,19 @@
-// SessionController (#353, #379, #380, #381): one window's session. It owns
-// the event subscriptions, the run bookkeeping they update (status passes,
-// Fetch all, Pull all, clones, mirrors, credentials, reconcile, updates)
-// and the lifecycle: the config load, the dashboard snapshot, the startup
-// status pass and a remote window's connection. It reads and writes only
-// its own store bundle (lib/session/bundle.ts), notices and texts included.
-// App.svelte creates one, starts it, renders from its stores and keeps
-// layout, modals and navigation, which the session reaches through
-// SessionHost.
+// SessionController (#353, #379, #380, #381, #383): one window's session.
+// It owns its event router, with the session's watermark, config revision
+// and startup queue, the subscriptions on it, the run bookkeeping they
+// update (status passes, Fetch all, Pull all, clones, mirrors, credentials,
+// reconcile, updates) and the lifecycle: the config load, the dashboard
+// snapshot, the startup status pass and a remote window's connection. It
+// reads and writes only its own store bundle (lib/session/bundle.ts),
+// notices and texts included. App.svelte creates one, starts it, renders
+// from its stores and keeps layout, modals and navigation, which the
+// session reaches through SessionHost.
 import { tick } from 'svelte';
 import { get, readonly, writable } from 'svelte/store';
 import type { StoreBundle } from './bundle';
 import { acceptStatusBatch, applyRepairReports, statusPaintQueue } from '../status';
-import { completionStatuses, hasConfiguredRepo } from '../events';
-import type { createEventRouter } from '../events';
+import { completionStatuses, createEventRouter, hasConfiguredRepo } from '../events';
+import type { Subscribe } from '../events';
 import type { bridge as appBridge, RemoteState } from '../bridge';
 import type { EventMetadata, EventPayloads } from '../dto.generated';
 import { startFetch, startPull, noteDone, noteCompletions, summarizeFetch, summarizePull, localWorkCount } from '../activity';
@@ -64,7 +65,8 @@ export interface SessionHost {
 
 export interface SessionDeps {
   bridge: SessionBridge;
-  events: EventRouter;
+  /** The session-filtered subscription of this session (#357), for its own router. */
+  subscribe: Subscribe;
   host: SessionHost;
   /** The session's own stores (createStoreBundle); the only ones it writes. */
   stores: StoreBundle;
@@ -72,7 +74,7 @@ export interface SessionDeps {
 
 export type SessionController = ReturnType<typeof createSessionController>;
 
-export function createSessionController({ bridge, events, host, stores }: SessionDeps) {
+export function createSessionController({ bridge, subscribe, host, stores }: SessionDeps) {
   const {
     configStore, accounts, sources, repoStates, mirrors, workspacePlaceholders, workspaceMembers, workspaceUnknown,
     workspaceDiagnostics, applyStatusResults, applyMirrorStatusResults, applyPRUpdate, pushNotice, dismissNotice,
@@ -80,6 +82,9 @@ export function createSessionController({ bridge, events, host, stores }: Sessio
   // The session's texts name its own host (#295).
   const texts = createTexts(stores.remoteTextHost);
   const $t = (key: string, vars?: Vars) => get(texts.t)(key, vars);
+  // Only this session's events reach it, and its snapshots and resets move
+  // no other session's watermark (#383).
+  const events = createEventRouter(subscribe);
   const subscriptions: (() => void)[] = [];
   const onEvent: EventRouter['on'] = (name, handler, stale) => {
     const off = events.on(name, handler, stale);
@@ -1270,6 +1275,8 @@ export function createSessionController({ bridge, events, host, stores }: Sessio
     remoteState: readonly(remoteState),
     remoteLoaded: readonly(remoteLoaded),
     remoteLoading: readonly(remoteLoading),
+    /** The session's own router: the window's components follow it while the session is active. */
+    events,
     /** Bumped by every status result the session applies, for reloads that race them. */
     get statusGeneration() { return statusGeneration; },
     /** True once the startup status pass has every row. */

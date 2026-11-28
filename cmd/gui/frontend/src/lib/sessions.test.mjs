@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = await readFile(new URL('./events.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
-const { createEventRouter, createSessionSubscriptions } = await import(`data:text/javascript,${encodeURIComponent(outputText)}`);
+const { createActiveEvents, createEventRouter, createSessionSubscriptions } = await import(`data:text/javascript,${encodeURIComponent(outputText)}`);
 
 // runtime stands in for Wails: it counts the subscriptions taken per name.
 function runtime() {
@@ -95,4 +95,30 @@ test('sessions share one runtime subscription per event name and release it with
   main.on('fetch:done', () => {});
   assert.equal(taken(), 3);
   assert.deepEqual(active(), ['fetch:done']);
+});
+
+test('the active-session proxy binds each subscription to the router active when it subscribes', () => {
+  const { sessions, deliver } = runtime();
+  const fallback = createEventRouter(sessions.forSession(''));
+  const local = createEventRouter(sessions.forSession('local'));
+  const remote = createEventRouter(sessions.forSession('remote:r1'));
+  for (const router of [fallback, local, remote]) router.snapshot(5, () => 1);
+  const active = createActiveEvents(fallback);
+  assert.deepEqual(Object.keys(active).sort(), ['follow', 'on'], 'the proxy cannot move a watermark');
+  const got = [];
+  active.on('fetch:done', (payload, meta) => got.push(['before', payload.repo, meta.sequence]));
+  active.follow(local);
+  const off = active.on('fetch:done', (payload, meta) => got.push(['local', payload.repo, meta.sequence]));
+  active.follow(remote);
+
+  deliver('fetch:done', 6, { source: 'acct', repo: 'a' });
+  deliver('fetch:done', 7, { source: 'acct', repo: 'b' }, { session: 'local' });
+  deliver('fetch:done', 8, { source: 'acct', repo: 'c' }, { session: 'remote:r1' });
+  // At or below the local router's own watermark.
+  deliver('fetch:done', 5, { source: 'acct', repo: 'd' }, { session: 'local' });
+  assert.deepEqual(got, [['before', 'a', 6], ['local', 'b', 7]]);
+
+  off();
+  deliver('fetch:done', 9, { source: 'acct', repo: 'e' }, { session: 'local' });
+  assert.equal(got.length, 2);
 });
