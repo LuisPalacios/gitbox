@@ -9,7 +9,7 @@
 # Usage:
 #   ./scripts/health.sh                 # every check
 #   ./scripts/health.sh go svelte       # only the named checks ("go" = all Go checks)
-#   HEALTH_FUZZ=1 ./scripts/health.sh fuzz # mutation passes (10s per target)
+#   HEALTH_FUZZ=1 ./scripts/health.sh fuzz # mutation passes (an exec count per target)
 #   ./scripts/health.sh -v              # print every finding, not just the first 15
 #   ./scripts/health.sh -h              # this help
 #
@@ -286,12 +286,18 @@ run_test() {
 
 # A fuzz command accepts exactly one target. Keep successes quiet while
 # retaining the complete reproducer and corpus path on failure.
+#
+# Each target runs a fixed number of executions, about 10 seconds with two
+# workers on an idle Apple silicon Mac, instead of -fuzztime=10s. A timed
+# run that found nothing can fail with a bare "context deadline exceeded"
+# before Go 1.26.12 and 1.27.5 (golang/go#75804, #409); a count sets no
+# deadline. A crasher still fails the check and writes its input.
 run_fuzz() {
-    local spec package target rc=0
-    for spec in config:FuzzDecodeRoundTrip workspace:FuzzStripJSONC status:FuzzRepoPath rpc:FuzzDecodeFrame; do
-        package="${spec%%:*}"
-        target="${spec#*:}"
-        if ! go test "./pkg/$package/" -run='^$' -fuzz="^$target$" -fuzztime=10s -parallel=2 \
+    local spec package target execs rc=0
+    for spec in config:FuzzDecodeRoundTrip:600000 workspace:FuzzStripJSONC:1000000 \
+        status:FuzzRepoPath:1000000 rpc:FuzzDecodeFrame:1000000; do
+        IFS=: read -r package target execs <<<"$spec"
+        if ! go test "./pkg/$package/" -run='^$' -fuzz="^$target$" -fuzztime="${execs}x" -parallel=2 \
             >"$tmp/fuzz-$target.full" 2>&1; then
             cat "$tmp/fuzz-$target.full"
             rc=1

@@ -76,7 +76,7 @@ I run `bash scripts/test-githooks.sh` or `./scripts/health.sh selftest` after ch
 
 ## Fuzz tests
 
-I keep Go fuzz targets in `pkg/<package>/fuzz_test.go` and small checked-in corpora in `pkg/<package>/testdata/fuzz/<target>/`. Ordinary tests run the seeds; `HEALTH_FUZZ=1 ./scripts/health.sh fuzz` generates mutations for 10 seconds per target with two workers. The Linux PR health job opts in. A longer pass selects exactly one target, for example `go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2`.
+I keep Go fuzz targets in `pkg/<package>/fuzz_test.go` and small checked-in corpora in `pkg/<package>/testdata/fuzz/<target>/`. Ordinary tests run the seeds; `HEALTH_FUZZ=1 ./scripts/health.sh fuzz` generates mutations for a fixed number of executions per target, about 10 seconds each, with two workers; an exec count instead of `-fuzztime=10s` avoids the spurious `context deadline exceeded` of Go before 1.26.12 and 1.27.5 (#409). The Linux PR health job opts in. A longer pass selects exactly one target, for example `go test ./pkg/config/ -run='^$' -fuzz='^FuzzDecodeRoundTrip$' -fuzztime=1m -parallel=2`.
 
 `FuzzDecodeRoundTrip` uses external `config_test` to compare repository intent through `status.RepoPath` without an import cycle, and checks migration to `CurrentVersion`. `FuzzStripJSONC` checks no panic, no growth and exact preservation of valid JSON. `FuzzDecodeFrame` in `pkg/rpc` checks that the frame reader never panics or returns a body over its cap, and that an accepted frame survives a write and a second read. I keep a minimized failure in the target's corpus after fixing the cause, retain example tests with distinct assertions, and leave the generated fuzz cache untracked.
 
