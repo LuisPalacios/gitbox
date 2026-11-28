@@ -100,7 +100,7 @@ func newRemoteBackend(app *App, log io.Writer) *RemoteBackend {
 // and whose input is out, and returns its backend. The handshake fails
 // unless the server is this same build.
 func dialRemoteBackend(in io.Reader, out io.WriteCloser, sink func() EventSink, log io.Writer) (*RemoteBackend, error) {
-	r := newRemoteBackend(&App{events: sink()}, log)
+	r := newRemoteBackend(&App{localSession: new(localSession), events: sink()}, log)
 	if err := r.connect(in, out); err != nil {
 		return nil, err
 	}
