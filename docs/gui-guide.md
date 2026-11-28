@@ -275,17 +275,19 @@ Gitbox keeps `gitbox.json` in step with the clones under your clone roots. It ch
 
 For each added clone, Gitbox configures per-repo credential isolation, sets `user.name` and `user.email` from the account, and rewrites the remote URL to match the credential type.
 
-Everything else waits in **Unmatched clones**, opened from **Found on disk** in the sidebar. Each row says why Gitbox couldn't place it:
+Everything else waits in **Unmatched clones**, opened from **Found on disk** in the sidebar. Each row says why Gitbox couldn't place it, and a row you can't adopt says what to do next:
 
 - **matches the server only** — one account on that server, but nothing else ties the clone to it, as with someone else's project cloned to read.
 - **several accounts match** — two or more accounts on the same server tie.
-- **no account on this server**
-- **no remote** — no `origin`.
-- **already tracked at another path** — a second checkout of a repo Gitbox already tracks.
-- **a git worktree of another clone**
+- **no account on this server** — the row names the server and offers **Add account**, with the form started from that server when Gitbox can tell it. Once the account exists, the row offers **Adopt** without closing the list.
+- **no remote** — no `origin`, so the clone can't be adopted. Add one in a terminal with `git remote add origin <url>`; Gitbox scans again when you come back.
+- **already tracked at another path** — a second checkout of a repo Gitbox already tracks. The row names the tracked path; ignore the extra copy.
+- **a git worktree of another clone** — a worktree follows its main clone and isn't adopted on its own. The row names the main clone when Gitbox can read it; adopt that one.
 - **This clone changed while scanning.** Gitbox kept the newer settings and queued another scan. Use **Scan again** to refresh the list.
 
-Where an account can apply, pick it and click **Adopt**; the clone joins that account in place. **Ignore** hides a clone for good, and **Show ignored** lists the ignored ones, where you can still **Adopt** one or **Stop ignoring** it. Ignored paths are saved in `global.ignored_clones`. The scoring rules behind the account match are in [Architecture › pkg/adopt](architecture.md#pkgadopt--orphan-repo-discovery).
+Where an account can apply, pick it and click **Adopt**; the clone joins that account in place. **Ignore** hides a clone for good, and **Show ignored** lists the ignored ones, where you can still **Adopt** one or **Stop ignoring** it. Ignored paths are saved in `global.ignored_clones`. The intro mentions adopting only when a row on show can be adopted. The scoring rules behind the account match are in [Architecture › pkg/adopt](architecture.md#pkgadopt--orphan-repo-discovery).
+
+To look at a clone before deciding, every row, ignored ones included, has the folder and terminal buttons of a clone row: one reveals the folder in the file manager, the other opens it with the default terminal profile. In a remote window the folder button stays off, and the terminal opens on the host.
 
 If Gitbox adopts a clone but cannot repair its Git settings, it keeps the clone in the account. Open **Needs attention** to see which clone needs a repair and what failed. After resolving the cause, click **Retry repair** on the clone’s row. Gitbox checks the settings before fetching.
 

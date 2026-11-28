@@ -169,7 +169,7 @@ func (a *App) scanFolderForClonesLocal(path string) []OrphanRepoDTO {
 		if found {
 			out := make([]OrphanRepoDTO, 0, len(rows))
 			for _, row := range rows {
-				dto := toOrphanDTO(row.OrphanRepo, row.Reason)
+				dto := toUnmatchedDTO(row)
 				dto.WorkspaceRoot = path
 				out = append(out, dto)
 			}

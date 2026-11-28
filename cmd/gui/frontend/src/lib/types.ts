@@ -269,6 +269,12 @@ export interface OrphanRepoDTO {
   candidates?: string[];
   nested: boolean;
   workspaceRoot?: string;
+  // The server of the remote, for adding a missing account.
+  host?: string;
+  // The clone a worktree row belongs to, when known.
+  mainClone?: string;
+  // Where an already-tracked repository lives.
+  trackedPath?: string;
 }
 
 export interface RepairDTO {

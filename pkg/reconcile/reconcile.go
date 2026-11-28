@@ -38,6 +38,26 @@ const (
 type Unmatched struct {
 	adopt.OrphanRepo
 	Reason string
+	// MainClone is the clone a worktree row belongs to, when its links
+	// can be read.
+	MainClone string
+	// TrackedPath is where gitbox already tracks the repository of an
+	// already-tracked row.
+	TrackedPath string
+}
+
+// newUnmatched fills the details that tell me what to do with a row:
+// the main clone of a worktree, the tracked path of an already-tracked
+// repository (looked up in trackedAt, keyed in lower case).
+func newUnmatched(o adopt.OrphanRepo, reason string, trackedAt map[string]string) Unmatched {
+	u := Unmatched{OrphanRepo: o, Reason: reason}
+	switch reason {
+	case ReasonWorktree:
+		u.MainClone = git.WorktreeMain(o.Path)
+	case ReasonTracked:
+		u.TrackedPath = trackedAt[strings.ToLower(o.RepoKey)]
+	}
+	return u
 }
 
 // Relink points a tracked repo whose clone went missing at the same clone,
@@ -153,6 +173,8 @@ func PlanContext(ctx context.Context, cfg *config.Config) (Result, error) {
 	type ref struct{ source, repo string }
 	missing := map[string][]ref{}
 	tracked := map[string]int{}
+	// trackedAt holds the first path that tracks each key.
+	trackedAt := map[string]string{}
 	res := Result{scope: scopeOf(cfg), SkippedFolders: skipped}
 	for _, sk := range sortedKeys(cfg.Sources) {
 		src := cfg.Sources[sk]
@@ -163,6 +185,9 @@ func PlanContext(ctx context.Context, cfg *config.Config) (Result, error) {
 			repo := src.Repos[rk]
 			tracked[strings.ToLower(rk)]++
 			p := status.RepoPath(cfg, sk, rk, repo)
+			if _, ok := trackedAt[strings.ToLower(rk)]; !ok {
+				trackedAt[strings.ToLower(rk)] = p
+			}
 			if status.RepoRootOffline(cfg, sk, repo) || git.IsLinkedWorktree(p) {
 				continue
 			}
@@ -207,11 +232,11 @@ func PlanContext(ctx context.Context, cfg *config.Config) (Result, error) {
 		// Ignored clones keep their reason, so the list can still offer
 		// Adopt where it applies.
 		if cfg.IsIgnoredClone(o.Path) {
-			res.Ignored = append(res.Ignored, Unmatched{o, reason(o)})
+			res.Ignored = append(res.Ignored, newUnmatched(o, reason(o), trackedAt))
 			continue
 		}
 		if r := reason(o); r == ReasonWorktree || r == ReasonNoRemote {
-			res.Unmatched = append(res.Unmatched, Unmatched{o, r})
+			res.Unmatched = append(res.Unmatched, newUnmatched(o, r, trackedAt))
 			continue
 		}
 		var hits []ref
@@ -228,7 +253,7 @@ func PlanContext(ctx context.Context, cfg *config.Config) (Result, error) {
 			continue
 		}
 		if r := reason(o); r != "" {
-			res.Unmatched = append(res.Unmatched, Unmatched{o, r})
+			res.Unmatched = append(res.Unmatched, newUnmatched(o, r, trackedAt))
 			continue
 		}
 		source := o.MatchedSource
@@ -236,6 +261,10 @@ func PlanContext(ctx context.Context, cfg *config.Config) (Result, error) {
 			source = o.MatchedAccount
 		}
 		tracked[strings.ToLower(o.RepoKey)]++
+		// An adoption keeps the clone where it is.
+		if _, ok := trackedAt[strings.ToLower(o.RepoKey)]; !ok {
+			trackedAt[strings.ToLower(o.RepoKey)] = o.Path
+		}
 		res.Adopt = append(res.Adopt, Adoption{OrphanRepo: o, expect: repoLocation(cfg, source, o.RepoKey, config.Repo{})})
 	}
 	return res, nil
@@ -262,7 +291,7 @@ func WorkspaceCandidates(cfg *config.Config, tree workspace.Tree, root string) (
 			case o.LocalOnly:
 				reason = ReasonNoRemote
 			}
-			out = append(out, Unmatched{o, reason})
+			out = append(out, newUnmatched(o, reason, nil))
 		}
 		return out, true, nil
 	}

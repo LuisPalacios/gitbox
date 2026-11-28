@@ -67,6 +67,39 @@ func reasons(res Result) map[string]string {
 	return out
 }
 
+// row returns the unmatched row whose folder is named base.
+func row(res Result, base string) Unmatched {
+	for _, u := range res.Unmatched {
+		if filepath.Base(u.Path) == base {
+			return u
+		}
+	}
+	return Unmatched{}
+}
+
+func samePath(t *testing.T, a, b string) bool {
+	t.Helper()
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	return a != "" && errA == nil && errB == nil && ra == rb
+}
+
+// TestPlan_SecondCopyNamesTheFirstAdoption: two clones of one repository
+// in one pass; the first is adopted in place and the second points at it.
+func TestPlan_SecondCopyNamesTheFirstAdoption(t *testing.T) {
+	root := t.TempDir()
+	cfg := testConfig(root)
+	first := filepath.Join(root, "github-me", "me", "home")
+	initRepo(t, first, "https://github.com/me/home.git")
+	initRepo(t, filepath.Join(root, "scratch", "zz-home"), "https://github.com/me/home.git")
+
+	res := planAndApply(t, cfg)
+	got := row(res, "zz-home")
+	if got.Reason != ReasonTracked || got.TrackedPath != first {
+		t.Errorf("second copy = %q at %q, want %q at %q (unmatched %v)", got.Reason, got.TrackedPath, ReasonTracked, first, reasons(res))
+	}
+}
+
 func TestPlan_AdoptsConfidentClonesInPlace(t *testing.T) {
 	r1, r2 := t.TempDir(), t.TempDir()
 	cfg := testConfig(r1, r2)
@@ -263,6 +296,9 @@ func TestPlan_LeavesReposOfAnOfflineRootAlone(t *testing.T) {
 	if len(res.Relink) != 0 || reasons(res)["copy"] != ReasonTracked {
 		t.Errorf("relink=%v unmatched=%v, want the copy left as already tracked", res.Relink, reasons(res))
 	}
+	if want := status.RepoPath(cfg, "github-me", "me/tracked", cfg.Sources["github-me"].Repos["me/tracked"]); row(res, "copy").TrackedPath != want {
+		t.Errorf("copy TrackedPath = %q, want %q", row(res, "copy").TrackedPath, want)
+	}
 	if cfg.Sources["github-me"].Repos["me/tracked"].Root != offline {
 		t.Error("the offline repo's entry changed")
 	}
@@ -363,6 +399,9 @@ func TestPlan_NeverAdoptsALinkedWorktree(t *testing.T) {
 	res := planAndApply(t, cfg)
 	if got := reasons(res)["main-feature"]; got != ReasonWorktree {
 		t.Errorf("worktree reason = %q, want %q (unmatched %v)", got, ReasonWorktree, reasons(res))
+	}
+	if got := row(res, "main-feature"); !samePath(t, got.MainClone, main) {
+		t.Errorf("worktree MainClone = %q, want %q", got.MainClone, main)
 	}
 	for _, o := range res.Adopt {
 		if o.Path == tree {

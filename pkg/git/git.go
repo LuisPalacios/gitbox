@@ -383,6 +383,40 @@ func IsLinkedWorktree(path string) bool {
 	return err == nil && strings.HasPrefix(string(data), "gitdir: ")
 }
 
+// WorktreeMain returns the main clone of the linked worktree at path: the
+// folder that holds the git directory its worktrees share, or that git
+// directory itself for a bare repository. It returns "" when path is not a
+// linked worktree or its links cannot be read. It reads files only.
+func WorktreeMain(path string) string {
+	data, err := os.ReadFile(filepath.Join(path, ".git"))
+	if err != nil {
+		return ""
+	}
+	gitDir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir: ")
+	if !ok || gitDir == "" {
+		return ""
+	}
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(path, gitDir)
+	}
+	data, err = os.ReadFile(filepath.Join(gitDir, "commondir"))
+	if err != nil {
+		return ""
+	}
+	common := strings.TrimSpace(string(data))
+	if common == "" {
+		return ""
+	}
+	if !filepath.IsAbs(common) {
+		common = filepath.Join(gitDir, common)
+	}
+	common = filepath.Clean(common)
+	if filepath.Base(common) == ".git" {
+		return filepath.Dir(common)
+	}
+	return common
+}
+
 // IsRepo checks if the given path contains a .git directory or is a bare repo.
 func IsRepo(path string) bool {
 	gitDir := filepath.Join(path, ".git")

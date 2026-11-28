@@ -33,6 +33,12 @@ type OrphanRepoDTO struct {
 	Candidates     []string `json:"candidates,omitempty"` // accounts it could go to, best first
 	Nested         bool     `json:"nested"`
 	WorkspaceRoot  string   `json:"workspaceRoot,omitempty"`
+	// Host is the server of the remote, for adding a missing account.
+	Host string `json:"host,omitempty"`
+	// MainClone is the clone a worktree row belongs to, when known.
+	MainClone string `json:"mainClone,omitempty"`
+	// TrackedPath is where an already-tracked repository lives.
+	TrackedPath string `json:"trackedPath,omitempty"`
 }
 
 // ReconcileDTO answers a reconcile pass.
@@ -112,7 +118,15 @@ func toOrphanDTO(o adopt.OrphanRepo, reason string) OrphanRepoDTO {
 	return OrphanRepoDTO{
 		Path: o.Path, RelPath: o.RelPath, RemoteURL: o.RemoteURL, RepoKey: o.RepoKey,
 		MatchedAccount: o.MatchedAccount, Reason: reason, Candidates: o.Candidates, Nested: o.Nested,
+		Host: o.Host,
 	}
+}
+
+// toUnmatchedDTO adds the row's what-to-do details to its orphan DTO.
+func toUnmatchedDTO(u reconcile.Unmatched) OrphanRepoDTO {
+	dto := toOrphanDTO(u.OrphanRepo, u.Reason)
+	dto.MainClone, dto.TrackedPath = u.MainClone, u.TrackedPath
+	return dto
 }
 
 // RepairDTO describes the .git/config repair of a saved adoption.
@@ -275,10 +289,10 @@ func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
 	}
 	out.Placeholders, out.WorkspaceMembers, out.WorkspaceDiagnostics = a.workspaceTree()
 	for _, u := range res.Unmatched {
-		out.Unmatched = append(out.Unmatched, toOrphanDTO(u.OrphanRepo, u.Reason))
+		out.Unmatched = append(out.Unmatched, toUnmatchedDTO(u))
 	}
 	for _, u := range res.Ignored {
-		out.Ignored = append(out.Ignored, toOrphanDTO(u.OrphanRepo, u.Reason))
+		out.Ignored = append(out.Ignored, toUnmatchedDTO(u))
 	}
 	for _, c := range res.Incomplete {
 		out.Incomplete = append(out.Incomplete, IncompleteCloneDTO{Source: c.Source, Repo: c.Repo, Path: c.Path})

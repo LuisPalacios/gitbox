@@ -40,7 +40,16 @@
   let addAccountStep: 'form' | 'credential' = 'form';
   let addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', defaultBranch: 'main', credentialType: 'gcm' };
 
-  export function open() {
+  // A URL the form started with (an unmatched clone's server, #351)
+  // survives picking a self-hosted provider, which has no URL of its own.
+  let prefillURL = '';
+  // onAdded runs once the account is saved, before its credential step.
+  let onAdded: (() => void) | null = null;
+
+  export function open(prefill: { provider?: string; url?: string } = {}, added: (() => void) | null = null) {
+    if (prefill.provider) addAcct.provider = prefill.provider;
+    if (prefill.url) addAcct.url = prefillURL = prefill.url;
+    onAdded = added;
     // A remote host refuses GCM (#242): a new account there starts with a
     // token.
     if (addAcct.credentialType === 'gcm' && !gcmOffered($remoteWindow)) addAcct.credentialType = defaultCredentialType($remoteWindow);
@@ -49,11 +58,13 @@
 
   function onProviderChange() {
     const defaultURL = providerURLs[addAcct.provider];
-    if (defaultURL !== undefined) addAcct.url = defaultURL;
+    if (defaultURL !== undefined) addAcct.url = defaultURL || prefillURL;
   }
 
   function resetAddAccount() {
     addAcct = { key: '', provider: 'github', url: 'https://github.com', username: '', name: '', email: '', defaultBranch: 'main', credentialType: 'gcm' };
+    prefillURL = '';
+    onAdded = null;
     addAccountError = '';
     addAccountStep = 'form';
     addAccountModal = false;
@@ -70,6 +81,7 @@
     try {
       await bridge.addAccount(addAcct);
       await reloadFromDisk();
+      onAdded?.();
       addAccountStep = 'credential';
       credResult = null;
       await runCredentialPrecheck(addAcct.credentialType);
