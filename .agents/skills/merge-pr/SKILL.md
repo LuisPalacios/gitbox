@@ -97,6 +97,14 @@ The merge gate is the local gate (`./scripts/gate.sh`, see `docs/local-gate.md`)
 - `status=partial` (a lane was skipped): report the skipped lanes and stop unless the user explicitly accepts the partial gate for this merge.
 - No marker: offer to run `./scripts/gate.sh` in the PR's worktree (clean tree, `HEAD` at `headRefOid`), then continue on a pass. After the push already happened, `./scripts/gate.sh --report` publishes the result.
 - A PR from anyone else runs untrusted code on my machines through the gate. Review its diff first, and run the gate only with my explicit go-ahead, from a temporary worktree at `headRefOid`.
+- A squash merge copies every branch commit's co-author trailers into `main`, and GitHub then lists their authors as contributors. Check the PR title, body and commit messages with the hooks' checker, from the repository root, and stop on any finding until the commits are reworded and the body is edited:
+
+  ```bash
+  gh pr view <PR#> --json title,body,commits \
+    --jq '.title, .body, (.commits[] | .messageHeadline, .messageBody)' \
+    | .githooks/ai-attribution.sh
+  ```
+
 - `statusCheckRollup` holds the informational GitHub check:
   - Any `FAILURE` / `CANCELLED` / `TIMED_OUT` blocks the merge: report it with its log URL (`gh run view`) and stop.
   - `IN_PROGRESS` / `QUEUED` does not block: say it is still running and continue.

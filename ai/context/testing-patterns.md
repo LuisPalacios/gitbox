@@ -65,6 +65,10 @@ I run `bash scripts/test-bootstrap.sh` or `./scripts/health.sh bootstrap` for in
 
 I run `bash scripts/test-health-args.sh` or `./scripts/health.sh selftest` after changing the argument handling or the check list of `health.sh`. It expects exit code 2 with the valid names for an unknown check or option and for `fuzz` without `HEALTH_FUZZ=1`, exit 0 for `-h`/`--help`, and no started check in any case. It also keeps `CHECKS`, the dispatched checks and the help text in step. When I add a check, I add its name to `CHECKS`, its `want` line and the header comment together. The suite also checks that `failures_first` puts a failed `go test`'s `--- FAIL` lines and messages ahead of stderr noise (#346). `HEALTH_SH=<copy>` runs the suite against another version of the script as a negative control.
 
+## Git hook tests
+
+I run `bash scripts/test-githooks.sh` or `./scripts/health.sh selftest` after changing `.githooks/`. It checks the patterns of `.githooks/ai-attribution.sh` (AI co-author trailers, session trailers and "generated with" footers flagged; human co-authors and plain tool mentions allowed; the whole `HEAD` history clean), then runs `commit-msg` and `pre-push` in throwaway repositories with an isolated `HOME`. `HOOKS_DIR=<copy>` runs it against another copy of the hooks as a negative control.
+
 ## Test levels
 
 - **Unit tests** — always run, no credentials needed. Package-level tests in `pkg/`, isolated with `t.TempDir()` and `t.Setenv()`; `cmd/gui` tests call `App` methods directly, without the Wails runtime.

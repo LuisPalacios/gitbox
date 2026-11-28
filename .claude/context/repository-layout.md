@@ -81,7 +81,9 @@ scripts/
   demo-fleet/              Fake fleet + mock provider API + window capture for README screenshots (build.sh, run.sh, mock.py, shot.ps1)
 test/sshd/                The gitbox-sshd image of those tests: Debian slim, OpenSSH, fish, a key-only test user, and a git-shell git user for the SSH account tests
 test/fakeforge/           Fake Gitea API + git smart HTTP behind file tokens, copied into the container by TestTokenCanary
-.githooks/pre-push        Pre-push hook (gofmt -s check + go vet + unit tests; builds the frontend if dist is missing)
+.githooks/pre-push        Pre-push hook (AI attribution check on pushed commits + gate marker for main + gofmt -s check, go vet and unit tests; builds the frontend if dist is missing)
+.githooks/commit-msg      Commit-msg hook: rejects AI attribution in the commit message
+.githooks/ai-attribution.sh  Shared AI attribution checker used by both hooks and merge-pr
 .claude/settings.json     Claude Code permission allowlist (hand-edited, not rendered)
 ai/                       Agent harness masters: the only hand-edited agent guidance
   harness.yaml            Render map: destinations per tool, `only:` globs, size budgets
