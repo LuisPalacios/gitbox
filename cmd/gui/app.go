@@ -41,7 +41,7 @@ import (
 // App is the Wails application struct. All exported methods become
 // frontend bindings via window.go.main.App.<Method>().
 type App struct {
-	sweepPreview      *pendingSweep // guarded by mu
+	*localSession
 	ctx               context.Context
 	recoveryMu        sync.Mutex
 	updateRecovery    *update.Recovery
@@ -55,12 +55,8 @@ type App struct {
 	backend Backend
 	// prefs holds the client preferences; nil means sharedPrefs{a}, the
 	// client keys of cfg (see prefs.go).
-	prefs prefsStore
-	// cfgBase identifies the config bytes observed at the last load or save.
-	// Guarded by mu.
-	cfgBase        config.FileRevision
-	configRevision uint64
-	timing         startupTiming
+	prefs  prefsStore
+	timing startupTiming
 
 	diagnostics        diag.Activity
 	diagnosticsMu      sync.Mutex
@@ -83,16 +79,11 @@ type App struct {
 	checkAlias func(ctx context.Context, alias string) error
 	// windowGeom reads the window position and size; nil asks Wails. Tests
 	// set it to run without a Wails runtime.
-	windowGeom         func() (x, y, w, h int, ok bool)
-	cfg                *config.Config
-	cfgPath            string
-	cfgLoaded          bool // true if config was loaded from disk (safe to save back)
-	credentialAuditMu  sync.Mutex
-	credentialFindings []credential.Finding // cached metadata-only audit, guarded by mu
-	cfgLoadError       string               // non-empty if config exists but failed to parse
-	testFirstRun       bool                 // explicitly empty test fixture for the first-launch wizard
-	testMode           bool                 // true when launched with --test-mode
-	testCleanup        func()               // cleanup function for test-mode temp dir
+	windowGeom        func() (x, y, w, h int, ok bool)
+	credentialAuditMu sync.Mutex
+	testFirstRun      bool   // explicitly empty test fixture for the first-launch wizard
+	testMode          bool   // true when launched with --test-mode
+	testCleanup       func() // cleanup function for test-mode temp dir
 	// windowMode selects which UI the frontend should render. Empty (or
 	// "main") = the full gitbox app. "terminals" = the standalone Profile
 	// editor sub-process spawned by OpenTerminalsManagerWindow (issue #69
@@ -126,23 +117,9 @@ type App struct {
 	discoverMirrors  func(context.Context, *config.Config, func(mirror.DiscoverProgress)) ([]mirror.DiscoveryResult, error)
 	workspaceSync    workspace.SyncState // guarded by reconcileMu
 	workspaceUnknown []string            // guarded by reconcileMu
-	reconcilePending bool                // guarded by mu; one asynchronous stale-plan retry
-	mu               sync.Mutex
 	savedWindowPos   *config.WindowState // window state pre-loaded from config
 
-	// upstreamGone tracks repos discovered to be missing from the provider
-	// (deleted, archived private, lost access). Populated by fetch errors
-	// matching git.IsUpstreamGoneError and by provider.RepoExists probes.
-	// Keyed by "<sourceKey>/<repoKey>". Cleared when a fetch succeeds or
-	// a RepoExists probe returns true. In-memory only — we re-discover on
-	// the next periodic sync rather than persist a potentially-stale fact.
-	upstreamGone       map[string]bool
-	upstreamRevision   map[string]uint64
-	statusNetwork      map[statusRepoKey]statusNetworkChecks // guarded by mu
-	pullRepairs        map[statusRepoKey]statusIdentity      // guarded by mu
-	credentialRevision map[string]uint64
-	proofChecks        map[string]proofVerification // guarded by refreshMu
-	prs                prRefreshState
+	proofChecks map[string]proofVerification // guarded by refreshMu
 
 	// probeMu serializes upstream-existence probes so a burst of
 	// RefreshStatus calls from the frontend doesn't spawn N concurrent
@@ -171,11 +148,6 @@ type App struct {
 
 	pullPlans []pendingPullPlan // guarded by refreshMu
 
-	// Cache collision checks for the configuration shown in Needs attention.
-	pathAuditBase config.FileRevision
-	pathConflicts []config.PathConflict
-	pathsAudited  bool
-
 	// tasks owns the periodic checks for this window or headless host.
 	tasks             taskRegistry
 	windowTasksOnce   sync.Once
@@ -186,7 +158,7 @@ type App struct {
 
 // NewApp creates a new App instance.
 func NewApp() *App {
-	return &App{upstreamGone: make(map[string]bool), timing: startupTiming{start: time.Now()}}
+	return &App{localSession: &localSession{upstreamGone: make(map[string]bool)}, timing: startupTiming{start: time.Now()}}
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────
