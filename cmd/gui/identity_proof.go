@@ -40,7 +40,7 @@ func (a *App) GetIdentityProof(source, repo string) (IdentityProofDTO, error) {
 
 func (a *App) getIdentityProofLocal(source, repo string) IdentityProofDTO {
 	a.mu.Lock()
-	cfg := a.refreshConfigLocked()
+	cfg := a.localSession.refreshConfigLocked()
 	account := cfg.Sources[source].Account
 	revision := a.credentialRevision[account]
 	a.mu.Unlock()
@@ -54,7 +54,7 @@ func (a *App) getIdentityProofLocal(source, repo string) IdentityProofDTO {
 	if r.EffectiveCredentialType(&acct) == acct.DefaultCredentialType && cached.identity == credentialCheckIdentity(cfg, account, revision) {
 		check = cached.value
 	}
-	ctx, cancel := context.WithTimeout(a.refreshContext(), healReadTimeout)
+	ctx, cancel := context.WithTimeout(a.localSession.refreshContext(), healReadTimeout)
 	defer cancel()
 	return IdentityProofDTO(heal.Proof(ctx, cfg, source, repo, check, time.Now()))
 }
@@ -68,7 +68,7 @@ func (a *App) repairRepoIdentityLocal(source, repo string) error {
 	if a.readOnly {
 		return errors.New("repository repair is unavailable")
 	}
-	cfg := a.snapshotRefreshConfig()
+	cfg := a.localSession.snapshotRefreshConfig()
 	if _, ok := cfg.Sources[source].Repos[repo]; !ok {
 		return errors.New("tracked clone not found")
 	}
@@ -87,7 +87,7 @@ func (a *App) OpenRepoConfigInEditor(source, repo string) error {
 	if err := a.refuseInRemote(); err != nil {
 		return err
 	}
-	cfg := a.snapshotRefreshConfig()
+	cfg := a.localSession.snapshotRefreshConfig()
 	entry, ok := cfg.Sources[source].Repos[repo]
 	if !ok {
 		return errors.New("tracked clone not found")
@@ -96,14 +96,14 @@ func (a *App) OpenRepoConfigInEditor(source, repo string) error {
 	if !git.IsRepo(path) && !git.IsLinkedWorktree(path) {
 		return errors.New("tracked clone is unavailable")
 	}
-	ctx, cancel := context.WithTimeout(a.refreshContext(), healReadTimeout)
+	ctx, cancel := context.WithTimeout(a.localSession.refreshContext(), healReadTimeout)
 	defer cancel()
 	configPath, err := git.CommonConfigPath(ctx, path)
 	if err != nil || !filepath.IsAbs(configPath) {
 		return errors.New("git config is unavailable")
 	}
 	info, err := os.Lstat(configPath)
-	if err != nil || !info.Mode().IsRegular() || !a.sameRefreshRepo(cfg, source, repo) {
+	if err != nil || !info.Mode().IsRegular() || !a.localSession.sameRefreshRepo(cfg, source, repo) {
 		return errors.New("git config is unavailable")
 	}
 

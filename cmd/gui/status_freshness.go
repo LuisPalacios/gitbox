@@ -46,11 +46,11 @@ func statusRepoIdentity(cfg *config.Config, key statusRepoKey) (statusIdentity, 
 }
 
 // networkChecksFor returns the checks for a live identity. Caller holds mu.
-func (a *App) networkChecksFor(key statusRepoKey, identity statusIdentity) statusNetworkChecks {
-	if a.statusNetwork == nil {
-		a.statusNetwork = make(map[statusRepoKey]statusNetworkChecks)
+func (s *localSession) networkChecksFor(key statusRepoKey, identity statusIdentity) statusNetworkChecks {
+	if s.statusNetwork == nil {
+		s.statusNetwork = make(map[statusRepoKey]statusNetworkChecks)
 	}
-	check := a.statusNetwork[key]
+	check := s.statusNetwork[key]
 	if check.identity != identity {
 		return statusNetworkChecks{identity: identity}
 	}
@@ -58,50 +58,50 @@ func (a *App) networkChecksFor(key statusRepoKey, identity statusIdentity) statu
 }
 
 // recordFetchStatus records a definitive result for the checked clone.
-func (a *App) recordFetchStatus(snapshot *config.Config, source, repo string, gone bool, checkedAt time.Time) {
+func (s *localSession) recordFetchStatus(snapshot *config.Config, source, repo string, gone bool, checkedAt time.Time) {
 	key := statusRepoKey{source, repo}
 	expected, ok := statusRepoIdentity(snapshot, key)
 	if !ok {
 		return
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if live, ok := statusRepoIdentity(a.cfg, key); !ok || live != expected {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if live, ok := statusRepoIdentity(s.cfg, key); !ok || live != expected {
 		return
 	}
 
-	a.markUpstreamGoneLocked(source, repo, gone)
-	check := a.networkChecksFor(key, expected)
+	s.markUpstreamGoneLocked(source, repo, gone)
+	check := s.networkChecksFor(key, expected)
 	check.existence = checkedAt
 	if !gone {
 		check.refs = checkedAt
 	}
-	a.statusNetwork[key] = check
+	s.statusNetwork[key] = check
 }
 
 // markUpstreamGoneLocked updates the marker and invalidates overlapping
 // provider probes. Caller holds mu.
-func (a *App) markUpstreamGoneLocked(source, repo string, gone bool) {
-	if a.upstreamGone == nil {
-		a.upstreamGone = make(map[string]bool)
+func (s *localSession) markUpstreamGoneLocked(source, repo string, gone bool) {
+	if s.upstreamGone == nil {
+		s.upstreamGone = make(map[string]bool)
 	}
 	key := source + "/" + repo
-	if a.upstreamRevision == nil {
-		a.upstreamRevision = make(map[string]uint64)
+	if s.upstreamRevision == nil {
+		s.upstreamRevision = make(map[string]uint64)
 	}
-	a.upstreamRevision[key]++
+	s.upstreamRevision[key]++
 	if gone {
-		a.upstreamGone[key] = true
+		s.upstreamGone[key] = true
 	} else {
-		delete(a.upstreamGone, key)
+		delete(s.upstreamGone, key)
 	}
 }
 
 // networkCheckedAt reports which network result the row describes. Caller
 // holds mu. A fetch newer than the sweep could not have informed every row
 // in that sweep, so wait for the next local status pass.
-func (a *App) networkCheckedAt(row StatusResult) string {
-	check := a.statusNetwork[statusRepoKey{row.Source, row.Repo}]
+func (s *localSession) networkCheckedAt(row StatusResult) string {
+	check := s.statusNetwork[statusRepoKey{row.Source, row.Repo}]
 	if check.identity.path != row.Path || check.identity.account != row.Account {
 		return ""
 	}

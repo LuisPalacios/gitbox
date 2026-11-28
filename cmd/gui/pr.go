@@ -165,19 +165,18 @@ func (s *localSession) getPRsForRepoLocal(sourceKey, repoKey string) PRSummaryDT
 }
 
 // refreshAllPRsLocal is the local backend's RefreshAllPRs.
-func (a *App) refreshAllPRsLocal() { a.queuePRs(false) }
+func (s *localSession) refreshAllPRsLocal() { s.queuePRs(false) }
 
-// queuePRs starts a PR pass on the refresh flight, which stays on App until
-// refresh moves into the session (#369). It reads no session state itself.
-func (a *App) queuePRs(scheduled bool) *prPass {
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	if a.refreshClosed {
+// queuePRs starts a PR pass on the refresh flight.
+func (s *localSession) queuePRs(scheduled bool) *prPass {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	if s.refreshClosed {
 		return nil
 	}
-	ctx := a.refreshContextLocked()
-	return a.localSession.startPRPass(scheduled, func() {
-		a.refreshWG.Go(func() { a.refreshPRAccounts(ctx) })
+	ctx := s.refreshContextLocked()
+	return s.startPRPass(scheduled, func() {
+		s.refreshWG.Go(func() { s.refreshPRAccounts(ctx) })
 	})
 }
 
@@ -259,24 +258,23 @@ func (s *localSession) nextPRRefresh(ctx context.Context) (string, prRefresh, bo
 	return "", prRefresh{}, false
 }
 
-// refreshPRAccounts is one PR worker. The network check, the maintenance
-// lock and the event stream stay on App until they move into the session
-// (#369, #370, #371); the worker reads no session state itself.
-func (a *App) refreshPRAccounts(ctx context.Context) {
-	s := a.localSession
+// refreshPRAccounts is one PR worker. The maintenance lock and the event
+// stream stay on App until they move into the session (#370, #371).
+func (s *localSession) refreshPRAccounts(ctx context.Context) {
+	maintenance := s.app.maintenanceLock()
 	for {
 		key, req, ok := s.nextPRRefresh(ctx)
 		if !ok {
 			return
 		}
-		data, upd, publish := s.fetchPRsForAccount(ctx, key, req, a.reachable)
+		data, upd, publish := s.fetchPRsForAccount(ctx, key, req)
 		// Credential changes bracket their work with revision bumps under the
 		// maintenance lock. Wait for the last bump before checking the result.
-		a.maintenanceMu.RLock()
+		maintenance.RLock()
 		s.completePRRefresh(ctx, key, req, data, upd, publish, func(upd PRAccountUpdateDTO) {
-			emit(a.newOperation(), "pr:refreshed", upd)
+			emit(s.app.newOperation(), "pr:refreshed", upd)
 		})
-		a.maintenanceMu.RUnlock()
+		maintenance.RUnlock()
 	}
 }
 
@@ -304,8 +302,7 @@ func (s *localSession) completePRRefresh(ctx context.Context, key string, req pr
 }
 
 // fetchPRsForAccount does network and credential work outside s.mu.
-// reachable is App.reachable until the network guard moves into the session.
-func (s *localSession) fetchPRsForAccount(ctx context.Context, key string, req prRefresh, reachable func(context.Context, string) bool) (data provider.AccountPRs, upd PRAccountUpdateDTO, publish bool) {
+func (s *localSession) fetchPRsForAccount(ctx context.Context, key string, req prRefresh) (data provider.AccountPRs, upd PRAccountUpdateDTO, publish bool) {
 	acct := config.Account{
 		Provider: req.account.provider, URL: req.account.url, Username: req.account.username,
 		DefaultCredentialType: req.account.credentialType,
@@ -314,7 +311,7 @@ func (s *localSession) fetchPRsForAccount(ctx context.Context, key string, req p
 	defer cancel()
 
 	// Unreachable accounts retain their last known PRs.
-	if !reachable(ctx, serverAddr(acct)) {
+	if !s.reachable(ctx, serverAddr(acct)) {
 		return data, upd, false
 	}
 	upd = PRAccountUpdateDTO{AccountKey: key, ByRepo: map[string]PRSummaryDTO{}}
@@ -366,10 +363,9 @@ func samePRCredentialFile(before, after os.FileInfo) bool {
 }
 
 // refreshPRConfigLocked applies changes loaded from disk to PR state before
-// replacing s.cfg. Unrelated changes leave active requests in place. bump
-// is App.bumpCredentialRevisionLocked until refresh moves into the session
-// (#369). Caller holds s.mu.
-func (s *localSession) refreshPRConfigLocked(next *config.Config, bump func(key string)) {
+// replacing s.cfg. Unrelated changes leave active requests in place.
+// Caller holds s.mu.
+func (s *localSession) refreshPRConfigLocked(next *config.Config) {
 	if s.cfg == nil {
 		return
 	}
@@ -380,7 +376,7 @@ func (s *localSession) refreshPRConfigLocked(next *config.Config, bump func(key 
 	for key, old := range s.cfg.Accounts {
 		account, exists := next.Accounts[key]
 		if !exists || prAccountFor(old) != prAccountFor(account) {
-			bump(key)
+			s.bumpCredentialRevisionLocked(key)
 			delete(s.prs.cache, key)
 		}
 	}

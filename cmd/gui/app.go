@@ -110,34 +110,8 @@ type App struct {
 	discoverMirrors func(context.Context, *config.Config, func(mirror.DiscoverProgress)) ([]mirror.DiscoveryResult, error)
 	savedWindowPos  *config.WindowState // window state pre-loaded from config
 
-	proofChecks map[string]proofVerification // guarded by refreshMu
-
-	// probeMu serializes upstream-existence probes so a burst of
-	// RefreshStatus calls from the frontend doesn't spawn N concurrent
-	// API sweeps. Separate from a.mu because probing takes seconds and
-	// would block every other state read.
-	probeMu       sync.Mutex
-	probeFlight   *upstreamProbeFlight
-	lastProbeAt   time.Time
 	maintenanceMu sync.RWMutex
 	repairPaths   pathGate
-	refreshMu     sync.Mutex
-	// network knows which servers are reachable: see network.go.
-	network            networkGuard
-	refreshCtx         context.Context
-	refreshCancel      context.CancelFunc
-	refreshClosed      bool
-	refreshWG          sync.WaitGroup
-	refreshHooks       *refreshHooks
-	statusRun          *statusFlight
-	cachedStatus       []StatusResult
-	cachedStatusConfig *config.Config
-	fetchRun           *fetchFlight
-	fetches            fetchDispatcher
-	repoFetches        map[string]*repoFetchFlight
-	credentialRuns     map[string]*credentialFlight
-
-	pullPlans []pendingPullPlan // guarded by refreshMu
 
 	// tasks owns the periodic checks for this window or headless host.
 	tasks             taskRegistry
@@ -149,7 +123,10 @@ type App struct {
 
 // NewApp creates a new App instance.
 func NewApp() *App {
-	return &App{localSession: &localSession{upstreamGone: make(map[string]bool)}, timing: startupTiming{start: time.Now()}}
+	a := &App{timing: startupTiming{start: time.Now()}}
+	a.localSession = newLocalSession(a)
+	a.upstreamGone = make(map[string]bool)
+	return a
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────
@@ -191,7 +168,7 @@ func (a *App) initLocal(ctx context.Context) {
 // closeLocal stops the local backend's background workers.
 func (a *App) closeLocal() {
 	a.tasks.stop()
-	a.stopRefresh()
+	a.localSession.stopRefresh()
 	a.tasks.wg.Wait()
 }
 
@@ -240,7 +217,7 @@ func (a *App) reloadAfterConflict() {
 		return
 	}
 	a.cfgLoaded, a.cfgLoadError = true, ""
-	a.localSession.refreshPRConfigLocked(fresh, a.bumpCredentialRevisionLocked)
+	a.localSession.refreshPRConfigLocked(fresh)
 	*a.cfg = *fresh
 }
 
@@ -658,7 +635,7 @@ func (a *App) reloadConfigLocal() (ConfigDTO, error) {
 	if err != nil {
 		return ConfigDTO{}, fmt.Errorf("reloading config: %w", err)
 	}
-	a.localSession.refreshPRConfigLocked(cfg, a.bumpCredentialRevisionLocked)
+	a.localSession.refreshPRConfigLocked(cfg)
 	a.cfg = cfg
 	a.setRevision(base)
 	a.cfgLoaded, a.cfgLoadError = true, ""
@@ -1228,11 +1205,11 @@ func (a *App) refreshAIHarnessesLocal() {
 	due := time.Since(a.lastHarnessSyncAt) >= harnessMinInterval
 	a.mu.Unlock()
 	if due {
-		a.goTracked(func() {
-			if _, err := a.tasks.runNow(taskHarness); errors.Is(err, errTaskStopped) && a.refreshContext().Err() == nil {
+		a.localSession.goTracked(func() {
+			if _, err := a.tasks.runNow(taskHarness); errors.Is(err, errTaskStopped) && a.localSession.refreshContext().Err() == nil {
 				// A host without a periodic worker (e.g. a backend embedded on its own)
 				// can still honor an explicit refresh.
-				_ = a.detectHarnesses(a.refreshContext())
+				_ = a.detectHarnesses(a.localSession.refreshContext())
 			}
 		})
 	}
@@ -1544,7 +1521,7 @@ func (a *App) saveReplacement(cfg *config.Config, base config.FileRevision) erro
 		}
 		return err
 	}
-	a.localSession.refreshPRConfigLocked(cfg, a.bumpCredentialRevisionLocked)
+	a.localSession.refreshPRConfigLocked(cfg)
 	a.setRevision(next)
 	a.cfg, a.cfgLoaded, a.cfgLoadError = cfg, true, ""
 	return nil
@@ -1775,7 +1752,7 @@ func (a *App) CloneRepo(sourceKey, repoKey, root string) { a.be().CloneRepo(sour
 // cloneRepoLocal is the local backend's CloneRepo: the clone runs in the
 // background until the app closes.
 func (a *App) cloneRepoLocal(sourceKey, repoKey, root string) {
-	a.goTracked(func() { a.cloneRepoRun(a.refreshContext(), sourceKey, repoKey, root) })
+	a.localSession.goTracked(func() { a.cloneRepoRun(a.localSession.refreshContext(), sourceKey, repoKey, root) })
 }
 
 // cloneRepoRun clones one repo and emits clone:progress and clone:done. It
@@ -1800,7 +1777,7 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	}
 	a.mu.Lock()
 	if expected != nil {
-		if !a.sameRefreshRepoLocked(expected, sourceKey, repoKey) {
+		if !a.localSession.sameRefreshRepoLocked(expected, sourceKey, repoKey) {
 			err = errCloneSettingsChanged
 		} else {
 			repo := expected.Sources[sourceKey].Repos[repoKey]
@@ -1822,7 +1799,7 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	if err == nil {
 		plan, err = ops.PlanClone(a.cfg, sourceKey, repoKey)
 		if err == nil {
-			cfg = a.refreshConfigLocked()
+			cfg = a.localSession.refreshConfigLocked()
 		}
 	}
 	account := a.cfg.Accounts[a.cfg.Sources[sourceKey].Account]
@@ -1839,7 +1816,7 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	emit(op, "clone:start", repoRunDTO{Run: run, Source: sourceKey, Repo: repoKey})
 	// A clone does not start against a server that does not answer.
 	addr := serverAddr(account)
-	if !a.reachable(ctx, addr) {
+	if !a.localSession.reachable(ctx, addr) {
 		err = errServerUnreachable
 		errorText, code, host := unreachableDetails(addr)
 		emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Error: errorText, Code: code, Host: host, Skipped: true})
@@ -1863,7 +1840,7 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 	}
 
 	if confirmed && (errors.Is(err, errCloneSettingsChanged) || errors.Is(err, errPullPlanChanged)) {
-		op = a.currentRepoOperation(op, cfg, sourceKey, repoKey)
+		op = a.localSession.currentRepoOperation(op, cfg, sourceKey, repoKey)
 		emit(op, "clone:done", cloneDoneDTO{Run: run, Source: sourceKey, Repo: repoKey, Skipped: true})
 		return true
 	}
@@ -1892,10 +1869,10 @@ func (a *App) cloneRepoForRun(ctx context.Context, sourceKey, repoKey, root stri
 			result.Fixes = report.Fixed
 		}
 	}
-	op = a.currentRepoOperation(op, cfg, sourceKey, repoKey)
+	op = a.localSession.currentRepoOperation(op, cfg, sourceKey, repoKey)
 	emit(op, "clone:done", result)
 	if err == nil {
-		a.publishCompletionStatus(ctx, op, cfg, sourceKey, repoKey, plan.Dest)
+		a.localSession.publishCompletionStatus(ctx, op, cfg, sourceKey, repoKey, plan.Dest)
 	}
 	return false
 }
@@ -1908,7 +1885,7 @@ func (a *App) transferClone(ctx context.Context, cfg *config.Config, source, rep
 		return err
 	}
 	defer unlock()
-	if !a.sameRefreshRepo(cfg, source, repo) {
+	if !a.localSession.sameRefreshRepo(cfg, source, repo) {
 		return errCloneSettingsChanged
 	}
 	if confirmed {
@@ -1979,7 +1956,7 @@ func (a *App) getRepoDetailLocal(sourceKey, repoKey string) RepoDetail {
 	a.mu.Unlock()
 
 	// I show local details immediately and share the bounded background probe.
-	a.probeUpstreamExistenceAsync()
+	a.localSession.probeUpstreamExistenceAsync()
 	a.mu.Lock()
 	goneFlag := a.upstreamGone[sourceKey+"/"+repoKey]
 	a.mu.Unlock()
@@ -2021,8 +1998,8 @@ func (a *App) fetchRepoLocal(sourceKey, repoKey string) {
 		return
 	}
 	a.refreshWG.Go(func() {
-		cfg, revision := a.refreshSnapshot()
-		_ = a.fetchOne(cfg, revision, sourceKey, repoKey, nil)
+		cfg, revision := a.localSession.refreshSnapshot()
+		_ = a.localSession.fetchOne(cfg, revision, sourceKey, repoKey, nil)
 		a.RefreshStatus()
 	})
 	a.refreshMu.Unlock()
@@ -2065,7 +2042,7 @@ func (a *App) discardAccountLocal(accountKey string) error {
 	if err := ops.DiscardAccount(a.cfg, accountKey); err != nil {
 		return err
 	}
-	a.bumpCredentialRevisionLocked(accountKey)
+	a.localSession.bumpCredentialRevisionLocked(accountKey)
 	a.localSession.forgetPRAccountLocked(accountKey)
 	return a.saveConfig()
 }
@@ -2110,8 +2087,8 @@ func (a *App) UpdateAccount(req UpdateAccountRequest) error { return a.be().Upda
 func (a *App) updateAccountLocal(req UpdateAccountRequest) error {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
-	a.invalidateCredential(req.Key)
-	defer a.invalidateCredential(req.Key)
+	a.localSession.invalidateCredential(req.Key)
+	defer a.localSession.invalidateCredential(req.Key)
 	a.mu.Lock()
 
 	acct, ok := a.cfg.Accounts[req.Key]
@@ -2369,8 +2346,8 @@ func (a *App) CredentialSetupGCM(accountKey string) CredentialSetupResult {
 func (a *App) credentialSetupGCMLocal(accountKey string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
-	a.invalidateCredential(accountKey)
-	defer a.invalidateCredential(accountKey)
+	a.localSession.invalidateCredential(accountKey)
+	defer a.localSession.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -2511,8 +2488,8 @@ func (a *App) CredentialStoreToken(accountKey, token string) CredentialSetupResu
 func (a *App) credentialStoreTokenLocal(accountKey, token string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
-	a.invalidateCredential(accountKey)
-	defer a.invalidateCredential(accountKey)
+	a.localSession.invalidateCredential(accountKey)
+	defer a.localSession.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	a.mu.Unlock()
@@ -2588,8 +2565,8 @@ func (a *App) setupSSH(accountKey string) CredentialSetupResult {
 // account's clones. On a remote host all of it happens on the host: the key
 // stays there and only its public half comes back.
 func (a *App) runSSHSetup(accountKey string, setup func(context.Context, *config.Config, string) (ops.SSHSetup, error)) CredentialSetupResult {
-	a.invalidateCredential(accountKey)
-	defer a.invalidateCredential(accountKey)
+	a.localSession.invalidateCredential(accountKey)
+	defer a.localSession.invalidateCredential(accountKey)
 	a.mu.Lock()
 	acct, ok := a.cfg.Accounts[accountKey]
 	cfg := a.snapshotLocked()
@@ -2813,8 +2790,8 @@ func (a *App) DeleteAccount(accountKey string, removeFolders bool) ([]string, er
 func (a *App) deleteAccountLocal(accountKey string, removeFolders bool) ([]string, error) {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
-	a.invalidateCredential(accountKey)
-	defer a.invalidateCredential(accountKey)
+	a.localSession.invalidateCredential(accountKey)
+	defer a.localSession.invalidateCredential(accountKey)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2863,8 +2840,8 @@ func (a *App) CredentialDelete(accountKey string) CredentialSetupResult {
 func (a *App) credentialDeleteLocal(accountKey string) CredentialSetupResult {
 	a.maintenanceMu.Lock()
 	defer a.maintenanceMu.Unlock()
-	a.invalidateCredential(accountKey)
-	defer a.invalidateCredential(accountKey)
+	a.localSession.invalidateCredential(accountKey)
+	defer a.localSession.invalidateCredential(accountKey)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -2907,7 +2884,7 @@ func (a *App) discoverLocal(accountKey string) {
 
 		var repos []provider.RemoteRepo
 		err := errServerUnreachable
-		if a.reachable(a.refreshContext(), serverAddr(acct)) {
+		if a.localSession.reachable(a.localSession.refreshContext(), serverAddr(acct)) {
 			repos, err = ops.ListRemoteRepos(context.Background(), acct, accountKey)
 		}
 		if err != nil {
@@ -2973,11 +2950,11 @@ func (a *App) GetMirrorStatus(mirrorKey string) { a.be().GetMirrorStatus(mirrorK
 
 // getMirrorStatusLocal is the local backend's GetMirrorStatus.
 func (a *App) getMirrorStatusLocal(mirrorKey string) {
-	a.goTracked(func() {
+	a.localSession.goTracked(func() {
 		a.mu.Lock()
 		cfg := a.snapshotLocked()
 		a.mu.Unlock()
-		_ = a.checkMirrorStatus(a.refreshContext(), cfg, mirrorKey)
+		_ = a.checkMirrorStatus(a.localSession.refreshContext(), cfg, mirrorKey)
 	})
 }
 
@@ -2992,7 +2969,7 @@ func (a *App) checkMirrorStatus(ctx context.Context, cfg *config.Config, mirrorK
 
 	// A mirror needs both of its servers: without one, every repo reads
 	// unreachable at once instead of timing out one by one.
-	online := a.reachable(ctx, serverAddr(cfg.Accounts[m.AccountSrc])) && a.reachable(ctx, serverAddr(cfg.Accounts[m.AccountDst]))
+	online := a.localSession.reachable(ctx, serverAddr(cfg.Accounts[m.AccountSrc])) && a.localSession.reachable(ctx, serverAddr(cfg.Accounts[m.AccountDst]))
 	var results []MirrorStatusResult
 	var err error
 	for repoKey := range m.Repos {
@@ -3036,7 +3013,7 @@ func (a *App) SetupMirrorRepo(mirrorKey, repoKey string) { a.be().SetupMirrorRep
 // setupMirrorRepoLocal is the local backend's SetupMirrorRepo: the setup
 // runs in the background until the app closes.
 func (a *App) setupMirrorRepoLocal(mirrorKey, repoKey string) {
-	a.goTracked(func() { a.setupMirrorRepoRun(a.refreshContext(), mirrorKey, repoKey) })
+	a.localSession.goTracked(func() { a.setupMirrorRepoRun(a.localSession.refreshContext(), mirrorKey, repoKey) })
 }
 
 // setupMirrorRepoRun sets up one mirror repo and emits mirror:setup:done.
@@ -3273,7 +3250,7 @@ func (a *App) discoverMirrorsLocal() {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
-		if !a.anyServerReachable(ctx, cfg) {
+		if !a.localSession.anyServerReachable(ctx, cfg) {
 			emit(op, "mirror:discover:done", mirrorDiscoverDoneDTO{Error: userMsg(errServerUnreachable)})
 			return
 		}

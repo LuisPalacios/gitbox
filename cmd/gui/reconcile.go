@@ -10,7 +10,6 @@ package main
 // just gained one has its nested clones adopted in the same pass.
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -183,17 +182,11 @@ type RepairDTO struct {
 }
 
 // reconcileServices are the App services a reconcile pass still calls,
-// passed in until refresh (#369), clone repair (#370) and events (#371)
+// passed in until the save core and clone repair (#370) and events (#371)
 // move to the session. Each one runs where the code on *App called it.
 type reconcileServices struct {
-	// refreshContext is App.refreshContext, read when a scan starts.
-	refreshContext func() context.Context
-	// retry is App.retryReconcileAfterRefresh.
-	retry func()
-	// save is App.saveConfig and snapshot App.refreshConfigLocked, both
-	// called under s.mu.
-	save     func() error
-	snapshot func() *config.Config
+	// save is App.saveConfig, called under s.mu.
+	save func() error
 	// repair is App.repairAdoptions, called without s.mu.
 	repair func(*config.Config, []reconcile.Placed) []RepairDTO
 	// publish emits "reconcile:done".
@@ -203,12 +196,9 @@ type reconcileServices struct {
 // reconcileServices binds the services a reconcile pass needs to a.
 func (a *App) reconcileServices() reconcileServices {
 	return reconcileServices{
-		refreshContext: a.refreshContext,
-		retry:          a.retryReconcileAfterRefresh,
-		save:           a.saveConfig,
-		snapshot:       a.refreshConfigLocked,
-		repair:         a.repairAdoptions,
-		publish:        func(out ReconcileDTO) { emit(a.newOperation(), "reconcile:done", out) },
+		save:    a.saveConfig,
+		repair:  a.repairAdoptions,
+		publish: func(out ReconcileDTO) { emit(a.newOperation(), "reconcile:done", out) },
 	}
 }
 
@@ -224,7 +214,7 @@ func (s *localSession) savePlacementsLocked(before *config.Config, placed []reco
 	if len(placed) == 0 {
 		return nil, nil
 	}
-	return svc.snapshot(), nil
+	return s.refreshConfigLocked(), nil
 }
 
 func (a *App) repairAdoptions(snap *config.Config, placed []reconcile.Placed) []RepairDTO {
@@ -249,12 +239,11 @@ var ErrStalePlan = errors.New("reconcile plan is stale")
 // lock. Changes to the scan scope require a fresh scan. Other edits are
 // validated per entry by Apply under s.mu, which the caller releases. It
 // also returns the live pre-apply snapshot for rollback if persistence fails.
-// refreshContext is App.refreshContext.
-func (s *localSession) scanConfig(refreshContext func() context.Context) (reconcile.Result, *config.Config, error) {
+func (s *localSession) scanConfig() (reconcile.Result, *config.Config, error) {
 	scan := s.reconcileScan
 	if scan == nil {
 		scan = func(cfg *config.Config) (reconcile.Result, error) {
-			return reconcile.PlanContext(refreshContext(), cfg)
+			return reconcile.PlanContext(s.refreshContext(), cfg)
 		}
 	}
 	return s.scanConfigWith(scan, true)
@@ -302,16 +291,10 @@ func (s *localSession) reconcileLocal(svc reconcileServices) ReconcileDTO {
 	return s.runReconcilePass(true, svc)
 }
 
-// reconcilePass drives one pass of the session with this App's services;
-// the refresh retry calls it.
-func (a *App) reconcilePass(retryStale bool) ReconcileDTO {
-	return a.localSession.runReconcilePass(retryStale, a.reconcileServices())
-}
-
 func (s *localSession) runReconcilePass(retryStale bool, svc reconcileServices) ReconcileDTO {
 	s.reconcileMu.Lock()
 	defer s.reconcileMu.Unlock()
-	if !retryStale && svc.refreshContext().Err() != nil {
+	if !retryStale && s.refreshContext().Err() != nil {
 		return emptyReconcile("")
 	}
 
@@ -328,13 +311,13 @@ func (s *localSession) runReconcilePass(retryStale bool, svc reconcileServices) 
 		s.workspaceUnknown = unknown
 	}
 	if retryStale && wsSkipped {
-		svc.retry()
+		s.retryReconcileAfterRefresh()
 	}
-	res, before, err := s.scanConfig(svc.refreshContext)
+	res, before, err := s.scanConfig()
 	if err != nil {
 		s.mu.Unlock()
 		if retryStale && errors.Is(err, ErrStalePlan) {
-			svc.retry()
+			s.retryReconcileAfterRefresh()
 		}
 		out := emptyReconcile(userMsg(err))
 		out.WorkspaceUnknown = unknown
@@ -364,7 +347,7 @@ func (s *localSession) runReconcilePass(retryStale bool, svc reconcileServices) 
 	out.SkippedScans = groupSkipped(res.SkippedFolders)
 	out.Skipped, out.Background = applied.Skipped, !retryStale
 	if retryStale && len(applied.Skipped) > 0 {
-		svc.retry()
+		s.retryReconcileAfterRefresh()
 	}
 	out.WorkspaceUnknown = unknown
 	for _, c := range choices {

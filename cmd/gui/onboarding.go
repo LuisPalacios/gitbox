@@ -206,6 +206,6 @@ func (b localBackend) AdoptFirstProject(account, repo, path string) (bool, error
 // A saved clone can still need identity setup. A retry checks that setup
 // again, including when the first save succeeded but repair was interrupted.
 func (a *App) firstProjectIdentityReady(cfg *config.Config, source, repo string) bool {
-	report := a.healRepo(cfg, source, repo)
+	report := a.localSession.healRepo(cfg, source, repo)
 	return report.Path != "" && report.Skipped == "" && len(report.Warnings) == 0
 }

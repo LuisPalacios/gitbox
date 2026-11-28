@@ -105,7 +105,7 @@ func (a *App) prepareClone(ctx context.Context, cfg *config.Config, ref repoRef,
 			// gate. Yield this gate before waiting for an edit to finish.
 			unlock()
 			a.maintenanceMu.RLock()
-			current := a.sameRefreshRepo(cfg, ref.Source, ref.Repo)
+			current := a.localSession.sameRefreshRepo(cfg, ref.Source, ref.Repo)
 			a.maintenanceMu.RUnlock()
 			if err := ctx.Err(); err != nil {
 				return heal.Report{}, nil, err
@@ -116,7 +116,7 @@ func (a *App) prepareClone(ctx context.Context, cfg *config.Config, ref repoRef,
 			continue
 		}
 		defer a.maintenanceMu.RUnlock()
-		if !a.sameRefreshRepo(cfg, ref.Source, ref.Repo) {
+		if !a.localSession.sameRefreshRepo(cfg, ref.Source, ref.Repo) {
 			unlock()
 			return heal.Report{}, nil, errCloneSettingsChanged
 		}
@@ -136,7 +136,7 @@ func (a *App) prepareClone(ctx context.Context, cfg *config.Config, ref repoRef,
 // The caller supplies a detached config for the entire repair.
 func (a *App) repairClone(cfg *config.Config, source, repo string) (heal.Report, bool) {
 	path := status.RepoPath(cfg, source, repo, cfg.Sources[source].Repos[repo])
-	report, unlock, err := a.prepareClone(a.refreshContext(), cfg, repoRef{source, repo}, path, nil, nil)
+	report, unlock, err := a.prepareClone(a.localSession.refreshContext(), cfg, repoRef{source, repo}, path, nil, nil)
 	if err != nil {
 		return report, false
 	}
@@ -150,17 +150,17 @@ func (a *App) repairUnderMaintenance(cfg *config.Config, source, repo string) (h
 	path := status.RepoPath(cfg, source, repo, cfg.Sources[source].Repos[repo])
 	unlock := a.repairPaths.lock(path)
 	defer unlock()
-	if !a.sameRefreshRepo(cfg, source, repo) {
+	if !a.localSession.sameRefreshRepo(cfg, source, repo) {
 		return heal.Report{}, false
 	}
-	return a.healLocked(a.refreshContext(), cfg, source, repo), true
+	return a.healLocked(a.localSession.refreshContext(), cfg, source, repo), true
 }
 
 func (a *App) healLocked(ctx context.Context, cfg *config.Config, source, repo string) heal.Report {
-	report := a.healRepoContext(ctx, cfg, source, repo)
+	report := a.localSession.healRepoContext(ctx, cfg, source, repo)
 	key := statusRepoKey{source, repo}
 	a.mu.Lock()
-	if a.sameRefreshRepoLocked(cfg, source, repo) {
+	if a.localSession.sameRefreshRepoLocked(cfg, source, repo) {
 		if identity, ok := statusRepoIdentity(cfg, key); ok && len(report.Warnings) > 0 {
 			if a.pullRepairs == nil {
 				a.pullRepairs = make(map[statusRepoKey]statusIdentity)
@@ -183,7 +183,7 @@ func (a *App) healLocked(ctx context.Context, cfg *config.Config, source, repo s
 // Reconfigure from a snapshot after saving the account, with maintenanceMu
 // held exclusively. Other state readers may continue while git runs.
 func (a *App) reconfigureClones(account string) int {
-	cfg := a.snapshotRefreshConfig()
+	cfg := a.localSession.snapshotRefreshConfig()
 	reports := ops.ReconfigureClonesWith(cfg, account, func(cfg *config.Config, source, repo string) heal.Report {
 		report, _ := a.repairUnderMaintenance(cfg, source, repo)
 		return report

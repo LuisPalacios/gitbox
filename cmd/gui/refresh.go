@@ -58,19 +58,19 @@ type refreshHooks struct {
 }
 
 // I detach only the inputs refresh workers read, preserving configured order.
-func (a *App) snapshotRefreshConfig() *config.Config {
-	cfg, _ := a.refreshSnapshot()
+func (s *localSession) snapshotRefreshConfig() *config.Config {
+	cfg, _ := s.refreshSnapshot()
 	return cfg
 }
 
-func (a *App) refreshSnapshot() (*config.Config, uint64) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.refreshConfigLocked(), a.configRevision
+func (s *localSession) refreshSnapshot() (*config.Config, uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.refreshConfigLocked(), s.configRevision
 }
 
-func (a *App) refreshConfigLocked() *config.Config {
-	c := a.cfg
+func (s *localSession) refreshConfigLocked() *config.Config {
+	c := s.cfg
 	if c == nil {
 		return &config.Config{Accounts: map[string]config.Account{}, Sources: map[string]config.Source{}}
 	}
@@ -112,31 +112,31 @@ func (a *App) refreshConfigLocked() *config.Config {
 	return out
 }
 
-func (a *App) refreshContextLocked() context.Context {
-	if a.refreshCtx == nil {
-		a.refreshCtx, a.refreshCancel = context.WithCancel(context.Background())
+func (s *localSession) refreshContextLocked() context.Context {
+	if s.refreshCtx == nil {
+		s.refreshCtx, s.refreshCancel = context.WithCancel(context.Background())
 	}
-	return a.refreshCtx
+	return s.refreshCtx
 }
-func (a *App) refreshContext() context.Context {
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	return a.refreshContextLocked()
+func (s *localSession) refreshContext() context.Context {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	return s.refreshContextLocked()
 }
 
 // stopRefresh cancels every piece of work in flight and waits for it to
 // stop, for shutdownWait at most. The cancel already reached the git
 // processes and what they started, so a worker still running after that is
 // stuck outside git, and closing the app does not wait for it.
-func (a *App) stopRefresh() {
-	a.refreshMu.Lock()
-	a.refreshClosed = true
-	a.refreshContextLocked()
-	a.refreshCancel()
-	a.refreshMu.Unlock()
+func (s *localSession) stopRefresh() {
+	s.refreshMu.Lock()
+	s.refreshClosed = true
+	s.refreshContextLocked()
+	s.refreshCancel()
+	s.refreshMu.Unlock()
 	done := make(chan struct{})
 	go func() {
-		a.refreshWG.Wait()
+		s.refreshWG.Wait()
 		close(done)
 	}()
 	select {
@@ -147,71 +147,71 @@ func (a *App) stopRefresh() {
 
 // goTracked runs work as part of what stopRefresh waits for. It reports
 // false, without running it, when the app is closing.
-func (a *App) goTracked(work func()) bool {
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	if a.refreshClosed {
+func (s *localSession) goTracked(work func()) bool {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	if s.refreshClosed {
 		return false
 	}
-	a.refreshWG.Go(work)
+	s.refreshWG.Go(work)
 	return true
 }
 
 // healRepo repairs a clone's configuration before network work. Its reads
 // are bounded and stop when the app closes.
-func (a *App) healRepo(cfg *config.Config, source, repo string) heal.Report {
-	return a.healRepoContext(a.refreshContext(), cfg, source, repo)
+func (s *localSession) healRepo(cfg *config.Config, source, repo string) heal.Report {
+	return s.healRepoContext(s.refreshContext(), cfg, source, repo)
 }
 
-func (a *App) healRepoContext(ctx context.Context, cfg *config.Config, source, repo string) heal.Report {
-	if a.refreshHooks != nil && a.refreshHooks.heal != nil {
-		return a.refreshHooks.heal(cfg, source, repo)
+func (s *localSession) healRepoContext(ctx context.Context, cfg *config.Config, source, repo string) heal.Report {
+	if s.refreshHooks != nil && s.refreshHooks.heal != nil {
+		return s.refreshHooks.heal(cfg, source, repo)
 	}
-	if a.readOnly {
+	if s.app.isReadOnly() {
 		return heal.Report{} // the clone stays as it is
 	}
 	ctx, cancel := context.WithTimeout(ctx, healReadTimeout)
 	defer cancel()
 	return heal.RepoContext(ctx, cfg, source, repo)
 }
-func (a *App) overlayStatus(local []StatusResult) []StatusResult {
+func (s *localSession) overlayStatus(local []StatusResult) []StatusResult {
 	out := make([]StatusResult, len(local))
 	copy(out, local)
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for key, check := range a.statusNetwork {
-		if live, ok := statusRepoIdentity(a.cfg, key); !ok || live != check.identity {
-			delete(a.statusNetwork, key)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, check := range s.statusNetwork {
+		if live, ok := statusRepoIdentity(s.cfg, key); !ok || live != check.identity {
+			delete(s.statusNetwork, key)
 		}
 	}
-	for key, identity := range a.pullRepairs {
-		if live, ok := statusRepoIdentity(a.cfg, key); !ok || live != identity {
-			delete(a.pullRepairs, key)
+	for key, identity := range s.pullRepairs {
+		if live, ok := statusRepoIdentity(s.cfg, key); !ok || live != identity {
+			delete(s.pullRepairs, key)
 		}
 	}
 	for i := range out {
 		row := &out[i]
-		if a.upstreamGone[row.Source+"/"+row.Repo] {
+		if s.upstreamGone[row.Source+"/"+row.Repo] {
 			row.State = status.UpstreamGone.String()
 		}
-		row.CheckedAt = a.networkCheckedAt(*row)
+		row.CheckedAt = s.networkCheckedAt(*row)
 	}
 	return out
 }
 
-func (a *App) requestStatus(emit, dirty bool) *statusFlight {
-	return a.requestStatusStream(emit, dirty, 0)
+func (s *localSession) requestStatus(emit, dirty bool) *statusFlight {
+	return s.requestStatusStream(emit, dirty, 0)
 }
 
-func (a *App) requestStatusStream(publishFinal, dirty bool, stream uint64) *statusFlight {
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	if a.refreshClosed {
+func (s *localSession) requestStatusStream(publishFinal, dirty bool, stream uint64) *statusFlight {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	if s.refreshClosed {
 		done := make(chan struct{})
 		close(done)
 		return &statusFlight{done: done}
 	}
-	if call := a.statusRun; call != nil {
+	if call := s.statusRun; call != nil {
 		if stream != 0 {
 			call.stream = stream
 			call.dirty = true
@@ -221,15 +221,15 @@ func (a *App) requestStatusStream(publishFinal, dirty bool, stream uint64) *stat
 		return call
 	}
 	call := &statusFlight{done: make(chan struct{}), emit: publishFinal, stream: stream}
-	a.statusRun = call
-	a.refreshWG.Go(func() {
+	s.statusRun = call
+	s.refreshWG.Go(func() {
 		for {
-			a.refreshMu.Lock()
+			s.refreshMu.Lock()
 			call.dirty = false
 			pass := call.stream
-			a.refreshMu.Unlock()
-			cfg, revision := a.refreshSnapshot()
-			op := a.newOperation().atRevision(revision)
+			s.refreshMu.Unlock()
+			cfg, revision := s.refreshSnapshot()
+			op := s.app.newOperation().atRevision(revision)
 			sweepStarted := time.Now()
 			convert := func(raw []status.RepoStatus) []StatusResult {
 				rows := make([]StatusResult, len(raw))
@@ -242,45 +242,45 @@ func (a *App) requestStatusStream(publishFinal, dirty bool, stream uint64) *stat
 			var publish func([]status.RepoStatus)
 			if pass != 0 {
 				publish = func(raw []status.RepoStatus) {
-					a.refreshMu.Lock()
-					defer a.refreshMu.Unlock()
-					if !a.refreshClosed && !call.dirty && call.stream == pass {
-						emit(op, "status:batch", StatusBatch{PassID: pass, Revision: revision, Items: a.overlayStatus(convert(raw))})
+					s.refreshMu.Lock()
+					defer s.refreshMu.Unlock()
+					if !s.refreshClosed && !call.dirty && call.stream == pass {
+						emit(op, "status:batch", StatusBatch{PassID: pass, Revision: revision, Items: s.overlayStatus(convert(raw))})
 					}
 				}
 			}
 			var raw []status.RepoStatus
 			var err error
-			if a.refreshHooks != nil && a.refreshHooks.status != nil {
-				raw = a.refreshHooks.status(cfg)
+			if s.refreshHooks != nil && s.refreshHooks.status != nil {
+				raw = s.refreshHooks.status(cfg)
 				if publish != nil {
 					for i := 0; i < len(raw); i += 8 {
 						publish(raw[i:min(i+8, len(raw))])
 					}
 				}
 			} else {
-				raw, err = status.CheckAllBatches(a.refreshContext(), cfg, statusTimeout, publish)
+				raw, err = status.CheckAllBatches(s.refreshContext(), cfg, statusTimeout, publish)
 			}
-			a.diagnostics.Record(diag.Status, sweepStarted, time.Now(), nil, "", err)
+			s.app.recordActivity(diag.Status, sweepStarted, time.Now(), nil, "", err)
 			local := convert(raw)
-			current, currentRevision := a.refreshSnapshot()
-			a.refreshMu.Lock()
-			if !a.refreshClosed && (call.dirty || revision != currentRevision || !reflect.DeepEqual(cfg, current)) {
-				a.refreshMu.Unlock()
+			current, currentRevision := s.refreshSnapshot()
+			s.refreshMu.Lock()
+			if !s.refreshClosed && (call.dirty || revision != currentRevision || !reflect.DeepEqual(cfg, current)) {
+				s.refreshMu.Unlock()
 				continue
 			}
-			a.cachedStatus = local
-			a.cachedStatusConfig = cfg
+			s.cachedStatus = local
+			s.cachedStatusConfig = cfg
 			call.results = local
-			if call.emit && !a.refreshClosed {
-				emit(op, "status:updated", a.overlayStatus(local))
+			if call.emit && !s.refreshClosed {
+				emit(op, "status:updated", s.overlayStatus(local))
 			}
-			if pass != 0 && !a.refreshClosed {
+			if pass != 0 && !s.refreshClosed {
 				emit(op, "status:batch", StatusBatch{PassID: pass, Revision: revision, Done: true})
 			}
-			a.statusRun = nil
+			s.statusRun = nil
 			close(call.done)
-			a.refreshMu.Unlock()
+			s.refreshMu.Unlock()
 			return
 		}
 	})
@@ -302,47 +302,50 @@ func (a *App) BeginStatus(passID uint64) error { return a.be().BeginStatus(passI
 func (a *App) GetAllStatus() []StatusResult { return a.be().GetAllStatus() }
 
 // getAllStatusLocal is the local backend's GetAllStatus.
-func (a *App) getAllStatusLocal() []StatusResult {
-	call := a.requestStatus(false, false)
+func (s *localSession) getAllStatusLocal() []StatusResult {
+	call := s.requestStatus(false, false)
 	<-call.done
-	return a.overlayStatus(call.results)
+	return s.overlayStatus(call.results)
 }
 
 // RefreshStatus retains at most one pending invalidation while local work runs.
 func (a *App) RefreshStatus() { a.be().RefreshStatus() }
 
 // refreshStatusLocal is the local backend's RefreshStatus.
-func (a *App) refreshStatusLocal() { a.requestStatus(true, true); a.probeUpstreamExistenceAsync() }
+func (s *localSession) refreshStatusLocal() {
+	s.requestStatus(true, true)
+	s.probeUpstreamExistenceAsync()
+}
 
 // I overlay provider results without spawning another fleet of git processes.
-func (a *App) emitCachedStatus() {
-	current, revision := a.refreshSnapshot()
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	if a.cachedStatusConfig != nil && reflect.DeepEqual(current, a.cachedStatusConfig) && !a.refreshClosed {
-		emit(a.newOperation().atRevision(revision), "status:updated", a.overlayStatus(a.cachedStatus))
+func (s *localSession) emitCachedStatus() {
+	current, revision := s.refreshSnapshot()
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	if s.cachedStatusConfig != nil && reflect.DeepEqual(current, s.cachedStatusConfig) && !s.refreshClosed {
+		emit(s.app.newOperation().atRevision(revision), "status:updated", s.overlayStatus(s.cachedStatus))
 	}
 }
 
-func (a *App) sameRefreshRepo(cfg *config.Config, source, repo string) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.sameRefreshRepoLocked(cfg, source, repo)
+func (s *localSession) sameRefreshRepo(cfg *config.Config, source, repo string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sameRefreshRepoLocked(cfg, source, repo)
 }
 
-func (a *App) sameRefreshRepoLocked(cfg *config.Config, source, repo string) bool {
-	current := a.cfg
+func (s *localSession) sameRefreshRepoLocked(cfg *config.Config, source, repo string) bool {
+	current := s.cfg
 	if current == nil {
 		return false
 	}
-	s, ok := cfg.Sources[source]
+	src, ok := cfg.Sources[source]
 	n, exists := current.Sources[source]
-	if !ok || !exists || s.Account != n.Account || s.Folder != n.Folder || s.Root != n.Root {
+	if !ok || !exists || src.Account != n.Account || src.Folder != n.Folder || src.Root != n.Root {
 		return false
 	}
-	old, ok := s.Repos[repo]
+	old, ok := src.Repos[repo]
 	now, exists := n.Repos[repo]
-	account, hadAccount := cfg.Accounts[s.Account]
+	account, hadAccount := cfg.Accounts[src.Account]
 	live, hasAccount := current.Accounts[n.Account]
 	return ok && exists && old == now && hadAccount && hasAccount && reflect.DeepEqual(account, live) &&
 		slices.Equal(cfg.Global.Roots, current.Global.Roots) &&
@@ -351,8 +354,8 @@ func (a *App) sameRefreshRepoLocked(cfg *config.Config, source, repo string) boo
 		reflect.DeepEqual(cfg.Global.CredentialToken, current.Global.CredentialToken)
 }
 
-func (a *App) fetchOne(cfg *config.Config, revision uint64, source, repo string, lost *sync.Map) error {
-	op := a.newOperation().atRevision(revision)
+func (s *localSession) fetchOne(cfg *config.Config, revision uint64, source, repo string, lost *sync.Map) error {
+	op := s.app.newOperation().atRevision(revision)
 	src, ok := cfg.Sources[source]
 	if !ok {
 		err := fmt.Errorf("source %q not found", source)
@@ -367,20 +370,20 @@ func (a *App) fetchOne(cfg *config.Config, revision uint64, source, repo string,
 	}
 	account := cfg.Accounts[src.Account]
 	addr := serverAddr(account)
-	ctx := a.refreshContext()
+	ctx := s.refreshContext()
 	path := status.RepoPath(cfg, source, repo, r)
 	key := pathkey.Compare(path)
 	for {
-		a.refreshMu.Lock()
-		if a.refreshClosed {
-			a.refreshMu.Unlock()
+		s.refreshMu.Lock()
+		if s.refreshClosed {
+			s.refreshMu.Unlock()
 			return context.Canceled
 		}
-		if a.repoFetches == nil {
-			a.repoFetches = make(map[string]*repoFetchFlight)
+		if s.repoFetches == nil {
+			s.repoFetches = make(map[string]*repoFetchFlight)
 		}
-		if active := a.repoFetches[key]; active != nil {
-			a.refreshMu.Unlock()
+		if active := s.repoFetches[key]; active != nil {
+			s.refreshMu.Unlock()
 			select {
 			case <-active.done:
 			case <-ctx.Done():
@@ -395,24 +398,24 @@ func (a *App) fetchOne(cfg *config.Config, revision uint64, source, repo string,
 			continue
 		}
 		call := &repoFetchFlight{done: make(chan struct{}), cfg: cfg, source: source, repo: repo}
-		a.repoFetches[key] = call
-		a.refreshMu.Unlock()
+		s.repoFetches[key] = call
+		s.refreshMu.Unlock()
 		var err error
 		if lost != nil && fetchEndpointLost(lost, addr) {
 			started := time.Now()
 			err = skipUnreachable(op, source, repo, addr)
-			a.diagnostics.Record(diag.Fetch, started, time.Now(), nil, path, err)
+			s.app.recordActivity(diag.Fetch, started, time.Now(), nil, path, err)
 		} else {
-			err = a.performFetch(op, cfg, source, repo, path, lost)
+			err = s.performFetch(op, cfg, source, repo, path, lost)
 			if lost != nil && addr != "" && isConnectionFailure(err) {
 				lost.Store(addr, true)
 			}
 		}
-		a.refreshMu.Lock()
+		s.refreshMu.Lock()
 		call.err = err
-		delete(a.repoFetches, key)
+		delete(s.repoFetches, key)
 		close(call.done)
-		a.refreshMu.Unlock()
+		s.refreshMu.Unlock()
 		return err
 	}
 }
@@ -446,12 +449,12 @@ func retryWithBackoff(ctx context.Context, started time.Time, again func() bool)
 	}
 }
 
-func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, path string, lost *sync.Map) (err error) {
+func (s *localSession) performFetch(op eventOperation, cfg *config.Config, source, repo, path string, lost *sync.Map) (err error) {
 	started := time.Now()
 	var queueDepth *int
-	defer func() { a.diagnostics.Record(diag.Fetch, started, time.Now(), queueDepth, path, err) }()
-	ctx := a.refreshContext()
-	report, unlock, err := a.prepareClone(ctx, cfg, repoRef{source, repo}, path, func() {
+	defer func() { s.app.recordActivity(diag.Fetch, started, time.Now(), queueDepth, path, err) }()
+	ctx := s.refreshContext()
+	report, unlock, err := s.app.prepareClone(ctx, cfg, repoRef{source, repo}, path, func() {
 		emit(op, "fetch:start", fetchEventDTO{Source: source, Repo: repo})
 	}, nil)
 	if err != nil {
@@ -473,11 +476,11 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 		fetch := func(ctx context.Context, path string) (string, error) {
 			return git.FetchCapturedContext(ctx, path, remote)
 		}
-		if a.refreshHooks != nil && a.refreshHooks.fetch != nil {
-			fetch = a.refreshHooks.fetch
+		if s.refreshHooks != nil && s.refreshHooks.fetch != nil {
+			fetch = s.refreshHooks.fetch
 		}
-		err = a.onServer(addr, func(ctx context.Context) error {
-			release, depth, err := a.fetches.acquire(ctx, fetchHostname(account.URL))
+		err = s.onServer(addr, func(ctx context.Context) error {
+			release, depth, err := s.fetches.acquire(ctx, fetchHostname(account.URL))
 			queueDepth = &depth
 			if err != nil {
 				return err
@@ -486,7 +489,7 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 			if lost != nil && fetchEndpointLost(lost, addr) {
 				return errServerUnreachable
 			}
-			if !a.sameRefreshRepo(cfg, source, repo) {
+			if !s.sameRefreshRepo(cfg, source, repo) {
 				return errCloneSettingsChanged
 			}
 			ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
@@ -507,7 +510,7 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 		})
 	}
 	payload := fetchDoneDTO{fetchEventDTO: fetchEventDTO{Source: source, Repo: repo}}
-	if report.Skipped == "" && !a.readOnly {
+	if report.Skipped == "" && !s.app.isReadOnly() {
 		payload.RepairWarnings = append([]string{}, report.OtherWarnings()...)
 	}
 	if errors.Is(err, errServerUnreachable) {
@@ -519,10 +522,10 @@ func (a *App) performFetch(op eventOperation, cfg *config.Config, source, repo, 
 			payload.UpstreamGone = true
 		}
 	}
-	if (err == nil || git.IsUpstreamGoneError(err)) && a.sameRefreshRepo(cfg, source, repo) {
-		a.recordFetchStatus(cfg, source, repo, err != nil, time.Now())
+	if (err == nil || git.IsUpstreamGoneError(err)) && s.sameRefreshRepo(cfg, source, repo) {
+		s.recordFetchStatus(cfg, source, repo, err != nil, time.Now())
 	}
-	emit(a.currentRepoOperation(op, cfg, source, repo), "fetch:done", payload)
+	emit(s.currentRepoOperation(op, cfg, source, repo), "fetch:done", payload)
 	return err
 }
 
@@ -536,14 +539,14 @@ var errServerUnreachable = errors.New("cannot reach the server")
 // result is errServerUnreachable. Work that fails for lack of a connection
 // makes the guard test the server at once, which stops everything else that
 // uses it.
-func (a *App) onServer(addr string, work func(context.Context) error) error {
-	return a.onServerCtx(a.refreshContext(), addr, work)
+func (s *localSession) onServer(addr string, work func(context.Context) error) error {
+	return s.onServerCtx(s.refreshContext(), addr, work)
 }
 
 // onServerCtx is onServer for work that parent can also stop, such as a
 // pull a remote window asked for: its request ends with the connection.
-func (a *App) onServerCtx(parent context.Context, addr string, work func(context.Context) error) error {
-	ctx, end, ok := a.beginNetworkOp(parent, addr)
+func (s *localSession) onServerCtx(parent context.Context, addr string, work func(context.Context) error) error {
+	ctx, end, ok := s.beginNetworkOp(parent, addr)
 	if !ok {
 		return errServerUnreachable
 	}
@@ -553,7 +556,7 @@ func (a *App) onServerCtx(parent context.Context, addr string, work func(context
 	if err == nil {
 		return nil
 	}
-	if stopped || isConnectionFailure(err) && !a.confirmReachable(parent, addr) {
+	if stopped || isConnectionFailure(err) && !s.confirmReachable(parent, addr) {
 		return errServerUnreachable
 	}
 	return err
@@ -586,7 +589,7 @@ func isConnectionFailure(err error) bool {
 // probeServers connects once to the server of every account that has clones,
 // all at the same time, so the answer for each is known (and shared by every
 // later reachable call) within one connect timeout.
-func (a *App) probeServers(ctx context.Context, cfg *config.Config) {
+func (s *localSession) probeServers(ctx context.Context, cfg *config.Config) {
 	var wg sync.WaitGroup
 	seen := make(map[string]bool)
 	for _, src := range cfg.Sources {
@@ -595,15 +598,15 @@ func (a *App) probeServers(ctx context.Context, cfg *config.Config) {
 			continue
 		}
 		seen[addr] = true
-		wg.Go(func() { a.reachable(ctx, addr) })
+		wg.Go(func() { s.reachable(ctx, addr) })
 	}
 	wg.Wait()
 }
 
 // anyServerReachable reports whether at least one account's server answers.
-func (a *App) anyServerReachable(ctx context.Context, cfg *config.Config) bool {
+func (s *localSession) anyServerReachable(ctx context.Context, cfg *config.Config) bool {
 	for _, acct := range cfg.Accounts {
-		if a.reachable(ctx, serverAddr(acct)) {
+		if s.reachable(ctx, serverAddr(acct)) {
 			return true
 		}
 	}
@@ -628,18 +631,18 @@ func describeFetchFailure(payload *fetchEventDTO, err error) {
 func (a *App) fetchAllRepos() error { return a.be().FetchAllRepos() }
 
 // fetchAllReposLocal is the local backend's FetchAllRepos.
-func (a *App) fetchAllReposLocal() error {
-	return a.fetchAllReposContext(a.refreshContext())
+func (s *localSession) fetchAllReposLocal() error {
+	return s.fetchAllReposContext(s.refreshContext())
 }
 
-func (a *App) fetchAllReposContext(ctx context.Context) error {
-	a.refreshMu.Lock()
-	if a.refreshClosed {
-		a.refreshMu.Unlock()
+func (s *localSession) fetchAllReposContext(ctx context.Context) error {
+	s.refreshMu.Lock()
+	if s.refreshClosed {
+		s.refreshMu.Unlock()
 		return context.Canceled
 	}
-	if active := a.fetchRun; active != nil {
-		a.refreshMu.Unlock()
+	if active := s.fetchRun; active != nil {
+		s.refreshMu.Unlock()
 		select {
 		case <-active.done:
 			return active.err
@@ -648,23 +651,23 @@ func (a *App) fetchAllReposContext(ctx context.Context) error {
 		}
 	}
 	call := &fetchFlight{done: make(chan struct{})}
-	a.fetchRun = call
-	a.refreshWG.Go(func() {
-		op := a.newOperation()
+	s.fetchRun = call
+	s.refreshWG.Go(func() {
+		op := s.app.newOperation()
 		emit(op, "fetch:allstart", any(nil))
-		err := a.fetchCycle()
+		err := s.fetchCycle()
 		payload := fetchAllDoneDTO{}
 		if err != nil {
 			payload.Error = userMsg(err)
 		}
 		emit(op.currentRevision(), "fetch:alldone", payload)
-		a.refreshMu.Lock()
+		s.refreshMu.Lock()
 		call.err = err
-		a.fetchRun = nil
+		s.fetchRun = nil
 		close(call.done)
-		a.refreshMu.Unlock()
+		s.refreshMu.Unlock()
 	})
-	a.refreshMu.Unlock()
+	s.refreshMu.Unlock()
 	select {
 	case <-call.done:
 		return call.err
@@ -673,36 +676,36 @@ func (a *App) fetchAllReposContext(ctx context.Context) error {
 	}
 }
 
-func (a *App) fetchCycle() (err error) {
+func (s *localSession) fetchCycle() (err error) {
 	started := time.Now()
-	defer func() { a.diagnostics.Record(diag.FetchAll, started, time.Now(), nil, "", err) }()
+	defer func() { s.app.recordActivity(diag.FetchAll, started, time.Now(), nil, "", err) }()
 	var errs []error
 	for range 2 {
-		cfg, revision := a.refreshSnapshot()
+		cfg, revision := s.refreshSnapshot()
 		// One short connect per server decides, before anything is queued,
 		// which servers are there. Nothing goes out to one that is not.
-		ctx := a.refreshContext()
-		wasDown := a.forgetNetworkDown()
-		a.probeServers(ctx, cfg)
-		if wasDown && len(a.downServers()) == 0 {
-			a.publishNetworkState() // the network is back
+		ctx := s.refreshContext()
+		wasDown := s.forgetNetworkDown()
+		s.probeServers(ctx, cfg)
+		if wasDown && len(s.downServers()) == 0 {
+			s.publishNetworkState() // the network is back
 		}
 		var network sync.WaitGroup
-		reachable := a.anyServerReachable(ctx, cfg)
+		reachable := s.anyServerReachable(ctx, cfg)
 		if reachable {
-			network.Go(func() { a.probeUpstreamExistence() })
+			network.Go(func() { s.probeUpstreamExistence() })
 		}
-		network.Go(func() { a.verifyRefreshCredentials(cfg) })
-		errs = a.fetchClones(ctx, cfg, revision)
+		network.Go(func() { s.verifyRefreshCredentials(cfg) })
+		errs = s.fetchClones(ctx, cfg, revision)
 		// I publish local changes before waiting for remote checks.
-		local := a.requestStatus(true, reachable)
+		local := s.requestStatus(true, reachable)
 		<-local.done
 		network.Wait()
-		a.emitCachedStatus()
-		if a.refreshContext().Err() != nil {
-			return a.refreshContext().Err()
+		s.emitCachedStatus()
+		if s.refreshContext().Err() != nil {
+			return s.refreshContext().Err()
 		}
-		if reflect.DeepEqual(cfg, a.snapshotRefreshConfig()) {
+		if reflect.DeepEqual(cfg, s.snapshotRefreshConfig()) {
 			break
 		}
 	}
@@ -717,7 +720,7 @@ func fetchEndpointLost(lost *sync.Map, addr string) bool {
 	return gone
 }
 
-func (a *App) fetchClones(ctx context.Context, cfg *config.Config, revision uint64) []error {
+func (s *localSession) fetchClones(ctx context.Context, cfg *config.Config, revision uint64) []error {
 	var clones []repoRef
 	for _, source := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[source]
@@ -736,10 +739,10 @@ func (a *App) fetchClones(ctx context.Context, cfg *config.Config, revision uint
 	dispatchByHost(ctx, cfg, clones, func(ref repoRef) {
 		addr := serverAddr(cfg.Accounts[cfg.Sources[ref.Source].Account])
 		var err error
-		if fetchEndpointLost(&lost, addr) || !a.reachable(ctx, addr) {
-			err = skipUnreachable(a.newOperation().atRevision(revision), ref.Source, ref.Repo, addr)
+		if fetchEndpointLost(&lost, addr) || !s.reachable(ctx, addr) {
+			err = skipUnreachable(s.app.newOperation().atRevision(revision), ref.Source, ref.Repo, addr)
 		} else {
-			err = a.fetchOne(cfg, revision, ref.Source, ref.Repo, &lost)
+			err = s.fetchOne(cfg, revision, ref.Source, ref.Repo, &lost)
 		}
 		if err != nil {
 			mu.Lock()
@@ -750,12 +753,12 @@ func (a *App) fetchClones(ctx context.Context, cfg *config.Config, revision uint
 	return errs
 }
 
-func (a *App) verifyRefreshCredentials(cfg *config.Config) {
+func (s *localSession) verifyRefreshCredentials(cfg *config.Config) {
 	results := make(map[string]CredentialStatus, len(cfg.Accounts))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
-	ctx := a.refreshContext()
+	ctx := s.refreshContext()
 	for key := range cfg.Accounts {
 		if ctx.Err() != nil {
 			break
@@ -767,59 +770,59 @@ func (a *App) verifyRefreshCredentials(cfg *config.Config) {
 		}
 		wg.Go(func() {
 			defer func() { <-sem }()
-			result := a.credentialVerify(cfg, key)
+			result := s.credentialVerify(cfg, key)
 			mu.Lock()
 			results[key] = result
 			mu.Unlock()
 		})
 	}
 	wg.Wait()
-	current := a.snapshotRefreshConfig()
+	current := s.snapshotRefreshConfig()
 	for key, result := range results {
-		if !a.credentialStillCurrent(cfg, key, result.revision) {
+		if !s.credentialStillCurrent(cfg, key, result.revision) {
 			delete(results, key)
 		}
 	}
 	if reflect.DeepEqual(cfg.Accounts, current.Accounts) && reflect.DeepEqual(cfg.Global, current.Global) {
-		emit(a.newOperation(), "credentials:updated", results)
+		emit(s.app.newOperation(), "credentials:updated", results)
 	}
 }
 
-func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus {
+func (s *localSession) credentialVerify(cfg *config.Config, key string) CredentialStatus {
 	for {
 		acct, ok := cfg.Accounts[key]
 		if !ok {
 			return CredentialStatus{Status: "error", Message: "account not found"}
 		}
-		a.mu.Lock()
-		revision := a.credentialRevision[key]
-		a.mu.Unlock()
+		s.mu.Lock()
+		revision := s.credentialRevision[key]
+		s.mu.Unlock()
 		checkIdentity := credentialCheckIdentity(cfg, key, revision)
 		identity := key + "\x00" + checkIdentity
-		a.refreshMu.Lock()
-		if a.credentialRuns == nil {
-			a.credentialRuns = make(map[string]*credentialFlight)
+		s.refreshMu.Lock()
+		if s.credentialRuns == nil {
+			s.credentialRuns = make(map[string]*credentialFlight)
 		}
-		if active := a.credentialRuns[identity]; active != nil {
-			a.refreshMu.Unlock()
+		if active := s.credentialRuns[identity]; active != nil {
+			s.refreshMu.Unlock()
 			<-active.done
-			if a.credentialStillCurrent(cfg, key, revision) {
+			if s.credentialStillCurrent(cfg, key, revision) {
 				return active.result
 			}
-			cfg = a.snapshotRefreshConfig()
+			cfg = s.snapshotRefreshConfig()
 			continue
 		}
 		call := &credentialFlight{done: make(chan struct{})}
-		a.credentialRuns[identity] = call
-		a.refreshMu.Unlock()
+		s.credentialRuns[identity] = call
+		s.refreshMu.Unlock()
 		check := credential.CheckContext
-		if a.refreshHooks != nil && a.refreshHooks.credential != nil {
-			check = a.refreshHooks.credential
+		if s.refreshHooks != nil && s.refreshHooks.credential != nil {
+			check = s.refreshHooks.credential
 		}
-		ctx, cancel := context.WithTimeout(a.refreshContext(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(s.refreshContext(), 30*time.Second)
 		started := time.Now()
 		var r credential.StatusResult
-		if !a.reachable(ctx, serverAddr(acct)) {
+		if !s.reachable(ctx, serverAddr(acct)) {
 			// The server is not there: say so at once instead of letting
 			// the check, and its retries, time out against it.
 			r = credential.StatusResult{Primary: credential.StatusOffline, Overall: credential.StatusOffline,
@@ -841,99 +844,99 @@ func (a *App) credentialVerify(cfg *config.Config, key string) CredentialStatus 
 		if !r.ExpiresAt.IsZero() {
 			result.ExpiresAt = r.ExpiresAt.UTC().Format(time.RFC3339)
 		}
-		a.refreshMu.Lock()
-		if !started.Before(a.proofChecks[key].started) {
+		s.refreshMu.Lock()
+		if !started.Before(s.proofChecks[key].started) {
 			verification := heal.Verification{Failed: true}
-			if cached := a.proofChecks[key]; cached.identity == checkIdentity {
+			if cached := s.proofChecks[key]; cached.identity == checkIdentity {
 				verification.CheckedAt, verification.ExpiresAt = cached.value.CheckedAt, cached.value.ExpiresAt
 			}
 			if completed && r.Primary == credential.StatusOK {
 				verification = heal.Verification{CheckedAt: time.Now(), ExpiresAt: r.ExpiresAt}
 			}
-			if a.proofChecks == nil {
-				a.proofChecks = make(map[string]proofVerification)
+			if s.proofChecks == nil {
+				s.proofChecks = make(map[string]proofVerification)
 			}
-			a.proofChecks[key] = proofVerification{identity: checkIdentity, started: started, value: verification}
+			s.proofChecks[key] = proofVerification{identity: checkIdentity, started: started, value: verification}
 		}
 		call.result = result
-		delete(a.credentialRuns, identity)
+		delete(s.credentialRuns, identity)
 		close(call.done)
-		a.refreshMu.Unlock()
-		if a.credentialStillCurrent(cfg, key, revision) || a.refreshContext().Err() != nil {
+		s.refreshMu.Unlock()
+		if s.credentialStillCurrent(cfg, key, revision) || s.refreshContext().Err() != nil {
 			return result
 		}
-		cfg = a.snapshotRefreshConfig()
+		cfg = s.snapshotRefreshConfig()
 	}
 }
 
-func (a *App) credentialStillCurrent(cfg *config.Config, key string, revision uint64) bool {
-	a.mu.Lock()
-	sameRevision := a.credentialRevision[key] == revision
-	a.mu.Unlock()
-	current := a.snapshotRefreshConfig()
+func (s *localSession) credentialStillCurrent(cfg *config.Config, key string, revision uint64) bool {
+	s.mu.Lock()
+	sameRevision := s.credentialRevision[key] == revision
+	s.mu.Unlock()
+	current := s.snapshotRefreshConfig()
 	return sameRevision && reflect.DeepEqual(cfg.Accounts[key], current.Accounts[key]) && reflect.DeepEqual(cfg.Global.CredentialSSH, current.Global.CredentialSSH)
 }
 
-func (a *App) bumpCredentialRevisionLocked(key string) {
-	if a.credentialRevision == nil {
-		a.credentialRevision = make(map[string]uint64)
+func (s *localSession) bumpCredentialRevisionLocked(key string) {
+	if s.credentialRevision == nil {
+		s.credentialRevision = make(map[string]uint64)
 	}
-	a.credentialRevision[key]++
+	s.credentialRevision[key]++
 }
 
-func (a *App) invalidateCredential(key string) {
-	a.mu.Lock()
-	a.bumpCredentialRevisionLocked(key)
-	a.mu.Unlock()
-	a.probeMu.Lock()
-	a.lastProbeAt = time.Time{}
-	a.probeMu.Unlock()
+func (s *localSession) invalidateCredential(key string) {
+	s.mu.Lock()
+	s.bumpCredentialRevisionLocked(key)
+	s.mu.Unlock()
+	s.probeMu.Lock()
+	s.lastProbeAt = time.Time{}
+	s.probeMu.Unlock()
 }
 
 // CredentialVerify is explicitly fresh after each completed check; only active work is shared.
 func (a *App) CredentialVerify(key string) CredentialStatus { return a.be().CredentialVerify(key) }
 
 // credentialVerifyLocal is the local backend's CredentialVerify.
-func (a *App) credentialVerifyLocal(key string) CredentialStatus {
-	a.refreshMu.Lock()
-	if a.refreshClosed {
-		a.refreshMu.Unlock()
+func (s *localSession) credentialVerifyLocal(key string) CredentialStatus {
+	s.refreshMu.Lock()
+	if s.refreshClosed {
+		s.refreshMu.Unlock()
 		return CredentialStatus{Status: "offline", Message: context.Canceled.Error()}
 	}
-	a.refreshWG.Add(1)
-	a.refreshMu.Unlock()
-	defer a.refreshWG.Done()
-	return a.credentialVerify(a.snapshotRefreshConfig(), key)
+	s.refreshWG.Add(1)
+	s.refreshMu.Unlock()
+	defer s.refreshWG.Done()
+	return s.credentialVerify(s.snapshotRefreshConfig(), key)
 }
 
 // I coalesce stale reconcile requests into one follow-up after the current
 // refresh. The follow-up cannot schedule itself again when edits keep landing.
-func (a *App) retryReconcileAfterRefresh() {
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	if a.refreshClosed {
+func (s *localSession) retryReconcileAfterRefresh() {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	if s.refreshClosed {
 		return
 	}
-	a.mu.Lock()
-	if a.reconcilePending {
-		a.mu.Unlock()
+	s.mu.Lock()
+	if s.reconcilePending {
+		s.mu.Unlock()
 		return
 	}
-	a.reconcilePending = true
-	a.mu.Unlock()
-	ctx := a.refreshContextLocked()
+	s.reconcilePending = true
+	s.mu.Unlock()
+	ctx := s.refreshContextLocked()
 	var waits []<-chan struct{}
-	if a.fetchRun != nil {
-		waits = append(waits, a.fetchRun.done)
+	if s.fetchRun != nil {
+		waits = append(waits, s.fetchRun.done)
 	}
-	if a.statusRun != nil {
-		waits = append(waits, a.statusRun.done)
+	if s.statusRun != nil {
+		waits = append(waits, s.statusRun.done)
 	}
-	a.refreshWG.Go(func() {
+	s.refreshWG.Go(func() {
 		defer func() {
-			a.mu.Lock()
-			a.reconcilePending = false
-			a.mu.Unlock()
+			s.mu.Lock()
+			s.reconcilePending = false
+			s.mu.Unlock()
 		}()
 		for _, done := range waits {
 			select {
@@ -943,7 +946,7 @@ func (a *App) retryReconcileAfterRefresh() {
 			}
 		}
 		if ctx.Err() == nil {
-			a.reconcilePass(false)
+			s.runReconcilePass(false, s.app.reconcileServices())
 		}
 	})
 }

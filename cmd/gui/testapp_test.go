@@ -21,7 +21,7 @@ type testAppOption func(*App)
 // its option here (TestNoAppLiteralsInTests enforces that).
 func newTestApp(opts ...testAppOption) *App {
 	a := new(App)
-	a.localSession = new(localSession)
+	a.localSession = newLocalSession(a)
 	for _, opt := range opts {
 		opt(a)
 	}

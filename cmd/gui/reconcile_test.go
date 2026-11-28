@@ -355,7 +355,7 @@ func TestScanConfig_RejectsStalePlanAfterTwoAttempts(t *testing.T) {
 		a.mu.Unlock()
 		return reconcile.Result{Relink: []reconcile.Relink{{Source: "github-alice", Repo: "team/frontend", Path: "stale"}}}, nil
 	}
-	res, _, err := a.localSession.scanConfig(a.refreshContext)
+	res, _, err := a.localSession.scanConfig()
 	defer a.mu.Unlock()
 	if !errors.Is(err, ErrStalePlan) || calls != 2 || len(res.Relink) != 0 {
 		t.Fatalf("scans=%d result=%+v error=%v", calls, res, err)
@@ -382,7 +382,7 @@ func TestScanConfig_CloneFailureReturnsWithLock(t *testing.T) {
 			a.reconcileScan = func(*config.Config) (reconcile.Result, error) { return reconcile.Result{}, nil }
 			done := make(chan error, 1)
 			go func() {
-				_, _, err := a.localSession.scanConfig(a.refreshContext)
+				_, _, err := a.localSession.scanConfig()
 				if a.mu.TryLock() {
 					err = errors.New("scanConfig returned without the config lock")
 				}
@@ -413,7 +413,7 @@ func TestScanConfig_IgnoresOnlyUIState(t *testing.T) {
 		a.mu.Unlock()
 		return reconcile.Result{}, nil
 	}
-	_, _, err := a.localSession.scanConfig(a.refreshContext)
+	_, _, err := a.localSession.scanConfig()
 	a.mu.Unlock()
 	if err != nil || calls != 1 {
 		t.Fatalf("scans=%d error=%v", calls, err)
@@ -558,7 +558,7 @@ func TestReconcile_WorkspaceReadFailurePreservesSavedWorkspace(t *testing.T) {
 	}
 	events := &refreshTestEvents{}
 	a.events = events
-	res := a.reconcilePass(false)
+	res := a.localSession.runReconcilePass(false, a.reconcileServices())
 	if res.WorkspacesChanged || !reflect.DeepEqual(res.WorkspaceUnknown, []string{"github-alice/team/frontend"}) {
 		t.Fatalf("workspace scan = %+v, want stale workspace and no changes", res)
 	}
@@ -577,7 +577,7 @@ func TestReconcile_WorkspaceReadFailurePreservesSavedWorkspace(t *testing.T) {
 	if err := os.Rename(moved, dir); err != nil {
 		t.Fatal(err)
 	}
-	res = a.reconcilePass(false)
+	res = a.localSession.runReconcilePass(false, a.reconcileServices())
 	if res.WorkspacesChanged || res.WorkspaceUnknown == nil || len(res.WorkspaceUnknown) != 0 || len(events.named("reconcile:done")) != 2 {
 		t.Fatalf("workspace scan = %+v, want a recovery event without a config change", res)
 	}

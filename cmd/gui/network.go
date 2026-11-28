@@ -91,12 +91,12 @@ func serverAddrVia(acct config.Account, proxyFor func(*http.Request) (*url.URL, 
 }
 
 // dialServer is the one connect that decides reachability.
-func (a *App) dialServer(ctx context.Context, addr string) error {
-	if a.refreshHooks != nil {
-		if a.refreshHooks.dial == nil {
+func (s *localSession) dialServer(ctx context.Context, addr string) error {
+	if s.refreshHooks != nil {
+		if s.refreshHooks.dial == nil {
 			return nil // tests that don't care about the network
 		}
-		return a.refreshHooks.dial(ctx, addr)
+		return s.refreshHooks.dial(ctx, addr)
 	}
 	ctx, cancel := context.WithTimeout(ctx, networkDialTimeout)
 	defer cancel()
@@ -122,11 +122,11 @@ func (a *App) dialServer(ctx context.Context, addr string) error {
 // down answers false at once, without a connect: only the watcher and Retry
 // (forgetNetworkDown) try it again. Callers that ask about the same server
 // at the same time share one connect.
-func (a *App) reachable(ctx context.Context, addr string) bool {
+func (s *localSession) reachable(ctx context.Context, addr string) bool {
 	if addr == "" {
 		return true
 	}
-	g := &a.network
+	g := &s.network
 	g.mu.Lock()
 	if g.down[addr] {
 		g.mu.Unlock()
@@ -136,40 +136,40 @@ func (a *App) reachable(ctx context.Context, addr string) bool {
 		g.mu.Unlock()
 		return true
 	}
-	return a.connect(ctx, addr) // unlocks g.mu
+	return s.connect(ctx, addr) // unlocks g.mu
 }
 
 // confirmReachable connects to addr now, whatever was known. Work that just
 // failed for lack of a connection calls it, and so does the monitor: a
 // failure here is what stops everything else on that server.
-func (a *App) confirmReachable(ctx context.Context, addr string) bool {
+func (s *localSession) confirmReachable(ctx context.Context, addr string) bool {
 	if addr == "" {
 		return true
 	}
-	g := &a.network
+	g := &s.network
 	g.mu.Lock()
 	if g.down[addr] {
 		g.mu.Unlock()
 		return false
 	}
-	return a.connect(ctx, addr) // unlocks g.mu
+	return s.connect(ctx, addr) // unlocks g.mu
 }
 
 // recheckDownServer lets an explicit Retry probe only its account's server.
-func (a *App) recheckDownServer(ctx context.Context, addr string) {
-	g := &a.network
+func (s *localSession) recheckDownServer(ctx context.Context, addr string) {
+	g := &s.network
 	g.mu.Lock()
 	if !g.down[addr] {
 		g.mu.Unlock()
 		return
 	}
-	a.connect(ctx, addr)
+	s.connect(ctx, addr)
 }
 
 // connect runs the connect to addr, or joins the one in progress, and
 // records the answer. The caller holds g.mu; connect releases it.
-func (a *App) connect(ctx context.Context, addr string) bool {
-	g := &a.network
+func (s *localSession) connect(ctx context.Context, addr string) bool {
+	g := &s.network
 	if f := g.flights[addr]; f != nil {
 		g.mu.Unlock()
 		select {
@@ -186,7 +186,7 @@ func (a *App) connect(ctx context.Context, addr string) bool {
 	g.flights[addr] = f
 	g.mu.Unlock()
 
-	err := a.dialServer(ctx, addr)
+	err := s.dialServer(ctx, addr)
 	cancelled := ctx.Err() != nil
 
 	g.mu.Lock()
@@ -214,7 +214,7 @@ func (a *App) connect(ctx context.Context, addr string) bool {
 	g.mu.Unlock()
 	close(f.done)
 	if recovered {
-		a.publishNetworkState()
+		s.publishNetworkState()
 	}
 	if err != nil && !cancelled {
 		// The server is gone: stop what is in flight against it, tell the
@@ -222,8 +222,8 @@ func (a *App) connect(ctx context.Context, addr string) bool {
 		for _, op := range stopped {
 			op.cancel()
 		}
-		a.publishNetworkState()
-		a.watchNetwork()
+		s.publishNetworkState()
+		s.watchNetwork()
 	}
 	return f.ok
 }
@@ -232,8 +232,8 @@ func (a *App) connect(ctx context.Context, addr string) bool {
 // a context that is cancelled the moment that server goes down, and the
 // function to call when the work ends. ok is false, and nothing is
 // registered, when the server is not reachable: the work must not start.
-func (a *App) beginNetworkOp(parent context.Context, addr string) (ctx context.Context, end func(), ok bool) {
-	if !a.reachable(parent, addr) {
+func (s *localSession) beginNetworkOp(parent context.Context, addr string) (ctx context.Context, end func(), ok bool) {
+	if !s.reachable(parent, addr) {
 		return parent, func() {}, false
 	}
 	if addr == "" {
@@ -241,7 +241,7 @@ func (a *App) beginNetworkOp(parent context.Context, addr string) (ctx context.C
 	}
 	ctx, cancel := context.WithCancel(parent)
 	op := &networkOp{cancel: cancel}
-	g := &a.network
+	g := &s.network
 	g.mu.Lock()
 	if g.down[addr] { // it went down between the check and now
 		g.mu.Unlock()
@@ -256,7 +256,7 @@ func (a *App) beginNetworkOp(parent context.Context, addr string) (ctx context.C
 	}
 	g.ops[addr][op] = true
 	g.mu.Unlock()
-	a.monitorNetwork()
+	s.monitorNetwork()
 	return ctx, func() {
 		g.mu.Lock()
 		delete(g.ops[addr], op)
@@ -272,19 +272,19 @@ func (a *App) beginNetworkOp(parent context.Context, addr string) (ctx context.C
 // work is in flight it connects every networkMonitorInterval to each server
 // that has some. A failed connect marks the server down, which cancels that
 // work. It ends when no work is in flight.
-func (a *App) monitorNetwork() {
-	g := &a.network
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
+func (s *localSession) monitorNetwork() {
+	g := &s.network
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
 	g.mu.Lock()
-	if a.refreshClosed || g.monitoring || len(g.ops) == 0 {
+	if s.refreshClosed || g.monitoring || len(g.ops) == 0 {
 		g.mu.Unlock()
 		return
 	}
 	g.monitoring = true
 	g.mu.Unlock()
-	ctx := a.refreshContextLocked()
-	a.refreshWG.Go(func() {
+	ctx := s.refreshContextLocked()
+	s.refreshWG.Go(func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -304,7 +304,7 @@ func (a *App) monitorNetwork() {
 			g.mu.Unlock()
 			var wg sync.WaitGroup
 			for _, addr := range addrs {
-				wg.Go(func() { a.confirmReachable(ctx, addr) })
+				wg.Go(func() { s.confirmReachable(ctx, addr) })
 			}
 			wg.Wait()
 		}
@@ -314,8 +314,8 @@ func (a *App) monitorNetwork() {
 // forgetNetworkDown makes the next reachable call connect again to every
 // server. Retry and each new fetch cycle start with it, so they always test
 // the network afresh. It reports whether any server was down.
-func (a *App) forgetNetworkDown() bool {
-	g := &a.network
+func (s *localSession) forgetNetworkDown() bool {
+	g := &s.network
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	wasDown := len(g.down) > 0
@@ -325,8 +325,8 @@ func (a *App) forgetNetworkDown() bool {
 }
 
 // downServers returns the host names of the servers known to be down, sorted.
-func (a *App) downServers() []string {
-	g := &a.network
+func (s *localSession) downServers() []string {
+	g := &s.network
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	hosts := make([]string, 0, len(g.down))
@@ -345,28 +345,28 @@ func (a *App) downServers() []string {
 
 // publishNetworkState tells the window which servers are down. An empty list
 // means the network is back.
-func (a *App) publishNetworkState() {
-	hosts := a.downServers()
-	emit(a.newOperation(), "network:state", networkStateDTO{Offline: len(hosts) > 0, Hosts: hosts})
+func (s *localSession) publishNetworkState() {
+	hosts := s.downServers()
+	emit(s.app.newOperation(), "network:state", networkStateDTO{Offline: len(hosts) > 0, Hosts: hosts})
 }
 
 // watchNetwork starts the watcher unless it is already running. Every
 // networkWatchInterval it connects once to each server that is down. When one
 // answers, it clears it, tells the window and resumes the work with a fetch
 // cycle. It ends when no server is down or the app closes.
-func (a *App) watchNetwork() {
-	g := &a.network
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
+func (s *localSession) watchNetwork() {
+	g := &s.network
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
 	g.mu.Lock()
-	if a.refreshClosed || g.watching || len(g.down) == 0 {
+	if s.refreshClosed || g.watching || len(g.down) == 0 {
 		g.mu.Unlock()
 		return
 	}
 	g.watching = true
 	g.mu.Unlock()
-	ctx := a.refreshContextLocked()
-	a.refreshWG.Go(func() {
+	ctx := s.refreshContextLocked()
+	s.refreshWG.Go(func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -382,7 +382,7 @@ func (a *App) watchNetwork() {
 
 			recovered := false
 			for _, addr := range addrs {
-				if a.dialServer(ctx, addr) != nil || ctx.Err() != nil {
+				if s.dialServer(ctx, addr) != nil || ctx.Err() != nil {
 					continue
 				}
 				g.mu.Lock()
@@ -399,9 +399,9 @@ func (a *App) watchNetwork() {
 			}
 			g.mu.Unlock()
 			if recovered {
-				a.publishNetworkState()
+				s.publishNetworkState()
 				// Pick the work up where the outage stopped it.
-				go func() { _ = a.fetchAllRepos() }()
+				go func() { _ = s.app.fetchAllRepos() }()
 			}
 			if remaining == 0 {
 				return

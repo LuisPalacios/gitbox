@@ -46,28 +46,28 @@ const (
 	maxPullPlans     = 8
 )
 
-func (a *App) previewPullAllLocal() PullPlanDTO {
+func (s *localSession) previewPullAllLocal() PullPlanDTO {
 	var token [16]byte
 	_, _ = rand.Read(token[:])
 	now := time.Now()
 	// A status pass publishes in this lock order. Keep the revision, rows,
 	// and network overlay from the same instant.
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	cfg := a.refreshConfigLocked()
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cfg := s.refreshConfigLocked()
 	plan := PullPlanDTO{
-		PlanID: hex.EncodeToString(token[:]), ConfigRevision: a.configRevision,
+		PlanID: hex.EncodeToString(token[:]), ConfigRevision: s.configRevision,
 		WillClone: []repoRef{}, WillUpdate: []PullPlanItem{}, Skipped: []PullPlanItem{},
 		Offline: []repoRef{}, RepairsPending: []repoRef{},
 	}
 	pending := pendingPullPlan{id: plan.PlanID, expires: now.Add(pullPlanLifetime), cfg: cfg, targets: make(map[repoRef]pullTarget)}
-	rows := make(map[repoRef]StatusResult, len(a.cachedStatus))
-	for _, row := range a.cachedStatus {
+	rows := make(map[repoRef]StatusResult, len(s.cachedStatus))
+	for _, row := range s.cachedStatus {
 		rows[repoRef{Source: row.Source, Repo: row.Repo}] = row
 	}
-	plan.Stale = a.cachedStatusConfig == nil
+	plan.Stale = s.cachedStatusConfig == nil
 	for _, source := range cfg.OrderedSourceKeys() {
 		src := cfg.Sources[source]
 		for _, repo := range src.OrderedRepoKeys() {
@@ -76,24 +76,24 @@ func (a *App) previewPullAllLocal() PullPlanDTO {
 			row, ok := rows[ref]
 			// An unrelated config edit can advance its revision while
 			// leaving a checkout's settings and local evidence intact.
-			if !ok || a.cachedStatusConfig == nil || !a.sameRefreshRepoLocked(a.cachedStatusConfig, source, repo) {
+			if !ok || s.cachedStatusConfig == nil || !s.sameRefreshRepoLocked(s.cachedStatusConfig, source, repo) {
 				plan.Stale = true
 				plan.Skipped = append(plan.Skipped, PullPlanItem{repoRef: ref, Reason: "unknown"})
 				continue
 			}
-			check := a.statusNetwork[key]
+			check := s.statusNetwork[key]
 			identity, identified := statusRepoIdentity(cfg, key)
 			if identified && check.identity == identity && check.refs.After(row.sweepStarted) {
 				plan.Stale = true
 			}
 			evidence := row.pullEvidence
-			repair, knownRepair := a.pullRepairs[key]
+			repair, knownRepair := s.pullRepairs[key]
 			switch {
 			case row.State == status.RootOffline.String():
 				plan.Offline = append(plan.Offline, ref)
 			case evidence.CloneObstructed || (identified && knownRepair && repair == identity && !evidence.CloneMissing):
 				plan.RepairsPending = append(plan.RepairsPending, ref)
-			case a.upstreamGone[source+"/"+repo]:
+			case s.upstreamGone[source+"/"+repo]:
 				plan.Skipped = append(plan.Skipped, PullPlanItem{repoRef: ref, Reason: "upstreamGone"})
 			case evidence.CloneMissing:
 				plan.WillClone = append(plan.WillClone, ref)
@@ -123,20 +123,20 @@ func (a *App) previewPullAllLocal() PullPlanDTO {
 			}
 		}
 	}
-	a.pullPlans = slices.DeleteFunc(a.pullPlans, func(p pendingPullPlan) bool { return !now.Before(p.expires) })
-	if len(a.pullPlans) >= maxPullPlans {
-		a.pullPlans = slices.Delete(a.pullPlans, 0, 1)
+	s.pullPlans = slices.DeleteFunc(s.pullPlans, func(p pendingPullPlan) bool { return !now.Before(p.expires) })
+	if len(s.pullPlans) >= maxPullPlans {
+		s.pullPlans = slices.Delete(s.pullPlans, 0, 1)
 	}
-	a.pullPlans = append(a.pullPlans, pending)
+	s.pullPlans = append(s.pullPlans, pending)
 	return plan
 }
 
-func (a *App) takePullPlan(id string) (pendingPullPlan, bool) {
-	a.refreshMu.Lock()
-	defer a.refreshMu.Unlock()
-	for i, p := range a.pullPlans {
+func (s *localSession) takePullPlan(id string) (pendingPullPlan, bool) {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	for i, p := range s.pullPlans {
 		if p.id == id {
-			a.pullPlans = slices.Delete(a.pullPlans, i, i+1)
+			s.pullPlans = slices.Delete(s.pullPlans, i, i+1)
 			return p, time.Now().Before(p.expires)
 		}
 	}

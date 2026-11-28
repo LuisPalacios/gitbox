@@ -351,10 +351,10 @@ var errServerClosing = &remoteError{remoteNotConnected, "the server is closing"}
 func (a *App) inRequest(ctx context.Context, work func(context.Context)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	stop := context.AfterFunc(a.refreshContext(), cancel)
+	stop := context.AfterFunc(a.localSession.refreshContext(), cancel)
 	defer stop()
 	done := make(chan struct{})
-	if !a.goTracked(func() { defer close(done); work(ctx) }) {
+	if !a.localSession.goTracked(func() { defer close(done); work(ctx) }) {
 		return errServerClosing
 	}
 	<-done

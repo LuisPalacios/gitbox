@@ -39,18 +39,26 @@ func TestAppAndLocalSessionShareNoFieldNames(t *testing.T) {
 	}
 }
 
+// Every App constructor allocates its session and binds the session's App
+// services to that same App.
 func TestAppConstructorsAllocateLocalSession(t *testing.T) {
-	if NewApp().localSession == nil {
-		t.Error("NewApp left localSession nil")
-	}
-	if newTestApp().localSession == nil {
-		t.Error("newTestApp left localSession nil")
+	for name, a := range map[string]*App{"NewApp": NewApp(), "newTestApp": newTestApp()} {
+		if a.localSession == nil {
+			t.Errorf("%s left localSession nil", name)
+			continue
+		}
+		if bound, ok := a.localSession.app.(*App); !ok || bound != a {
+			t.Errorf("%s bound the session to %v, want its own App", name, a.localSession.app)
+		}
 	}
 }
 
 // sessionFiles are the files whose session state moved into localSession
 // (#353). Each later move adds its files here.
-var sessionFiles = []string{"pr.go", "reconcile.go", "roots.go", "containers.go"}
+var sessionFiles = []string{
+	"pr.go", "reconcile.go", "roots.go", "containers.go",
+	"refresh.go", "probe.go", "network.go", "status_freshness.go", "pullplan.go",
+}
 
 // sessionFieldNames is the set of localSession field names.
 func sessionFieldNames() map[string]bool {
@@ -102,8 +110,8 @@ func appSessionReads(t *testing.T, name string, src []byte, fields map[string]bo
 }
 
 // TestSessionFilesReadNoSessionStateThroughApp: the methods left on *App in
-// a moved file only drive services still on App (refresh flights, events,
-// the network guard); every read of session state goes through a method on
+// a moved file only drive services still on App (the backend, events, clone
+// maintenance); every read of session state goes through a method on
 // *localSession (#367).
 func TestSessionFilesReadNoSessionStateThroughApp(t *testing.T) {
 	fields := sessionFieldNames()
@@ -123,7 +131,7 @@ func TestSessionFilesReadNoSessionStateThroughApp(t *testing.T) {
 
 func (a *App) promoted() bool { return a.cfg == nil }
 func (x *App) spelled() { x.localSession.prs.workers++ }
-func (a *App) call() { a.localSession.startPRPass(false, nil); a.refreshMu.Lock() }
+func (a *App) call() { a.localSession.startPRPass(false, nil); a.maintenanceMu.RLock() }
 func (s *localSession) owner() bool { return s.cfg == nil }
 `)
 	found := appSessionReads(t, "fixture.go", bad, fields)

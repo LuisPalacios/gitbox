@@ -22,7 +22,7 @@ func (a *App) PreviewDiagnostics() (string, error) {
 	if a.remoteWindow() {
 		return "", errors.New("diagnostics.localOnly")
 	}
-	ctx, cancel := context.WithTimeout(a.refreshContext(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(a.localSession.refreshContext(), 2*time.Second)
 	defer cancel()
 	gitResult, err := git.Run(ctx, git.Request{Args: []string{"--version"}})
 	var gitVersion string

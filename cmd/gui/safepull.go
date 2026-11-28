@@ -63,11 +63,11 @@ type pullAllDoneDTO struct {
 }
 
 func (a *App) pullRepoLocal(source, repo string) {
-	a.goTracked(func() { a.pullRepoRun(a.refreshContext(), source, repo) })
+	a.localSession.goTracked(func() { a.pullRepoRun(a.localSession.refreshContext(), source, repo) })
 }
 
 func (a *App) pullRepoRun(ctx context.Context, source, repo string) {
-	cfg, revision := a.refreshSnapshot()
+	cfg, revision := a.localSession.refreshSnapshot()
 	a.runSafePull(ctx, cfg, revision, repoRef{source, repo}, "", pullTarget{})
 }
 
@@ -78,11 +78,11 @@ func (a *App) runSafePull(ctx context.Context, cfg *config.Config, revision uint
 	}
 	result := a.safePull(ctx, cfg, ref.Source, ref.Repo, run == "", target)
 	result.Run = run
-	op = a.currentRepoOperation(op, cfg, ref.Source, ref.Repo)
+	op = a.localSession.currentRepoOperation(op, cfg, ref.Source, ref.Repo)
 	emit(op, "pull:done", result)
 	if result.Error == "" && result.Skipped.IsZero() && !result.Unchanged {
 		path := status.RepoPath(cfg, ref.Source, ref.Repo, cfg.Sources[ref.Source].Repos[ref.Repo])
-		a.publishCompletionStatus(ctx, op, cfg, ref.Source, ref.Repo, path)
+		a.localSession.publishCompletionStatus(ctx, op, cfg, ref.Source, ref.Repo, path)
 	}
 	return result
 }
@@ -139,7 +139,7 @@ func (a *App) pullUnderGate(ctx context.Context, cfg *config.Config, source, rep
 			return false, err
 		}
 		result.BehindBefore = eligibility.Behind
-		if !a.sameRefreshRepo(cfg, source, repo) ||
+		if !a.localSession.sameRefreshRepo(cfg, source, repo) ||
 			(target.branch != "" && (target.branch != st.Branch || target.upstream != st.Upstream)) {
 			result.Skipped = skipReason{v: pullSettingsChanged}
 			return false, nil
@@ -200,7 +200,7 @@ func (a *App) pullUnderGate(ctx context.Context, cfg *config.Config, source, rep
 		return "", err
 	}
 	addr := serverAddr(account)
-	return addr, a.onServerCtx(ctx, addr, func(ctx context.Context) error {
+	return addr, a.localSession.onServerCtx(ctx, addr, func(ctx context.Context) error {
 		release, depth, err := a.fetches.acquire(ctx, fetchHostname(account.URL))
 		queueDepth = &depth
 		if err != nil {
@@ -228,11 +228,11 @@ func (a *App) pullUnderGate(ctx context.Context, cfg *config.Config, source, rep
 }
 
 func (a *App) pullAllLocal(run, planID string) {
-	a.goTracked(func() { a.pullAllRun(a.refreshContext(), run, planID) })
+	a.localSession.goTracked(func() { a.pullAllRun(a.localSession.refreshContext(), run, planID) })
 }
 
 func (a *App) pullAllRun(ctx context.Context, run, planID string) {
-	cfg, revision := a.refreshSnapshot()
+	cfg, revision := a.localSession.refreshSnapshot()
 	op := a.newOperation().atRevision(revision)
 	if run == "" || identifier(run) != run {
 		emit(op.currentRevision(), "pull:alldone", pullAllDoneDTO{Run: run, PlanID: planID, Error: "Invalid pull run identifier"})
@@ -243,7 +243,7 @@ func (a *App) pullAllRun(ctx context.Context, run, planID string) {
 	if planID == "" {
 		scope.Pulls, scope.Clones = livePullScope(cfg)
 	} else {
-		plan, ok := a.takePullPlan(planID)
+		plan, ok := a.localSession.takePullPlan(planID)
 		if !ok {
 			emit(op.currentRevision(), "pull:alldone", pullAllDoneDTO{Run: run, PlanID: planID, PlanExpired: true})
 			return
