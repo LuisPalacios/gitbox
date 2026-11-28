@@ -30,7 +30,7 @@ function credentialFixture(store) {
     credTokenInput: 'fixture-token', credResult: null, credBusy: false,
     credTokenGuide: 'https://example.test/tokens', credTokenScopes: '', credPrecheck: null,
     report: null, credChangeModal: 'account', credChangeType: 'token', credForceToken: false,
-    credDeleteBusy: false, credSetupStarted: false, sshTokenDialog: null, credentialFindings: [{ path: 'stale' }],
+    credDeleteBusy: false, credSetupStarted: false, sshTokenDialog: null, $credentialFindings: [{ path: 'stale' }],
     document: { activeElement: null }, HTMLElement: class {}, invoker: null, dialog: null,
     tick: async () => {}, verifyAllCredentials() {}, fetchTokenGuide: async () => {},
     bridge: { credentialStoreToken: store },
@@ -87,11 +87,11 @@ test('I show what the audit found right after a store, and clear an old warning 
     const finding = { path: '/host/credentials/account', problem: 'readable by others', hint: 'chmod 600', exposed: true };
     const fixture = credentialFixture(async () => ({ ok: true, message: 'Saved', findings: [finding] }));
     await fixture[handler]('account', 'token');
-    assert.deepEqual(JSON.parse(JSON.stringify(fixture.credentialFindings)), [finding]);
+    assert.deepEqual(JSON.parse(JSON.stringify(fixture.$credentialFindings)), [finding]);
     fixture.credTokenInput = 'another-fixture-token';
     fixture.bridge.credentialStoreToken = async () => ({ ok: true, message: 'Saved' });
     await fixture[handler]('account', 'token');
-    assert.equal(fixture.credentialFindings.length, 0);
+    assert.equal(fixture.$credentialFindings.length, 0);
   }
 });
 

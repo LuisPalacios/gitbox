@@ -1,15 +1,14 @@
 <script lang="ts">
-  import { applyRepairReports, statusPaintQueue } from './lib/status';
-  import { createSessionController, type StartupStream } from './lib/session/controller';
+  import { createSessionController } from './lib/session/controller';
   import { onDestroy, onMount, tick } from 'svelte';
   import { settingsSaveFailed, bridge, events, setRemoteWindow } from './lib/bridge';
   import type { main } from '../wailsjs/go/models';
   import PullPlanModal from './lib/modals/PullPlanModal.svelte';
-  import type { DoctorPrecheckDTO, RemoteState } from './lib/bridge';
-  import { backgroundAllowed, reloadErrorShown, clearsOnReconnect } from './lib/readonly';
+  import type { DoctorPrecheckDTO } from './lib/bridge';
+  import { backgroundAllowed } from './lib/readonly';
   import {
-    configStore, accounts, sources, mirrors, repoStates, themeStore, applyStatusResults,
-    prsByAccount, prSettings, workspacePlaceholders, workspaceMembers, workspaceUnknown, workspaceDiagnostics,
+    configStore, accounts, sources, mirrors, repoStates, themeStore,
+    prsByAccount, prSettings, workspacePlaceholders,
     remoteWindow, remoteHost
   } from './lib/stores';
   import { detailLocked, accountHealth } from './lib/status';
@@ -22,7 +21,7 @@
   import { languageStore, normalizeLanguage, remoteTextHost, t } from './lib/i18n';
   import { pushNotice, errorText } from './lib/notices';
   import { Quit } from '../wailsjs/runtime/runtime';
-  import type { ConfigDTO, CredentialFinding, CredentialStatus, RepoState, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, OrphanRepoDTO, ReconcileDTO, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, ConfigBackupInfo } from './lib/types';
+  import type { ConfigDTO, CredentialFinding, CredentialStatus, RepoState, MirrorCredentialCheck, EditorInfo, AIHarnessInfo, TerminalAppInfo, ShellInfo, TerminalProfileInfo, WorkspaceChoiceDTO, RepoDetailView, GlobalIdentityWarn, GCMWarn, GitignoreWarn, GitignoreInstalled, StartupSnapshot } from './lib/types';
   import Onboarding from './lib/Onboarding.svelte';
   import ConfigErrorScreen from './lib/components/ConfigErrorScreen.svelte';
   import ReloadErrorBanner from './lib/components/ReloadErrorBanner.svelte';
@@ -64,7 +63,6 @@
   import MirrorTokenModal from './lib/modals/MirrorTokenModal.svelte';
   import CreateRepoModal from './lib/modals/CreateRepoModal.svelte';
   import { repoTreeRows } from './lib/repo-tree';
-  import type { Placeholder } from './lib/repo-tree';
   import { themeChoiceOf, accountPrefill } from './lib/theme';
   import { applyTint } from './lib/tint';
   import type { ThemeChoice } from './lib/theme';
@@ -119,21 +117,21 @@
   let gitignoreError = '';
   let checkGitignorePref = true;
 
-  // ── Session (#379) ──
-  // The controller owns the event listeners and the run bookkeeping they
-  // update; the window renders from its stores and keeps the lifecycle.
+  // ── Session (#379, #380) ──
+  // The controller owns the event listeners, the run bookkeeping they
+  // update and the lifecycle; the window renders from its stores and keeps
+  // layout, modals and navigation.
   const session = createSessionController({
     bridge,
     events,
     host: {
       simple: () => simple,
-      serverOS: () => serverOS,
-      stream: () => currentStream,
-      markStartup,
-      finishTiming: () => finishTiming(),
-      restartDashboard: () => initDashboard(),
+      applySnapshot,
+      applyReload,
+      startupChecks,
+      askWorkspaceChoices: (choices) => { void askWorkspaceChoices(choices); },
+      markRemote,
       refreshDetail,
-      applyReconcile,
       discoverDone: (data) => discoverDialog?.onDone(data),
       quit: () => Quit(),
     },
@@ -143,7 +141,11 @@
     mirrorChecking, mirrorSettingUp, mirrorSetupResultModal, mirrorDiscoverLoading, mirrorDiscoverResults,
     mirrorDiscoverError, mirrorDiscoverProgress, updateInfo, updateApplying, updateProgress, updateDone,
     updateDismissed, rollbackVersion, remoteTint,
+    firstRun, cfgLoadErrorModal, cfgLoadErrorMsg, cfgLoadErrorBusy, cfgRepairFailure, cfgBackups, configPath, serverOS,
+    reloadError, repoNesting, credentialFindings, orphanList, ignoredClones, skippedClones, skippedFolders, skippedScans,
+    orphanCount, workspaceChoices, remoteState, remoteLoaded, remoteLoading,
     executePullAll, failPullAll, markSyncStart, checkAllMirrorStatus, verifyAllCredentials,
+    reloadFromDisk, reloadConfigFromDisk, runReconcile, applyReconcile,
   } = session;
 
   // ── Update state ──
@@ -243,13 +245,12 @@
   }
 
   // ── Onboarding ──
-  let firstRun = false;
   // The dashboard loads the language, but onboarding shows before it does.
-  $: if (firstRun) bridge.getLanguage().then((l) => languageStore.set(normalizeLanguage(l))).catch(() => {});
+  $: if ($firstRun) bridge.getLanguage().then((l) => languageStore.set(normalizeLanguage(l))).catch(() => {});
 
   // ── Config-load-error screen (issue #60, smoke-test feedback) ──
-  // Rendered when Startup detected a config file that existed but failed to
-  // parse. Four recovery actions:
+  // Rendered when the session found a config file that existed but failed
+  // to parse. Four recovery actions, the first three in the session:
   //   • Restore from a dated backup under ~/.config/gitbox/ (primary path)
   //   • Auto-repair — drop dangling mirror/workspace references in place
   //   • Start fresh — walk through onboarding, overwriting the broken file
@@ -258,6 +259,7 @@
   // Rendered as a full-screen Svelte view (NOT a window.confirm) because
   // macOS WebKit was observed to auto-dismiss confirm() without showing a
   // dialog, causing the app to flash and exit on corrupted configs.
+  const { restoreBackup: cfgRestoreBackup, repairConfig: cfgDoRepair, startFresh: cfgStartFresh } = session;
   let rollbackBusy = false;
   let rollbackError = false;
   async function resolveUpdate(rollback: boolean) {
@@ -270,84 +272,8 @@
     finally { rollbackBusy = false; }
   }
 
-  let cfgLoadErrorModal = false;
-  let cfgLoadErrorMsg = '';
-  let cfgLoadErrorBusy = false;
-  let cfgRepairFailure = '';
-  let cfgBackups: ConfigBackupInfo[] = [];
-
-  async function cfgLoadBackups() {
-    try {
-      cfgBackups = await bridge.listConfigBackups();
-    } catch (err) {
-      console.error('listConfigBackups failed', err);
-      cfgBackups = [];
-    }
-  }
-
-  async function cfgRestoreBackup(path: string) {
-    cfgLoadErrorBusy = true;
-    cfgRepairFailure = '';
-    try {
-      const res = await bridge.restoreFromBackup(path);
-      if (!res.success) {
-        cfgRepairFailure = res.error || $t('app.unknownError');
-        await cfgLoadBackups(); // the failed restore may have altered backup count
-        return;
-      }
-      cfgLoadErrorModal = false;
-      cfgLoadErrorMsg = '';
-      firstRun = await bridge.isFirstRun();
-      if (firstRun) return;
-      await initDashboard();
-    } catch (err: any) {
-      cfgRepairFailure = err?.message || String(err);
-    } finally {
-      cfgLoadErrorBusy = false;
-    }
-  }
-
-  async function cfgDoRepair() {
-    cfgLoadErrorBusy = true;
-    cfgRepairFailure = '';
-    try {
-      const res = await bridge.repairConfig();
-      if (!res.success) {
-        cfgRepairFailure = res.error || $t('app.unknownError');
-        await cfgLoadBackups();
-        return;
-      }
-      cfgLoadErrorModal = false;
-      cfgLoadErrorMsg = '';
-      firstRun = await bridge.isFirstRun();
-      if (firstRun) return;
-      await initDashboard();
-    } catch (err: any) {
-      cfgRepairFailure = err?.message || String(err);
-    } finally {
-      cfgLoadErrorBusy = false;
-    }
-  }
-
-  async function cfgStartFresh() {
-    // Acknowledge the corruption so SetGlobalFolder no longer refuses the
-    // first save. The dated backup in ~/.config/gitbox/ preserves the
-    // pre-overwrite copy, so the user can recover manually if needed.
-    cfgLoadErrorBusy = true;
-    try {
-      await bridge.acknowledgeConfigError();
-    } finally {
-      cfgLoadErrorBusy = false;
-    }
-    cfgLoadErrorModal = false;
-    cfgLoadErrorMsg = '';
-    cfgRepairFailure = '';
-    firstRun = true;
-  }
-
   async function finishOnboarding(result: { sourceKey: string; repos: string[] } | null) {
-    firstRun = false;
-    await initDashboard();
+    await session.reset();
     if (result) await cloneRepos(result.sourceKey, result.repos);
   }
 
@@ -365,7 +291,7 @@
   // added on the spot; the Unmatched list opens for the rest.
   async function rescanContainer() {
     const res = await runReconcile();
-    if (orphanList.some(o => o.nested)) {
+    if ($orphanList.some(o => o.nested)) {
       showOrphanModal();
     } else if (res && res.adopted > 0) {
       pushNotice('info', $t(res.adopted === 1 ? 'notice.pickedUpOne' : 'notice.pickedUp', { n: res.adopted }));
@@ -500,14 +426,6 @@
     configStore.set(cfg);
   }
 
-  async function reloadConfigFromDisk() {
-    await bridge.reloadConfig();
-    const snapshot = await bridge.getStartupSnapshot();
-    repoNesting = snapshot.nesting || {};
-    credentialFindings = snapshot.credentialFindings || [];
-    configStore.set(snapshot.config);
-  }
-
   // openTerminalsManagerWindow asks the Go side to spawn a sub-process of
   // gitbox.exe with --terminals-window, which renders the standalone
   // Profile editor in its own OS window. Fire-and-forget; the parent
@@ -542,58 +460,10 @@
     : $t('app.revealFiles');
 
   // ── Disk reconcile (#149) ──
-  // A pass adopts the clones gitbox recognises and re-links moved ones by
-  // itself; orphanList holds the clones that need me (Unmatched clones).
-  let orphanList: OrphanRepoDTO[] = [];
-  let skippedClones: NonNullable<ReconcileDTO['skipped']> = [];
-  let ignoredClones: OrphanRepoDTO[] = [];
-  let orphanCount = 0;
-  let skippedFolders = 0;
-  let skippedScans: NonNullable<ReconcileDTO['skippedScans']> = [];
+  // The session runs the passes and keeps their lists; the Unmatched
+  // clones list and the workspace picker are the window's.
   let orphansDialog: OrphansModal;
   const showOrphanModal = () => orphansDialog.showOrphanModal();
-
-  async function runReconcile(): Promise<ReconcileDTO | null> {
-    try {
-      const res = await bridge.reconcile();
-      await applyReconcile(res);
-      return res;
-    } catch (e) {
-      pushNotice('error', $t('notice.reconcileFailed'), [errorText(e)]);
-      return null;
-    }
-  }
-
-  const incompleteShown = new Set<string>();
-  // applyReconcile shows a pass: the lists, and the config and statuses when
-  // it added or moved anything.
-  async function applyReconcile(res: ReconcileDTO) {
-    if (res.repairs?.length) $repoStates = applyRepairReports($repoStates, res.repairs);
-    if (res.workspaceUnknown) $workspaceUnknown = new Set(res.workspaceUnknown);
-    orphanList = res.unmatched || [];
-    ignoredClones = res.ignored || [];
-    skippedFolders = res.skippedFolders || 0;
-    skippedScans = res.skippedScans || [];
-    skippedClones = res.skipped || [];
-    orphanCount = orphanList.length + skippedClones.length;
-    if (res.error) pushNotice('error', $t('notice.reconcileFailed'), [res.error]);
-    // A clone git never finished is reported once per session (#295).
-    const incomplete = (res.incomplete || []).filter(c => !incompleteShown.has(c.path));
-    for (const c of incomplete) incompleteShown.add(c.path);
-    if (incomplete.length) pushNotice('error', $t('notice.incompleteClone'), incomplete.map(c => `${c.repo}: ${c.path}`));
-    if (res.adopted + res.relinked > 0 || res.workspacesChanged) {
-      $configStore = await bridge.reloadConfig();
-      applyStatusResults(await bridge.getAllStatus());
-    }
-    const byParent: Record<string, Placeholder[]> = {};
-    for (const p of res.placeholders || []) (byParent[p.parent] ??= []).push({ name: p.name, path: p.path, outsidePath: p.outsidePath });
-    $workspacePlaceholders = byParent;
-    $workspaceMembers = new Set(res.workspaceMembers || []);
-    $workspaceDiagnostics = Object.fromEntries((res.workspaceDiagnostics || []).map(d => [d.parent, d]));
-    workspaceChoices = new Set((res.workspaceChoices || []).map(c => `${c.source}/${c.repo}`));
-    await loadNesting();
-    askWorkspaceChoices(res.workspaceChoices || []);
-  }
 
   // ── Container workspace files ──
   async function findWorkspaceFolder(path: string) {
@@ -606,9 +476,9 @@
   }
 
 
-  // Containers whose root holds several .code-workspace files and no pick;
-  // each is asked once per session, then keeps a "choose workspace" hint.
-  let workspaceChoices: Set<string> = new Set();
+  // Containers whose root holds several .code-workspace files and no pick
+  // (the session's workspaceChoices); each is asked once per session, then
+  // keeps a "choose workspace" hint.
   const workspaceAsked = new Set<string>();
   let workspacePicker: WorkspacePickerModal;
 
@@ -644,16 +514,6 @@
     } catch (e) {
       pushNotice('error', $t('notice.workspaceFailed'), [errorText(e)]);
     }
-  }
-
-  // ── Nested-clone display (container repos) ──
-  // child "source/repo" → parent "source/repo", derived from resolved paths.
-  let repoNesting: Record<string, string> = {};
-
-  async function loadNesting() {
-    try {
-      repoNesting = await bridge.repoNesting();
-    } catch { /* I retain the last known nesting when a refresh fails. */ }
   }
 
   // ── Collapse / expand (issue #117) ──
@@ -712,7 +572,7 @@
   // ⌘B (macOS) or Ctrl+B folds the sidebar, except while typing.
   function sidebarKey(e: KeyboardEvent) {
     if (e.key.toLowerCase() !== 'b' || e.altKey || e.shiftKey || !(hostOS === 'darwin' ? e.metaKey : e.ctrlKey)) return;
-    if (firstRun || cfgLoadErrorModal || windowMode !== 'main') return;
+    if ($firstRun || $cfgLoadErrorModal || windowMode !== 'main') return;
     if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
     e.preventDefault();
     toggleSidebar();
@@ -760,7 +620,7 @@
     return derivePresentation($repoStates[key]).attention;
   };
   // Clones in alphabetical order (repo-tree.ts).
-  $: treeRows = repoTreeRows($sources, repoNesting, collapsedRepos, $workspacePlaceholders);
+  $: treeRows = repoTreeRows($sources, $repoNesting, collapsedRepos, $workspacePlaceholders);
 
   // How many repos need me, per account and in total; accounts whose
   // credential needs a fix count too (Needs attention lists them first).
@@ -865,56 +725,14 @@
     discoverDialog.open(accountKey);
   }
 
-  // Banner surfaced when reloadFromDisk() or a mutation fails — usually a
-  // symptom of on-disk config drift (e.g. a dangling reference left by a
-  // prior bug). Cleared the next time reload succeeds.
-  let reloadError = '';
-  let reloadGeneration = 0;
-
-  // Re-read config from disk and refresh all repo statuses. Throws on
-  // failure; callers catch and populate reloadError so the UI does not
-  // silently swallow integrity issues.
-  //
-  // No-op while the config-load-error modal is up — the on-disk file is
-  // known-broken and reloading it would just re-surface the same error
-  // as a banner on top of the modal. The user's choice (Repair / Start
-  // fresh / Exit) is what drives recovery, not ambient focus events.
-  // Same during first-run onboarding: until the folder step saves, there is
-  // no file to read, and a focus event would leave a stale "open …: no such
-  // file" banner behind on the dashboard.
-  async function reloadFromDisk() {
-    if (cfgLoadErrorModal || firstRun) return;
-    // A disconnected remote window has nothing to reload: the disconnect
-    // banner already says so, and the next connection reloads everything.
-    if (!backgroundAllowed(windowMode === 'remote', remoteState?.state)) return;
-    const generation = ++reloadGeneration;
-    try {
-      await bridge.reloadConfig();
-      const snapshot = await bridge.getStartupSnapshot();
-      if (generation !== reloadGeneration) return;
-      repoNesting = snapshot.nesting || {};
-      credentialFindings = snapshot.credentialFindings || [];
-      configStore.set(snapshot.config);
-      events.snapshot(snapshot.eventWatermark, () => $configStore?.revision ?? 0);
-      configPath = snapshot.configPath;
-      // A renamed account: Go already moved the saved view to its new key.
-      // A deleted one: Go cleared it, so Needs attention shows.
-      const shown = viewAccount(view);
-      if (shown && !snapshot.config.accounts?.[shown]) view = snapshot.config.global?.collapsed?.view || 'attention';
-      const saved = snapshot.config.global.periodic_sync || 'off';
-      fetchInterval = saved;
-      if (!$fetchingAll) {
-        const statusVersion = session.statusGeneration;
-        const statuses = await bridge.getAllStatus();
-        if (generation !== reloadGeneration) return;
-        if (statusVersion === session.statusGeneration && !$fetchingAll) applyStatusResults(statuses);
-        if (!$fetchingAll) verifyAllCredentials();
-      }
-      reloadError = '';
-    } catch (err: any) {
-      if (generation === reloadGeneration && reloadErrorShown(err, windowMode === 'remote', remoteState?.state)) reloadError = errorText(err);
-      throw err;
-    }
+  // A reload from disk (the session's reloadFromDisk) also brings the
+  // window settings the config holds: a renamed account's view (Go already
+  // moved the saved view to its new key; a deleted one's goes back to
+  // Needs attention) and the periodic sync.
+  function applyReload(snapshot: StartupSnapshot) {
+    const shown = viewAccount(view);
+    if (shown && !snapshot.config.accounts?.[shown]) view = snapshot.config.global?.collapsed?.view || 'attention';
+    fetchInterval = snapshot.config.global.periodic_sync || 'off';
   }
 
   // ── Delete mode ──
@@ -1025,7 +843,7 @@
   // nothing found clears an earlier warning.
   function tokenStored(res: { findings?: CredentialFinding[] }) {
     credTokenInput = '';
-    credentialFindings = res.findings || [];
+    $credentialFindings = res.findings || [];
   }
 
   // Store a token for the account of the open credential modal (the
@@ -1196,7 +1014,7 @@
         // Newly a container — rescan: recognised nested clones are added in
         // place; the Unmatched list opens for any it couldn't place.
         await runReconcile();
-        if (orphanList.some(o => o.nested)) showOrphanModal();
+        if ($orphanList.some(o => o.nested)) showOrphanModal();
       }
     } catch (e) {
       pushNotice('error', $t('notice.containerFailed'), [errorText(e)]);
@@ -1205,12 +1023,10 @@
 
   // ── Settings ──
   let showSettings = false;
-  let configPath = '';
   let appVersion = '';
-  let hostOS = ''; // "darwin" | "windows" | "linux" — loaded on init
-  // serverOS is the system of the host whose data the window shows: hostOS
-  // in a local window, the remote's in a remote one (#240).
-  let serverOS = '';
+  // The system of this computer, "darwin" | "windows" | "linux"; the
+  // session's serverOS is the host's whose data the window shows (#240).
+  let hostOS = '';
   $: setLinkNoticeTitle($t('link.notOpened'));
   // windowMode tells the frontend which UI to render. The default "main"
   // shows the full gitbox app; "terminals" hides everything except the
@@ -1233,85 +1049,20 @@
   // the last state, dimmed, under a Reconnect banner. A host without a
   // config shows the first-run onboarding, run on the host (#349); while
   // that window is not connected it shows the card, which can reconnect.
-  let remoteState: RemoteState | null = null;
-  let remoteLoaded = false;
-  let remoteLoading = false;
-  $: remoteShowMain = windowMode === 'remote' && remoteLoaded && !(firstRun && remoteState?.state !== 'connected');
+  // The session follows the connection (remoteState, remoteLoaded,
+  // remoteLoading).
+  $: remoteShowMain = windowMode === 'remote' && $remoteLoaded && !($firstRun && $remoteState?.state !== 'connected');
   // Actions stay off from the disconnect until the host's state is known
   // again: through the reload, the reconcile and the status refresh that
   // follow each reconnect (#295).
-  $: remoteOffline = remoteShowMain && (remoteState?.state !== 'connected' || remoteLoading);
+  $: remoteOffline = remoteShowMain && ($remoteState?.state !== 'connected' || $remoteLoading);
 
-  async function onRemoteState(s: RemoteState) {
-    const wasConnected = remoteState?.state === 'connected';
-    // A new connection clears what the disconnection left behind.
-    if (clearsOnReconnect(remoteState?.state, s.state)) reloadError = '';
-    remoteState = s;
-    if (s.state !== 'connected') {
-      // The window keeps what it shows until it knows whether the next
-      // connection resumes the host's daemon (#247): the events it missed
-      // then arrive through the same router, before the connected state.
-      if (wasConnected) session.noteDisconnect();
-      if (wasConnected && currentStream) {
-        statusPass++;
-        retireStream();
-      }
-      if (s.state === 'disconnected' || s.state === 'failed') markStartup('finished');
-      return;
-    }
-    if (wasConnected || remoteLoading) return;
-    remoteLoading = true;
-    // A connection that resumed the host's daemon with every event the
-    // window missed keeps the view, the rows and the work in flight; the
-    // window reads the config and the status again, and starts no fetch
-    // and no reconcile (#247). A window still in onboarding loads again:
-    // the host may have saved its config before the cut (#349).
-    if (remoteLoaded && s.resumed && !firstRun) {
-      try {
-        await reloadFromDisk();
-        const refreshed = session.nextStatus(30_000);
-        await bridge.refreshStatus();
-        await refreshed;
-      } catch (e) {
-        console.error(e);
-      } finally {
-        remoteLoading = false;
-      }
-      return;
-    }
-    // Any other connection, the first one and a reconnect that could not
-    // resume, loads the host's data again; a reconnect keeps the view.
-    if (remoteLoaded) {
-      events.reset();
-      session.forgetOperations();
-      // Onboarding waits behind the card until the host says whether it
-      // still has no config.
-      if (firstRun) remoteLoaded = false;
-    }
-    try {
-      remoteWindow.set(true);
-      remoteTextHost.set(s.alias);
-      setRemoteWindow(true, $t('remote.readOnlyTip'));
-      // What the host did meanwhile is not all known: its rows come back
-      // from the host's status.
-      session.forgetRuns();
-      repoStates.set({});
-      await startMain();
-      // A host without a config shows the onboarding, which saves it there.
-      remoteLoaded = true;
-      if (!firstRun) {
-        // What the host's clones are now: a clone the cut stopped shows as
-        // missing or incomplete before any action is offered.
-        await runReconcile();
-        const refreshed = session.nextStatus(30_000);
-        await bridge.refreshStatus();
-        await refreshed;
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      remoteLoading = false;
-    }
+  // markRemote marks the window as the remote one of alias, before the
+  // session loads the host's data.
+  function markRemote(alias: string) {
+    remoteWindow.set(true);
+    remoteTextHost.set(alias);
+    setRemoteWindow(true, $t('remote.readOnlyTip'));
   }
   let autostartOn = false;
   let autostartSupported = true;
@@ -1319,7 +1070,6 @@
   // ── Doctor (System check) ──
   // DoctorModal runs the check; Settings shows its one-line summary.
   let doctorSummary = '';
-  let credentialFindings: CredentialFinding[] = [];
   let doctorModal: DoctorModal;
   const openDoctorModal = () => doctorModal.openDoctorModal();
 
@@ -1406,7 +1156,7 @@
   // every repo view (RowProps in RepoRow.svelte).
   let rowProps: RowProps;
   $: rowProps = {
-    simple, deleteMode, folderDeleteFailures, fetchingRepos: $fetchingRepos, collapsedRepos, workspaceChoices,
+    simple, deleteMode, folderDeleteFailures, fetchingRepos: $fetchingRepos, collapsedRepos, workspaceChoices: $workspaceChoices,
     revealLabel, configEditors, configProfiles, configAIHarnesses, actionMenuRepo, openPRPopover,
     expandedRepo, repoDetail, detailLoading, repoActions, credentialStatuses: $credStatuses, fixProofCredential,
     activateRepoRow, askDelete, syncRepo, cloneRepo, fetchRepo, toggleActionMenu, closeActionMenu,
@@ -1414,27 +1164,15 @@
     toggleContainer, rescanContainer, chooseWorkspace, findWorkspaceFolder, toggleRepoCollapsed, isContainerRepo, showAccountView,
   };
 
-  let statusPass = 0;
-  let currentStream: StartupStream | null = null;
-  function retireStream() {
-    currentStream?.paint.discard();
-    currentStream?.first();
-    currentStream?.finish();
-    currentStream = null;
-  }
-  const observedStages = new Set<string>();
-  let timingQueue = Promise.resolve();
-  function markStartup(stage: string) {
-    if (observedStages.has(stage)) return;
-    observedStages.add(stage);
-    timingQueue = timingQueue.then(() => bridge.markStartup(stage)).catch(console.error);
-  }
+  // The first repo row on screen is a startup stage of the session.
   let rowObserver: MutationObserver | undefined;
+  let firstRowSeen = false;
   function observeFirstRow() {
-    if (observedStages.has('firstRow')) return;
+    if (firstRowSeen) return;
     const detect = () => {
       if (!document.querySelector('.repo-row')) return;
-      markStartup('firstRow');
+      firstRowSeen = true;
+      session.markStartup('firstRow');
       rowObserver?.disconnect();
       rowObserver = undefined;
     };
@@ -1443,79 +1181,31 @@
     rowObserver.observe(document.body, { childList: true, subtree: true });
     detect();
   }
-  let remoteScheduled = false;
-  const finishTiming = () => {
-    if (currentStream?.full && remoteScheduled) {
-      markStartup('finished');
-    }
-  };
 
   // ── Lifecycle ──
-  async function initDashboard() {
-    const snapshot = await bridge.getStartupSnapshot();
-    if (lifetime.signal.aborted) return;
+  // applySnapshot takes the window's own settings from the snapshot the
+  // session loads its dashboard with.
+  function applySnapshot(snapshot: StartupSnapshot, keepView: boolean) {
     const cfg = snapshot.config;
     themeChoice = themeChoiceOf(cfg.global?.theme);
     applyTheme();
-    repoNesting = snapshot.nesting || {};
-    credentialFindings = snapshot.credentialFindings || [];
     const collapsed = cfg.global?.collapsed;
     collapsedSources = new Set(collapsed?.sources || []);
     collapsedRepos = new Set(collapsed?.repos || []);
     sidebarCollapsed = !!collapsed?.sidebar;
-    // A remote window keeps its view across reconnects: the host's config
-    // does not hold it.
-    if (!(windowMode === 'remote' && remoteLoaded)) view = collapsed?.view || 'attention';
+    if (!keepView) view = collapsed?.view || 'attention';
     languageChoice = normalizeLanguage(cfg.global?.language);
     languageStore.set(languageChoice);
-    configPath = snapshot.configPath;
     appVersion = snapshot.appVersion;
     hostOS = snapshot.os;
-    serverOS = snapshot.serverOS || snapshot.os;
     fetchInterval = cfg.global?.periodic_sync || 'off';
     uiMode = cfg.global?.ui_mode === 'simple' ? 'simple' : 'advanced';
     if (uiMode === 'simple') enterSimple();
     observeFirstRow();
-    configStore.set(cfg);
-    repoStates.set(Object.fromEntries(Object.entries(cfg.sources).flatMap(([sourceKey, source]) =>
-      Object.keys(source.repos).map(repoName => [`${sourceKey}/${repoName}`, $repoStates[`${sourceKey}/${repoName}`] ?? { status: 'unknown' as const, progress: 0, behind: 0, modified: 0, untracked: 0, ahead: 0 }])
-    )));
-    events.snapshot(snapshot.eventWatermark, () => $configStore?.revision ?? 0);
-    const id = ++statusPass;
-    retireStream();
-    let first!: () => void;
-    const firstReady = new Promise<void>(resolve => { first = resolve; });
-    let finish!: () => void;
-    const completed = new Promise<void>(resolve => { finish = resolve; });
-    const paint = statusPaintQueue(rows => {
-      if (currentStream?.id !== id || $configStore?.revision !== cfg.revision) return;
-      for (const row of rows) currentStream.pending.delete(`${row.source}/${row.repo}`);
-      applyStatusResults(rows, true);
-    });
-    currentStream = { id, first, finish, full: false, painted: false, pending: new Set(Object.keys($repoStates)), paint };
-    remoteScheduled = false;
-    try {
-      await bridge.beginStatus(id);
-      await firstReady;
-    } catch (e) {
-      if (id !== statusPass) return;
-      repoStates.update(states => Object.fromEntries(Object.entries(states).map(([key, state]) =>
-        [key, state.status === 'unknown' ? { ...state, status: 'error' as const, error: errorText(e) } : state]
-      )));
-      finish();
-      markStartup('finished');
-    }
-    if (id !== statusPass) return;
-    if (Object.keys(cfg.accounts).length) markStartup('firstRemote');
-    remoteScheduled = true;
-    finishTiming();
+  }
 
-    // Fetch all repos on startup to detect behind/ahead changes.
-    runFetchAll();
-
-    // Check mirror sync status on startup.
-    checkAllMirrorStatus();
-
+  // startupChecks runs the window's checks once the first status is in.
+  async function startupChecks() {
     // Check for global ~/.gitconfig identity (warns user if set).
     checkGlobalIdentity();
 
@@ -1540,14 +1230,6 @@
     // Start fleet work on the first batch, including the optional PR fetch.
     await loadPRSettings();
     refreshAllPRs();
-
-    // Reconcile walks the same clone trees as local status. Let the first
-    // sweep finish before starting that second disk traversal.
-    if (windowMode === 'remote') {
-      await completed; // The reconnect flow starts its own reconcile after init.
-    } else {
-      void completed.then(() => { if (id === statusPass) void runReconcile(); });
-    }
   }
 
   async function setUIMode(mode: 'simple' | 'advanced') {
@@ -1575,16 +1257,13 @@
   let focusTimer: ReturnType<typeof setTimeout> | undefined;
   onDestroy(() => {
     lifetime.abort();
-    session.destroy();
+    session.stop();
     clearTimeout(focusTimer);
     rowObserver?.disconnect();
-    reloadGeneration++;
-    statusPass++;
-    retireStream();
   });
 
   onMount(async () => {
-    markStartup('mount');
+    session.markStartup('mount');
     // Load the window mode before anything else — the terminals sub-process
     // skips most of the heavy init below and renders only the Profile
     // editor.
@@ -1605,7 +1284,7 @@
       // Language and UI mode are client preferences, so they are here
       // before the connection; the theme follows the OS until the host's
       // config arrives. The rest of the setup below runs too, and the
-      // host's data loads once the connection is up (onRemoteState).
+      // host's data loads once the connection is up (session.start).
       try { languageStore.set(normalizeLanguage(await bridge.getLanguage())); } catch (e) { console.error(e); }
       try { uiMode = (await bridge.getUIMode()) === 'simple' ? 'simple' : 'advanced'; } catch (e) { console.error(e); }
       try { hostOS = await bridge.getOS(); } catch (e) { console.error(e); }
@@ -1634,7 +1313,7 @@
       RemoteHostsWindow = (await import('./lib/components/RemoteHostsWindow.svelte')).default;
       await hydrate();
       if (lifetime.signal.aborted) return;
-      markStartup('finished');
+      session.markStartup('finished');
       window.addEventListener('focus', () => { hydrate(); }, { signal: lifetime.signal });
       await tick();
       // A hidden WebKit view runs no animation frames, so waiting for two
@@ -1664,7 +1343,7 @@
       TerminalsModal = (await import('./lib/TerminalsModal.svelte')).default;
       await hydrate();
       if (lifetime.signal.aborted) return;
-      markStartup('finished');
+      session.markStartup('finished');
       // The parent uses HideWindowOnClose, so a "second open" of the
       // Manager just re-shows this same hidden window. Re-hydrate the
       // config on focus so the table reflects any wezterm.lua /
@@ -1708,10 +1387,10 @@
     // connected and not still syncing after a reconnect.
     window.addEventListener('focus', () => {
       // Showing this window for the first time already has a fresh snapshot.
-      if (!lostFocus && !currentStream?.full) return;
+      if (!lostFocus && !session.statusComplete()) return;
       lostFocus = false;
-      if (firstRun) return; // The wizard owns the choice of the first project.
-      if (windowMode === 'remote' && (!remoteShowMain || remoteLoading || !backgroundAllowed(true, remoteState?.state))) return;
+      if ($firstRun) return; // The wizard owns the choice of the first project.
+      if (windowMode === 'remote' && (!remoteShowMain || $remoteLoading || !backgroundAllowed(true, $remoteState?.state))) return;
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => reloadFromDisk().then(() => { runReconcile(); }, () => {}), 300);
       bridge.refreshAIHarnesses().catch(() => {});
@@ -1720,58 +1399,21 @@
     // ── Event listeners (always registered) ──
     session.listen();
 
+    // A remote window loads the host's data on each connection.
     if (windowMode === 'remote') {
-      session.watchRemoteState((st) => { void onRemoteState(st); });
-      try { await onRemoteState(await bridge.remoteInfo()); } catch (e) { console.error(e); }
+      await session.start(true);
       return;
     }
     try { $rollbackVersion = await bridge.checkUpdateRecovery(false); }
     catch { pushNotice('error', $t('app.rollbackFailed')); }
     if (lifetime.signal.aborted) return;
-    await startMain();
+    await session.start(false);
     // Let the first frame paint before confirmation and backup cleanup.
     if (!$rollbackVersion && !lifetime.signal.aborted) requestAnimationFrame(() => setTimeout(() => {
       if (lifetime.signal.aborted) return;
       bridge.checkUpdateRecovery(true).catch(() => pushNotice('error', $t('app.rollbackFailed')));
     }, 0));
   });
-
-  // startMain loads the config and the dashboard: at launch in a local
-  // window, on each connection in a remote one.
-  async function startMain() {
-    // Check if config failed to parse (file exists but is broken/unsupported).
-    // Render an in-app modal rather than window.confirm — macOS WebKit has
-    // been observed to auto-dismiss confirm() without showing a dialog,
-    // which caused GitboxApp to "flash and exit" on mac with a malformed
-    // config. The modal stays mounted until the user clicks a button.
-    const loadError = await bridge.getConfigLoadError();
-    if (lifetime.signal.aborted) return;
-    if (loadError) {
-      cfgLoadErrorMsg = loadError;
-      // Populate configPath and the backup list before showing the screen
-      // so everything renders in one pass — no flash of empty state.
-      try {
-        configPath = await bridge.getConfigPath();
-      } catch { /* fall back to the template's default placeholder */ }
-      await cfgLoadBackups();
-      cfgLoadErrorModal = true;
-      markStartup('finished');
-      return; // onMount stops here; dashboard init resumes after the user
-              // picks Restore / Auto-repair / Start fresh / Exit.
-    }
-
-    // Check first run — show onboarding if no folder configured.
-    firstRun = await bridge.isFirstRun();
-    if (lifetime.signal.aborted) return;
-    if (firstRun) {
-      events.snapshot(0, () => 0);
-      markStartup('finished');
-      return;
-    }
-
-    try { await initDashboard(); }
-    catch (e) { markStartup('finished'); throw e; }
-  }
 
 </script>
 
@@ -1825,44 +1467,44 @@
   <div class="rollback-notice" role="status">
     <span class="rollback-title">{$t($rollbackVersion === 'previous' ? 'app.rollbackUnknown' : 'app.rollbackNotice', { version: $rollbackVersion })}</span>
     <button class="text-btn" disabled={rollbackBusy} on:click={() => resolveUpdate(true)}>{$t('app.rollback')}</button>
-    {#if !cfgLoadErrorModal}
+    {#if !$cfgLoadErrorModal}
       <button class="text-btn" disabled={rollbackBusy} on:click={() => resolveUpdate(false)}>{$t('app.keepUpdate')}</button>
     {/if}
     {#if rollbackError}<span role="alert">{$t('app.rollbackFailed')}</span>{/if}
   </div>
 {/if}
 <!-- ── CONFIG LOAD ERROR ── -->
-{#if cfgLoadErrorModal}
-<ConfigErrorScreen {configPath} {cfgLoadErrorMsg} {cfgRepairFailure} {cfgBackups} {cfgLoadErrorBusy} {cfgRestoreBackup} {cfgDoRepair} {cfgStartFresh} />
+{#if $cfgLoadErrorModal}
+<ConfigErrorScreen configPath={$configPath} cfgLoadErrorMsg={$cfgLoadErrorMsg} cfgRepairFailure={$cfgRepairFailure} cfgBackups={$cfgBackups} cfgLoadErrorBusy={$cfgLoadErrorBusy} {cfgRestoreBackup} {cfgDoRepair} {cfgStartFresh} />
 
 <!-- ── ONBOARDING ── -->
-{:else if firstRun}
+{:else if $firstRun}
 <Onboarding {simple} mode="first-run" onDone={finishOnboarding} />
 {:else}
 
 <div class="app" class:remote-offline={remoteOffline}>
 
-  {#if remoteOffline && remoteState}
+  {#if remoteOffline && $remoteState}
     <div class="remote-offline-banner" role="status">
-      {#if remoteState.state === 'connected'}
-        <span>{$t('remote.syncing', { alias: remoteState.alias })}</span>
+      {#if $remoteState.state === 'connected'}
+        <span>{$t('remote.syncing', { alias: $remoteState.alias })}</span>
       {:else}
-        <span>{$t('remote.offline', { alias: remoteState.alias })}</span>
-        {#if remoteState.state === 'connecting' && remoteState.waiting}<span class="remote-waiting" role="status"><span aria-hidden="true">&#9888;</span> {$t(`remote.waiting.${remoteState.waiting}`)}</span>{/if}
-        {#if remoteState.state === 'connecting' && remoteState.attempt}<span class="remote-attempt">{$t('remote.reconnecting', { attempt: remoteState.attempt, attempts: remoteState.attempts ?? remoteState.attempt })}</span>{/if}
-        <button class="remote-reconnect" disabled={remoteState.state === 'connecting' || remoteState.state === 'installing'}
+        <span>{$t('remote.offline', { alias: $remoteState.alias })}</span>
+        {#if $remoteState.state === 'connecting' && $remoteState.waiting}<span class="remote-waiting" role="status"><span aria-hidden="true">&#9888;</span> {$t(`remote.waiting.${$remoteState.waiting}`)}</span>{/if}
+        {#if $remoteState.state === 'connecting' && $remoteState.attempt}<span class="remote-attempt">{$t('remote.reconnecting', { attempt: $remoteState.attempt, attempts: $remoteState.attempts ?? $remoteState.attempt })}</span>{/if}
+        <button class="remote-reconnect" disabled={$remoteState.state === 'connecting' || $remoteState.state === 'installing'}
           on:click={() => bridge.remoteReconnect().catch(console.error)}>{$t('remote.reconnect')}</button>
       {/if}
     </div>
   {/if}
-  <ReloadErrorBanner bind:reloadError remote={windowMode === 'remote'} />
+  <ReloadErrorBanner bind:reloadError={$reloadError} remote={windowMode === 'remote'} />
   <OfflineBanner hosts={$networkDown} retrying={$fetchingAll} onRetry={() => runFetchAll(true)} />
-  <CredentialWarning findings={credentialFindings} onReview={openDoctorModal} />
+  <CredentialWarning findings={$credentialFindings} onReview={openDoctorModal} />
 
   <!-- ══════ DASHBOARD ══════ -->
 
   <!-- ── TOP BAR ── -->
-  <TopBar {simple} syncing={$syncing} pullPlanBusy={loadingPullPlan || !!pullPlan} fetchingAll={$fetchingAll} {themeChoice} bind:deleteMode bind:showSettings remote={windowMode === 'remote' ? remoteState : null}
+  <TopBar {simple} syncing={$syncing} pullPlanBusy={loadingPullPlan || !!pullPlan} fetchingAll={$fetchingAll} {themeChoice} bind:deleteMode bind:showSettings remote={windowMode === 'remote' ? $remoteState : null}
     {syncAll} runFetchAll={() => runFetchAll(true)} {cycleTheme} {setUIMode} {rail} {sidebarShortcut} {toggleSidebar} {setView} />
 
   <!-- ── ACTIVITY STRIP (Fetch all / Pull all) ── -->
@@ -1873,20 +1515,20 @@
     {globalGCMFixing} {gitignoreInstalling} {fixGlobalIdentity} {fixGlobalGCM} {installGlobalGitignore} />
 
   <!-- ── SETTINGS PANEL ── -->
-  <SettingsPanel {onRecipeImported} {showSettings} {simple} {configPath} {languageChoice} {themeChoice} {fetchInterval} lastFetchTime={$lastFetchTime}
+  <SettingsPanel {onRecipeImported} {showSettings} {simple} configPath={$configPath} {languageChoice} {themeChoice} {fetchInterval} lastFetchTime={$lastFetchTime}
     {autostartSupported} {autostartOn} {checkGitignorePref} {doctorSummary} {terminalsManagerOpening} {appVersion}
     {openRoots} {setLanguage} {setTheme} {setFetchInterval} {toggleAutostart} {setPRBadgesEnabled}
     {setPRIncludeDrafts} {setCheckGitignorePref} {openDoctorModal} {openTerminalsManagerWindow} />
 
   <div class="body">
     <!-- ── SIDEBAR ── -->
-    <Sidebar view={currentView} {rail} {simple} credStatuses={$credStatuses} {attention} {totalRepos} {orphanCount} scanIncomplete={skippedFolders > 0} ignoredCount={ignoredClones.length}
+    <Sidebar view={currentView} {rail} {simple} credStatuses={$credStatuses} {attention} {totalRepos} orphanCount={$orphanCount} scanIncomplete={$skippedFolders > 0} ignoredCount={$ignoredClones.length}
       {setView} onAddAccount={addAccount} {showOrphanModal} />
 
     <main class="content">
     {#if currentView === 'attention'}
       <!-- ── NEEDS ATTENTION ── -->
-      <AttentionView {rankOf} {repoNesting} credStatuses={$credStatuses} {rowProps} {setView} {fixCredential} onAddAccount={addAccount} />
+      <AttentionView {rankOf} repoNesting={$repoNesting} credStatuses={$credStatuses} {rowProps} {setView} {fixCredential} onAddAccount={addAccount} />
     {:else if currentView === 'all'}
       <!-- ── ALL REPOS ── -->
       <RepoList {treeRows} {collapsedSources} credStatuses={$credStatuses} {actionMenuAccount} {rowProps}
@@ -1899,7 +1541,7 @@
         onDeleteGroup={(mirrorKey) => deleteMirrorGroupDialog.ask(mirrorKey)} onDeleteRepo={(mirrorKey, repoKey) => deleteMirrorRepoDialog.ask(mirrorKey, repoKey)} />
     {:else}
       <!-- ── ONE ACCOUNT ── -->
-      <AccountView accountKey={viewAcct} {repoNesting} {rankOf} credStatuses={$credStatuses} {actionMenuAccount} {rowProps}
+      <AccountView accountKey={viewAcct} repoNesting={$repoNesting} {rankOf} credStatuses={$credStatuses} {actionMenuAccount} {rowProps}
         {toggleAccountMenu} {closeAccountMenu} {askDeleteAccount} {openEditAccount} {openCredChange} {openDiscover} {openCreateRepo} {fixCredential} />
     {/if}
     </main>
@@ -1920,7 +1562,7 @@
        (subprocess spawn), so no in-app modal is mounted here. -->
 
   <!-- ── DOCTOR (SYSTEM CHECK) MODAL ── -->
-  <DoctorModal advanced={!simple} bind:this={doctorModal} bind:doctorSummary bind:credentialFindings />
+  <DoctorModal advanced={!simple} bind:this={doctorModal} bind:doctorSummary bind:credentialFindings={$credentialFindings} />
 
   <!-- ── SSH DISCOVERY TOKEN MODAL ── -->
   <SshTokenModal bind:this={sshTokenDialog} {openDiscover} />
@@ -1935,7 +1577,7 @@
   <SweepModal bind:this={sweepDialog} {closeActionMenu} />
 
   <!-- ── ORPHAN ADOPTION MODAL ── -->
-  <OrphansModal bind:this={orphansDialog} unmatched={orphanList} ignored={ignoredClones} skipped={skippedClones} {skippedFolders} {skippedScans} {applyReconcile} {revealLabel} profiles={configProfiles} addAccountFor={addAccountForClone} />
+  <OrphansModal bind:this={orphansDialog} unmatched={$orphanList} ignored={$ignoredClones} skipped={$skippedClones} skippedFolders={$skippedFolders} skippedScans={$skippedScans} {applyReconcile} {revealLabel} profiles={configProfiles} addAccountFor={addAccountForClone} />
 
   <!-- ── ADD ACCOUNT MODAL ── -->
   {#if connectModal}
@@ -1945,7 +1587,7 @@
   <AddAccountModal bind:this={addAccountDialog} {simple} bind:credResult bind:credTokenInput bind:credPrecheck {credBusy} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {runCredSetup} {fetchTokenGuide} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── CHANGE CREDENTIAL MODAL ── -->
-  <CredentialModal bind:this={credentialDialog} {simple} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses={$credStatuses} {credTokenGuide} {credTokenScopes} {sshKeyCopied} {serverOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
+  <CredentialModal bind:this={credentialDialog} {simple} bind:credResult bind:credBusy bind:credTokenInput bind:credPrecheck bind:credStatuses={$credStatuses} {credTokenGuide} {credTokenScopes} {sshKeyCopied} serverOS={$serverOS} {copySSHKey} {resetCredState} {verifyAllCredentials} {reloadFromDisk} {runCredentialPrecheck} {fetchTokenGuide} {credPostSetup} {storeCredToken} {verifySSHConnection} {regenerateSSHKey} />
 
   <!-- ── DELETE ACCOUNT MODAL ── -->
   <DeleteAccountModal bind:this={deleteAccountDialog} bind:deleteMode {simple} {reloadFromDisk} />
