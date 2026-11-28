@@ -33,6 +33,9 @@ const (
 	// Host support.
 	CodeUnsupportedOS   Code = "unsupported_os"
 	CodeUnsupportedArch Code = "unsupported_arch"
+	// CodeUnsupportedIntelMac: a Mac with an Intel processor. Remote mode
+	// runs on Macs with Apple silicon only.
+	CodeUnsupportedIntelMac Code = "unsupported_intel_mac"
 
 	// The server binary and its build.
 	CodeServerTargetMissing Code = "server_target_missing"

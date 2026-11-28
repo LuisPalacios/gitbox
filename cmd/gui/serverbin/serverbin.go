@@ -37,12 +37,9 @@ type Target struct {
 func (t Target) Name() string { return t.OS + "/" + t.Arch }
 
 // Supported lists every target a release embeds, in the order they are
-// reported.
-var Supported = []string{
-	"linux/amd64", "linux/arm64",
-	"darwin/amd64", "darwin/arm64",
-	"windows/amd64", "windows/arm64",
-}
+// reported. Remote mode runs on Linux and on Macs with Apple silicon (#350);
+// Windows hosts come later (#246).
+var Supported = []string{"linux/amd64", "linux/arm64", "darwin/arm64"}
 
 // FileName is the name of a target's compressed binary inside this package.
 func FileName(goos, goarch string) string {

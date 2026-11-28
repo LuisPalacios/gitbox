@@ -83,15 +83,15 @@ cmd/gui/build/bin/GitboxApp --list-server-targets   # macOS: GitboxApp.app/Conte
 ```
 
 - `scripts/stamp.sh` prints the build identity: `VERSION`, `COMMIT` (always the full SHA) and the `LDFLAGS` that stamp both into a binary. `VERSION` is `GITBOX_VERSION` when that is set, as CI, the release script and the gate do; otherwise it is `git describe --tags --always --dirty` plus `-dev`. A GitboxApp only talks to a `gitbox-server` of the same version and commit, so every build path takes both from here.
-- `scripts/build-server.sh` cross-compiles the server for each target in `GITBOX_SERVER_TARGETS`. `all` means Linux, macOS and Windows on amd64 and arm64; the default is `linux/amd64,linux/arm64,darwin/arm64`. It leaves one gzip file per target and `zz_generated.go` in `cmd/gui/serverbin/`, and git ignores both. The generated file pins each binary by the SHA-256 of its uncompressed bytes.
+- `scripts/build-server.sh` cross-compiles the server for each target in `GITBOX_SERVER_TARGETS`. `all`, the default, means the hosts remote mode supports: `linux/amd64`, `linux/arm64` and `darwin/arm64`. It leaves one gzip file per target and `zz_generated.go` in `cmd/gui/serverbin/`, and git ignores both. The generated file pins each binary by the SHA-256 of its uncompressed bytes.
 - The `serverbin` build tag embeds them. A build without the tag has no server inside and needs none of those files, which is how `go vet`, `go test` and the health check keep working on a clean checkout.
 - `GitboxApp --list-server-targets` prints the build of the embedded server and one line per target with its size and SHA-256. It reads each binary back against its pin, and it fails when the app could not run remote mode: `unstamped_build`, `server_target_missing` or `server_build_mismatch`.
 
 `wails build` rewrites whitespace in the generated bindings, so the tree looks modified afterwards and the next development stamp says `-dirty`. That is harmless, because the stamp is taken once and both binaries get the same one; `git checkout -- cmd/gui/frontend/wailsjs` clears it.
 
-Release builds, the gate and CI embed all six targets and run `scripts/check-gui-artifact.sh` on the result. It checks that the app reports exactly the stamp it was built from, that it carries the targets `build-server.sh` was asked for, and that the main executable stays within its ceiling in `scripts/size-ceilings.txt`: its size before it carried the server, plus 30 MiB.
+Release builds, the gate and CI embed all three targets and run `scripts/check-gui-artifact.sh` on the result. It checks that the app reports exactly the stamp it was built from, that it carries the targets `build-server.sh` was asked for, and that the main executable stays within its ceiling in `scripts/size-ceilings.txt`: its size before it carried the server, plus 30 MiB.
 
-On a CI runner the server build takes about 100 seconds, because nothing of the six cross-compiled targets is cached there; with a warm cache, as in the gate, it takes 8 to 14. I accept that cost: it only applies to releases and dry runs.
+On a CI runner the server build takes about 100 seconds, because nothing of the three cross-compiled targets is cached there; with a warm cache, as in the gate, it takes 8 to 14. I accept that cost: it only applies to releases and dry runs.
 
 ### Design rules
 

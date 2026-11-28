@@ -112,6 +112,7 @@ func TestProbeResolve(t *testing.T) {
 		{"Linux", "riscv64", "", "", CodeUnsupportedArch},
 		{"Linux", "armv7l", "", "", CodeUnsupportedArch},
 		{"Darwin", "arm64", "darwin", "arm64", ""},
+		{"Darwin", "x86_64", "", "", CodeUnsupportedIntelMac},
 		{"MINGW64_NT-10.0-26300", "x86_64", "", "", CodeUnsupportedOS},
 		{"MSYS_NT-10.0", "x86_64", "", "", CodeUnsupportedOS},
 		{"CYGWIN_NT-10.0", "x86_64", "", "", CodeUnsupportedOS},

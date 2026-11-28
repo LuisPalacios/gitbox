@@ -100,10 +100,15 @@ build_arch() {
             -ldflags "$LDFLAGS" >"$out/build-$arch.log" 2>&1
     ) || die "build failed for $arch, see $out/build-$arch.log"
     # This machine runs the arm64 app, so that one answers for its identity;
-    # the amd64 app is only measured.
-    local v exe="$bin/GitboxApp.app/Contents/MacOS/GitboxApp" what="all"
-    v="$("$exe" --version 2>/dev/null || true)"
-    [[ "$arch" == "arm64" ]] || what="--size-only"
+    # the amd64 app is only measured, never started. Starting it runs it
+    # under Rosetta, and macOS then lists GitboxApp as an Intel app that
+    # stops opening in a later release (#350).
+    local v="" exe="$bin/GitboxApp.app/Contents/MacOS/GitboxApp" what="all"
+    if [[ "$arch" == "arm64" ]]; then
+        v="$("$exe" --version 2>/dev/null || true)"
+    else
+        what="--size-only"
+    fi
     if [[ "$what" == "all" ]]; then
         VERSION="$VERSION" COMMIT="$COMMIT" bash "$src/scripts/check-gui-artifact.sh" \
             "$exe" "darwin/$arch" >>"$out/build-$arch.log" 2>&1

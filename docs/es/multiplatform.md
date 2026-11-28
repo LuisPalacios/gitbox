@@ -89,7 +89,7 @@ Empieza en la máquina donde trabajas: compila la GUI como se describe en [devel
 ./scripts/ship.sh myhost     # solo el host cuyo nombre corto coincide
 ```
 
-El nombre corto es la parte de host de `user@host` sin su dominio; el valor completo `user@host` también funciona. Antes de enviar nada, `ship.sh` construye los binarios de `gitbox-server` en esta máquina con `scripts/build-server.sh` (los dos targets de Linux, salvo que `GITBOX_SERVER_TARGETS` diga otra cosa), así que todos los remotos embeben los mismos. Después, para cada remoto, `ship.sh`:
+El nombre corto es la parte de host de `user@host` sin su dominio; el valor completo `user@host` también funciona. Antes de enviar nada, `ship.sh` construye los binarios de `gitbox-server` en esta máquina con `scripts/build-server.sh` (los targets de Linux y Apple silicon, salvo que `GITBOX_SERVER_TARGETS` diga otra cosa), así que todos los remotos embeben los mismos. Después, para cada remoto, `ship.sh`:
 
 1. Envía el código fuente con `tar | ssh` a `~/gitbox-remote-build`, sin `.git`, `.env`, `node_modules` ni la salida de build. Los binarios del servidor viajan dentro.
 2. Compila el frontend y después ejecuta `wails build -s -tags serverbin` con la versión y el commit del checkout local, tomados de `scripts/stamp.sh` y estampados mediante `-ldflags`, para que el binario remoto no muestre `dev-none`. Después ejecuta `scripts/check-gui-artifact.sh --no-size` en el remoto: la app debe informar de ese sello y llevar los binarios del servidor del mismo build.

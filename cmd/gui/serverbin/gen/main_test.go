@@ -57,7 +57,7 @@ func TestCompress(t *testing.T) {
 }
 
 func TestParseTargets(t *testing.T) {
-	got, err := parseTargets("windows/arm64,linux/amd64,darwin/arm64")
+	got, err := parseTargets("darwin/arm64,linux/arm64,linux/amd64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,10 +65,10 @@ func TestParseTargets(t *testing.T) {
 	for _, target := range got {
 		names = append(names, target.Name())
 	}
-	if want := "linux/amd64 darwin/arm64 windows/arm64"; strings.Join(names, " ") != want {
+	if want := "linux/amd64 linux/arm64 darwin/arm64"; strings.Join(names, " ") != want {
 		t.Errorf("targets = %v, want %s (the order package serverbin reports)", names, want)
 	}
-	for _, bad := range []string{"", "plan9/amd64", "linux/amd64,linux/amd64", "linux/amd64,", "linux"} {
+	for _, bad := range []string{"", "plan9/amd64", "darwin/amd64", "windows/amd64", "linux/amd64,linux/amd64", "linux/amd64,", "linux"} {
 		if _, err := parseTargets(bad); err == nil {
 			t.Errorf("parseTargets(%q) accepted the list", bad)
 		}
@@ -80,16 +80,16 @@ func TestParseTargets(t *testing.T) {
 func TestRun(t *testing.T) {
 	in, out := t.TempDir(), t.TempDir()
 	linux := bytes.Repeat([]byte("linux server "), 500)
-	windows := bytes.Repeat([]byte("windows server "), 700)
+	darwin := bytes.Repeat([]byte("darwin server "), 700)
 	for name, data := range map[string][]byte{
-		"gitbox-server-linux-arm64":       linux,
-		"gitbox-server-windows-amd64.exe": windows,
+		"gitbox-server-linux-arm64":  linux,
+		"gitbox-server-darwin-arm64": darwin,
 	} {
 		if err := os.WriteFile(filepath.Join(in, name), data, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	stale := filepath.Join(out, "gitbox-server-darwin-arm64.gz")
+	stale := filepath.Join(out, "gitbox-server-linux-amd64.gz")
 	keep := filepath.Join(out, "embed.go")
 	for _, path := range []string{stale, keep, filepath.Join(out, generatedFile)} {
 		if err := os.WriteFile(path, []byte("from an earlier run"), 0o644); err != nil {
@@ -97,7 +97,7 @@ func TestRun(t *testing.T) {
 		}
 	}
 
-	if err := run(in, out, testVersion, testCommit, "windows/amd64,linux/arm64"); err != nil {
+	if err := run(in, out, testVersion, testCommit, "darwin/arm64,linux/arm64"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -108,8 +108,8 @@ func TestRun(t *testing.T) {
 		t.Error("run touched a file that is not its own")
 	}
 	for name, want := range map[string][]byte{
-		"gitbox-server-linux-arm64.gz":       linux,
-		"gitbox-server-windows-amd64.exe.gz": windows,
+		"gitbox-server-linux-arm64.gz":  linux,
+		"gitbox-server-darwin-arm64.gz": darwin,
 	} {
 		packed, err := os.ReadFile(filepath.Join(out, name))
 		if err != nil {
@@ -136,13 +136,13 @@ func TestRun(t *testing.T) {
 		`Version = "` + testVersion + `"`,
 		`Commit  = "` + testCommit + `"`,
 		`{OS: "linux", Arch: "arm64", Size: 6500, SHA256: "` + sum(linux) + `"}`,
-		`{OS: "windows", Arch: "amd64", Size: 10500, SHA256: "` + sum(windows) + `"}`,
+		`{OS: "darwin", Arch: "arm64", Size: 9800, SHA256: "` + sum(darwin) + `"}`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the generated file lacks %s:\n%s", want, text)
 		}
 	}
-	if strings.Index(text, `"linux"`) > strings.Index(text, `"windows"`) {
+	if strings.Index(text, `"linux"`) > strings.Index(text, `"darwin"`) {
 		t.Error("targets are not in the order package serverbin reports")
 	}
 }

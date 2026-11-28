@@ -219,7 +219,7 @@ In a [remote window](remote-mode.md), the credentials live on the host, because 
   - Windows: Windows Credential Manager (`wincredman`) does not work reliably over SSH.
 - **SSH**: works. The host makes the key pair in its own `~/.ssh/`, next to its `Host gitbox-<accountKey>` entry, and keeps the private key: only the public key comes back to the window. **Copy to clipboard** puts it in this computer's clipboard, and the provider link opens in this computer's browser. Once I add the key on the provider, **Verify connection** tests it from the host. **Regenerate SSH key** replaces the key on the host, and I add the new one on the provider.
 
-Linux and macOS hosts are supported. On a Mac, the token file lives in the same place with the same modes, and the locked keychain is the reason GCM is refused. On a Windows host the token file will get an ACL that only my user can read, which comes with Windows host support.
+Linux hosts and Macs with Apple silicon are supported. On a Mac, the token file lives in the same place with the same modes, and the locked keychain is the reason GCM is refused. On a Windows host the token file will get an ACL that only my user can read, which comes with Windows host support.
 
 ### SSH agent forwarding and account keys
 

@@ -83,15 +83,15 @@ cmd/gui/build/bin/GitboxApp --list-server-targets   # macOS: GitboxApp.app/Conte
 ```
 
 - `scripts/stamp.sh` imprime la identidad del build: `VERSION`, `COMMIT` (siempre el SHA completo) y los `LDFLAGS` que estampan ambos en un binario. `VERSION` es `GITBOX_VERSION` cuando está definido, como hacen CI, el script de release y el gate; si no, es `git describe --tags --always --dirty` más `-dev`. Un GitboxApp solo habla con un `gitbox-server` de la misma versión y commit, así que todos los caminos de build toman ambos de aquí.
-- `scripts/build-server.sh` hace cross-compile del servidor para cada target de `GITBOX_SERVER_TARGETS`. `all` significa Linux, macOS y Windows en amd64 y arm64; el valor por defecto es `linux/amd64,linux/arm64,darwin/arm64`. Deja un archivo gzip por target y `zz_generated.go` en `cmd/gui/serverbin/`, y git ignora ambos. El archivo generado fija cada binario por el SHA-256 de sus bytes sin comprimir.
+- `scripts/build-server.sh` hace cross-compile del servidor para cada target de `GITBOX_SERVER_TARGETS`. `all`, el valor por defecto, significa los hosts que admite el modo remoto: `linux/amd64`, `linux/arm64` y `darwin/arm64`. Deja un archivo gzip por target y `zz_generated.go` en `cmd/gui/serverbin/`, y git ignora ambos. El archivo generado fija cada binario por el SHA-256 de sus bytes sin comprimir.
 - El build tag `serverbin` los embebe. Un build sin el tag no lleva servidor dentro y no necesita ninguno de esos archivos, y así es como `go vet`, `go test` y la comprobación de salud siguen funcionando en un checkout limpio.
 - `GitboxApp --list-server-targets` imprime el build del servidor embebido y una línea por target con su tamaño y su SHA-256. Vuelve a leer cada binario contra su hash fijado, y falla cuando la app no podría ejecutar el modo remoto: `unstamped_build`, `server_target_missing` o `server_build_mismatch`.
 
 `wails build` reescribe espacios en los bindings generados, así que el árbol parece modificado después y el siguiente sello de desarrollo dice `-dirty`. Es inofensivo, porque el sello se toma una vez y los dos binarios reciben el mismo; `git checkout -- cmd/gui/frontend/wailsjs` lo limpia.
 
-Los builds de release, el gate y CI embeben los seis targets y ejecutan `scripts/check-gui-artifact.sh` sobre el resultado. Comprueba que la app informa exactamente del sello con el que se construyó, que lleva los targets que se pidieron a `build-server.sh`, y que el ejecutable principal se mantiene dentro de su techo en `scripts/size-ceilings.txt`: su tamaño antes de llevar el servidor, más 30 MiB.
+Los builds de release, el gate y CI embeben los tres targets y ejecutan `scripts/check-gui-artifact.sh` sobre el resultado. Comprueba que la app informa exactamente del sello con el que se construyó, que lleva los targets que se pidieron a `build-server.sh`, y que el ejecutable principal se mantiene dentro de su techo en `scripts/size-ceilings.txt`: su tamaño antes de llevar el servidor, más 30 MiB.
 
-En un runner de CI el build del servidor tarda unos 100 segundos, porque allí no hay nada en caché de los seis targets de cross-compile; con la caché caliente, como en el gate, tarda de 8 a 14. Acepto ese coste: solo se aplica a releases y dry runs.
+En un runner de CI el build del servidor tarda unos 100 segundos, porque allí no hay nada en caché de los tres targets de cross-compile; con la caché caliente, como en el gate, tarda de 8 a 14. Acepto ese coste: solo se aplica a releases y dry runs.
 
 ### Reglas de diseño
 

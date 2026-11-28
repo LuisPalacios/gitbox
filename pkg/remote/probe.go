@@ -77,5 +77,8 @@ func (p *Probe) resolve(alias string) error {
 	default:
 		return newError(CodeUnsupportedArch, "%s has a processor architecture that remote mode does not support", alias)
 	}
+	if p.OS == "darwin" && p.Arch == "amd64" {
+		return newError(CodeUnsupportedIntelMac, "%s is a Mac with an Intel processor; remote mode supports Macs with Apple silicon", alias)
+	}
 	return nil
 }
